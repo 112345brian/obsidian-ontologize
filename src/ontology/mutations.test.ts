@@ -1,12 +1,13 @@
 import { describe, expect, it, vi } from 'vitest';
 
+import type { App, TFile } from 'obsidian';
 import type { OntologyIndex, OntologyType } from './types.ts';
 
 vi.mock('obsidian', () => ({
   Notice: vi.fn(),
 }));
 
-import { planMissingInverses } from './mutations.ts';
+import { planMissingInverses, scaffoldEntity } from './mutations.ts';
 
 function makeType(): OntologyType {
   return {
@@ -223,5 +224,35 @@ describe('ontology frontmatter mutations', () => {
         sourceProperty: 'influenced',
       }),
     ]);
+  });
+
+  it('scaffolds inherited properties and relation fields', async () => {
+    const index = makeIndex();
+    const philosopher = index.types.get('Philosopher')!;
+    philosopher.mustHave.set('school', { type: 'string' });
+    philosopher.canHave.set('birth_year', { type: 'number' });
+    index.entities.get('Spinoza.md')!.frontmatter = {
+      birth_year: 1632,
+      instance_of: '[[Philosopher]]',
+    };
+    const frontmatter = { ...index.entities.get('Spinoza.md')!.frontmatter };
+    const app = {
+      fileManager: {
+        processFrontMatter: (_file: TFile, callback: (data: Record<string, unknown>) => void) => {
+          callback(frontmatter);
+          return Promise.resolve();
+        },
+      },
+    } as unknown as App;
+
+    const added = await scaffoldEntity(app, index, { path: 'Spinoza.md' } as TFile, { showNotice: false });
+
+    expect(added).toBe(2);
+    expect(frontmatter).toEqual({
+      birth_year: 1632,
+      influenced: null,
+      instance_of: '[[Philosopher]]',
+      school: null,
+    });
   });
 });

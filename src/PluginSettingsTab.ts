@@ -123,6 +123,18 @@ export class PluginSettingsTab extends PluginSettingTab {
       );
 
     new Setting(containerEl)
+      .setName('Auto-scaffold entities')
+      .setDesc('Automatically add inherited property and relation fields when a note has complete ontology membership frontmatter.')
+      .addToggle((toggle) =>
+        toggle
+          .setValue(this.plugin.pluginSettings.autoScaffoldEntities)
+          .onChange(async (value) => {
+            this.plugin.pluginSettings.autoScaffoldEntities = value;
+            await this.plugin.savePluginSettings();
+          })
+      );
+
+    new Setting(containerEl)
       .setName('Validation threshold')
       .setDesc('Entity count where validation should be treated as urgent.')
       .addText((text) =>

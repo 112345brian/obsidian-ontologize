@@ -17,6 +17,7 @@ The relevant settings are:
 | Type folder | `_types` | Vault-relative folder containing modular Markdown type/interface files. |
 | Schema file | `_types/ontology.schema.yaml` | Optional vault-relative JSON/YAML schema file. Leave empty to use only modular files. |
 | Entity type fields | `instance_of`, `type` | Ordered frontmatter fields used to read ontology membership from entity notes. |
+| Auto-scaffold entities | off | Add missing inherited property and relation fields when a note has completed ontology membership. |
 
 The type folder is configurable.
 Any Markdown file inside that folder is treated as a schema constructor file instead of an entity note.
@@ -289,3 +290,18 @@ The plugin validates:
 - Missing inverse or symmetric relation entries.
 
 Manual inverse fixes are reviewed in a modal before frontmatter is written.
+
+## Scaffolding
+
+The `Scaffold active ontology note` command and the optional `Auto-scaffold entities` setting use the same scaffolder.
+The scaffolder adds missing inherited `must-have`, `can-have`, and relation fields with `null` values.
+It does not overwrite existing frontmatter values.
+
+Automatic scaffolding runs only after the initial full-vault index rebuild.
+For an automatic scaffold to run, the note must have completed ontology membership:
+
+- The configured entity type field has at least one value.
+- Every direct type exists.
+- No direct type is abstract.
+- No direct type is an interface.
+- No direct type is in a circular inheritance chain.

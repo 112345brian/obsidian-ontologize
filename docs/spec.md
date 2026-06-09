@@ -18,7 +18,7 @@ Everything else in this system — validation, relations, queries, migrations �
 ### Day-to-Day Goals
 
 1. **Declare a type once** — never manually maintain what that implies
-2. **Auto-scaffold new notes** — setting the configured ontology membership field to `[[Philosopher]]` fills in the right fields automatically via templates
+2. **Auto-scaffold new notes** — setting the configured ontology membership field to `[[Philosopher]]` can fill in the right fields automatically
 3. **Auto-maintain relations** — writing `influenced: [[Leibniz]]` on Spinoza's page writes `influenced_by: [[Spinoza]]` on Leibniz's page automatically
 4. **Query correctly** — inheritance-aware queries that return the right answer without manual tagging
 
@@ -42,7 +42,7 @@ The minimum useful system is:
 1. `_types/` folder and/or single schema file with inheritance, interfaces, relations, and property schemas
 2. Inheritance resolver (the core engine)
 3. Auto-updating inverse relations
-4. Templater integration for scaffolding new notes
+4. Built-in scaffolding for newly typed notes
 5. Consistency checker
 
 Saved queries, migrations, and the full query language are depth features built on top.
@@ -671,27 +671,14 @@ The indexer, type graph, inheritance resolver, query engine, constraint checker,
 - **VS Code extension** — query block renderer, commit UI, inline validation
 - **CLI** — `ontology query "type: Person"`, `ontology check`, `ontology commit`
 
-### Instantiation Hook
+### Scaffolding
 
-The system watches file diffs for frontmatter changes. When it detects `instance_of` being set on a note for the first time, it resolves the full type chain, then invokes a configured script to scaffold the inherited fields automatically.
+The system watches metadata changes on entity notes.
+When `Auto-scaffold entities` is enabled and a note has completed ontology membership frontmatter, the plugin resolves the full type/interface chain and writes missing inherited fields.
 
-The hook system is generic — the script can be a Templater JS file, a plain JS file, or any other executable. The system doesn't care what runs, only that `instance_of` was set and a script is registered for that type.
+Completed membership means the configured entity type field has at least one value and every direct type exists, is instantiable, and is not part of a circular inheritance chain.
 
-```markdown
-# _types/Philosopher.md
-extends:
-  - "[[Person]]"
-on-instantiate: _scripts/scaffold-philosopher.js
-
-must-have:
-  time-period: string
-  school-of-thought: "[[SchoolOfThought]]"
-
-can-have:
-  magnum-opus: "[[Work]]"
-```
-
-When `instance_of: "[[Philosopher]]"` is saved to a note's frontmatter, the hook fires and scaffolds:
+Scaffolding writes missing inherited `must-have`, `can-have`, and relation fields with empty values:
 
 ```yaml
 time-period: 
@@ -701,7 +688,7 @@ wrote:
 influenced_by: 
 ```
 
-All fields — including those inherited from `Person` — are written without manual frontmatter editing.
+Manual scaffolding is also available through the `Scaffold active ontology note` command.
 
 ### Prior Art
 

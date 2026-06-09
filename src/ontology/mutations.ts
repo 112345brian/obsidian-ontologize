@@ -23,23 +23,33 @@ export interface MissingInverseFixPlan {
   value: string;
 }
 
+export interface ScaffoldEntityOptions {
+  showNotice?: boolean;
+}
+
 function findFile(app: App, path: string): TFile | null {
   const file = app.vault.getAbstractFileByPath(path);
   return file && 'extension' in file && file.extension === 'md' ? file as TFile : null;
 }
 
-export async function scaffoldEntity(app: App, index: OntologyIndex, file: TFile): Promise<number> {
+export async function scaffoldEntity(app: App, index: OntologyIndex, file: TFile, options: ScaffoldEntityOptions = {}): Promise<number> {
   const entity = index.entities.get(file.path);
   if (!entity) {
-    new Notice('This note has no ontology type frontmatter.');
+    if (options.showNotice !== false) {
+      new Notice('This note has no ontology type frontmatter.');
+    }
     return 0;
   }
 
-  const properties = new Map([...getInheritedCanHave(index, entity), ...getInheritedMustHave(index, entity)]);
+  const properties = new Set([
+    ...getInheritedCanHave(index, entity).keys(),
+    ...getInheritedMustHave(index, entity).keys(),
+    ...resolveEntityRelations(index, entity.instanceOf).keys(),
+  ]);
   let added = 0;
   await app.fileManager.processFrontMatter(file, (frontmatter) => {
     const data = frontmatter as Record<string, unknown>;
-    for (const property of properties.keys()) {
+    for (const property of properties) {
       if (!(property in data)) {
         data[property] = null;
         added++;

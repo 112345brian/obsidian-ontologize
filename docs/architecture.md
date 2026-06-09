@@ -11,6 +11,7 @@ The product contract remains [`spec.md`](spec.md); this document explains how th
 - Keep the in-memory graph hot by applying file-level updates as Obsidian reports changes.
 - Support Linter-style path scoping so users can exclude generated notes, templates, archives, or private folders from enforcement.
 - Keep automatic relation writes opt-in at both the plugin setting and relation definition levels.
+- Keep automatic scaffolding opt-in and tied to completed ontology membership.
 - Cache derived graph state for startup and debugging.
 
 ## Module Layout
@@ -327,7 +328,12 @@ The plugin mutates frontmatter through explicit commands and one guarded automat
 - `Scaffold active ontology note`
 - `Fix missing inverse relations`
 
-Scaffolding adds missing inherited `must-have` and `can-have` fields with `null` values.
+Scaffolding adds missing inherited `must-have`, `can-have`, and relation fields with `null` values.
+Manual scaffolding runs through `Scaffold active ontology note`.
+
+When `autoScaffoldEntities` is enabled, metadata changes on entity notes can trigger the same scaffold write automatically.
+The automatic path only runs after the first full cold-vault rebuild and only when the note has completed ontology membership: the configured entity type field parses to at least one direct type, and every direct type exists, is not abstract, is not an interface, and is not part of a circular inheritance chain.
+This lets setting `instance_of`, `type`, or another configured membership field expand the note shape without requiring a command.
 
 Inverse fixing reads validation issues, finds missing inverse or symmetric relation entries, and appends wiki links to the target note's frontmatter.
 

@@ -32,6 +32,7 @@ export class Plugin extends ObsidianPlugin {
   private indexReady = false;
   private indexTask: Promise<unknown> = Promise.resolve();
   private isAutoFixingInverses = false;
+  private isAutoScaffolding = false;
 
   public override async onload(): Promise<void> {
     this.pluginSettings = Object.assign(new PluginSettingsClass(), await this.loadData());
@@ -193,6 +194,39 @@ export class Plugin extends ObsidianPlugin {
     return this.runAutoInverseFix();
   }
 
+  private canAutoScaffold(file: TFile): boolean {
+    const entity = this.index?.entities.get(file.path);
+    if (!this.index || !entity || entity.instanceOf.length === 0) {
+      return false;
+    }
+    for (const typeName of entity.instanceOf) {
+      const type = this.index.types.get(typeName);
+      if (!type || type.abstract || type.isInterface || this.index.circularTypes?.has(typeName)) {
+        return false;
+      }
+    }
+    return true;
+  }
+
+  private async applyAutoScaffold(file: TFile): Promise<number> {
+    if (!this.index || !this.pluginSettings.autoScaffoldEntities || !this.indexReady || this.isAutoScaffolding || !this.canAutoScaffold(file)) {
+      return 0;
+    }
+
+    this.isAutoScaffolding = true;
+    try {
+      const added = await scaffoldEntity(this.app, this.index, file, { showNotice: false });
+      if (added > 0) {
+        this.index = await buildOntologyIndex(this.app, this.indexSettings());
+        await writeOntologyCache(this.app, this.pluginSettings.cachePath, this.index);
+        new Notice(`Ontology auto-scaffolded ${added} fields.`);
+      }
+      return added;
+    } finally {
+      this.isAutoScaffolding = false;
+    }
+  }
+
   private async runAutoInverseFix(): Promise<number> {
     if (!this.index || this.isAutoFixingInverses) {
       return 0;
@@ -309,6 +343,7 @@ export class Plugin extends ObsidianPlugin {
   private async upsertFileCore(file: TFile): Promise<void> {
     const index = await this.ensureIndexCore();
     this.index = await upsertOntologyFile(this.app, index, file, this.indexSettings());
+    await this.applyAutoScaffold(file);
     await this.applyAutoInverseUpdates();
     this.scheduleCacheWrite();
   }

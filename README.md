@@ -17,6 +17,7 @@ It keeps ontology data in ordinary Markdown and YAML frontmatter, then adds inhe
 - Validates schema consistency: inheritance, circular types (never locked), unknown types, abstract/interface instantiation, disjoint conflicts, must-have/cannot-have properties, cardinality, relation ranges, nominal values, negation conflicts, and missing inverse/symmetric entries
 - Flags duplicate entity basenames and ambiguous relation targets instead of silently resolving to an arbitrary file
 - Inverse relation fixing uses the same composition-chain resolution as validation, so the fix always writes the property that the issue reported
+- Can automatically scaffold inherited property and relation fields after a note gets complete ontology membership frontmatter
 - Can automatically repair inverse relations that declare `auto-update: true`
 - Provides an issue report modal with severity/autofix filters and file navigation
 - Provides commands to rebuild, check, scaffold the active note, and fix missing inverses
@@ -115,6 +116,7 @@ types:
 | Entity type fields | `instance_of`, `type` | Frontmatter fields used to read entity ontology membership |
 | Cache path | `.obsidian/ontology-cache.json` | Derived-state cache |
 | Default locked query results | on | Query blocks default to locked-only results |
+| Auto-scaffold entities | off | Add inherited property and relation fields after a note gets complete ontology membership frontmatter |
 | Auto-update inverse relations | off | Write missing inverses after rebuilds for `auto-update: true` relations |
 | Validation threshold | 100 | Entity count where validation is treated as urgent |
 | Ignored folders | — | Vault-relative folder prefixes excluded from indexing |

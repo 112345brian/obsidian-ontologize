@@ -6,6 +6,7 @@ export class PluginSettings {
   public entityTypeFields: string[] = ['instance_of', 'type'];
   public queryOnlyLocked = true;
   public cachePath = '.obsidian/ontology-cache.json';
+  public autoScaffoldEntities = false;
   public autoUpdateInverses = false;
   public validationThreshold = 100;
   public foldersToIgnore: string[] = [];
