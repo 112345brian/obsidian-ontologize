@@ -3,6 +3,7 @@ instance_of: [[cat]]
 lock: true
 common_name: cat
 habitat: home
+descriptor: weird
 paws: 4
 conservation_status: domesticated
 gestation_days: 65

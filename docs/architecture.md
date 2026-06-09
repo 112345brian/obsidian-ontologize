@@ -284,7 +284,7 @@ The current checker reports:
 - Cardinality violations for `one` and `one-to-one`
 - Unknown relation targets
 - Relation targets outside declared `range`
-- Nominal property values outside allowed values
+- Property values outside inline or nominal allowed values
 - Relation values that both assert and explicitly negate the same target
 - Missing inverse or symmetric relation entries
 - Duplicate entity names (two notes with the same basename) and relation targets that resolve to a duplicated name

@@ -430,7 +430,7 @@ function validateValueType(file: string, property: string, expectedType: string 
   }
 }
 
-function nominalValues(index: OntologyIndex, definition: PropertyDefinition): string[] {
+function allowedPropertyValues(index: OntologyIndex, definition: PropertyDefinition): string[] {
   if (definition.values && definition.values.length > 0) {
     return definition.values;
   }
@@ -451,7 +451,7 @@ function validatePropertyDefinition(
   validateCardinality(entity.path, property, definition, value, index.issues);
   validateValueType(entity.path, property, definition.type, value, index.issues);
 
-  const allowedValues = nominalValues(index, definition);
+  const allowedValues = allowedPropertyValues(index, definition);
   if (allowedValues.length === 0) {
     return;
   }
@@ -461,7 +461,7 @@ function validatePropertyDefinition(
     if (!allowed.has(candidate)) {
       index.issues.push({
         file: entity.path,
-        message: `${property} value ${candidate} is outside nominal values: ${allowedValues.join(', ')}`,
+        message: `${property} value ${candidate} is outside allowed values: ${allowedValues.join(', ')}`,
         property,
         severity: 'error',
       });

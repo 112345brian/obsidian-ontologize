@@ -47,7 +47,8 @@ function parsePropertyDefinition(value: unknown): PropertyDefinition {
   const record = asRecord(value);
   const type = typeof record['type'] === 'string' ? normalizeLinkTarget(record['type']) : undefined;
   const cardinality = typeof record['cardinality'] === 'string' ? record['cardinality'] : undefined;
-  const values = Array.isArray(record['values']) ? record['values'].map(String) : undefined;
+  const possibleValues = record['possible-values'] ?? record['possible_values'] ?? record['values'];
+  const values = Array.isArray(possibleValues) ? possibleValues.map(String) : undefined;
   return { cardinality, type, values };
 }
 

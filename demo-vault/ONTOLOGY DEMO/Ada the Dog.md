@@ -3,6 +3,7 @@ instance_of: [[dog]]
 lock: true
 common_name: dog
 habitat: home
+descriptor: happy
 paws: 4
 conservation_status: domesticated
 gestation_days: 63

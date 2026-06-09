@@ -2,6 +2,16 @@ import { describe, expect, it, vi } from 'vitest';
 
 vi.mock('obsidian', () => ({
   parseYaml: (source: string) => {
+    if (source.includes('possible-values:')) {
+      return {
+        'can-have': {
+          descriptor: {
+            'possible-values': ['happy', 'sad', 'weird'],
+            type: 'string',
+          },
+        },
+      };
+    }
     if (source.includes('abstract: true')) {
       return { abstract: true };
     }
@@ -52,5 +62,22 @@ lock: true
     }, ['ontology']);
 
     expect(entity?.instanceOf).toEqual(['Person']);
+  });
+
+  it('parses possible-values as property allowed values', () => {
+    const type = parseOntologyType('_types/Mood.md', `---
+can-have:
+  descriptor:
+    type: string
+    possible-values:
+      - happy
+      - sad
+      - weird
+---`);
+
+    expect(type.canHave.get('descriptor')).toEqual({
+      type: 'string',
+      values: ['happy', 'sad', 'weird'],
+    });
   });
 });

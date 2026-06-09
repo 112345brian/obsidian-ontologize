@@ -262,6 +262,22 @@ must-have:
     cardinality: many
 ```
 
+### Possible Values
+
+Properties can limit values inline with `possible-values`:
+
+```markdown
+can-have:
+  descriptor:
+    type: string
+    possible-values:
+      - happy
+      - sad
+      - weird
+```
+
+`possible_values` and `values` are accepted as aliases.
+
 ### Constraint Inheritance
 
 Subtypes may tighten constraints from parent types. A `can-have` in a parent can be promoted to `must-have` in a subtype. Constraints may not be loosened going down the hierarchy.

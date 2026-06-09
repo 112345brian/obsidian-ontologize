@@ -267,6 +267,24 @@ describe('incremental ontology index state', () => {
     }));
   });
 
+  it('validates inline possible property values', () => {
+    const index = makeIndex();
+    index.types.get('Philosopher')!.canHave.set('descriptor', {
+      type: 'string',
+      values: ['happy', 'sad', 'weird'],
+    });
+    index.entities.get('Ada.md')!.frontmatter['descriptor'] = 'angry';
+
+    recomputeOntologyDerivedState(index);
+
+    expect(index.issues).toContainEqual(expect.objectContaining({
+      file: 'Ada.md',
+      message: 'descriptor value angry is outside allowed values: happy, sad, weird',
+      property: 'descriptor',
+      severity: 'error',
+    }));
+  });
+
   it('loads a single JSON schema file as ontology constructors', async () => {
     const schema = JSON.stringify({
       interfaces: {

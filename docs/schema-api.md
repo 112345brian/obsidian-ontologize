@@ -206,13 +206,27 @@ must-have:
     type: [[SchoolOfThought]]
 ```
 
+Possible values:
+
+```yaml
+can-have:
+  descriptor:
+    type: string
+    possible-values:
+      - happy
+      - sad
+      - weird
+```
+
 Recognized property definition fields:
 
 | Field | Meaning |
 |---|---|
 | `type` | Scalar type, nominal type, or linked ontology type. |
 | `cardinality` | Currently validates `one` and `one-to-one` as single-value constraints. |
-| `values` | Inline nominal allowed values. |
+| `possible-values` | Inline allowed values for this property. |
+| `possible_values` | Alias for `possible-values`. |
+| `values` | Backward-compatible alias for `possible-values`; also used by `type: nominal` constructors. |
 
 Detected scalar types:
 
