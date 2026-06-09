@@ -4,6 +4,7 @@ This is a small example vault for testing the plugin.
 It demonstrates:
 
 - A configurable type folder using `_types`.
+- Global field definitions in `_types/_fields.md`.
 - Global relation definitions in `_types/_relations.md`.
 - Interfaces with `observable` and `pet`.
 - Inheritance with `animal -> mammal -> dog/cat`.

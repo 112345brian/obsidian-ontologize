@@ -4,6 +4,7 @@ export interface SchemaDiagnostics {
   abstractTypes: number;
   concreteTypes: number;
   circularTypes: string[];
+  fieldDefinitions: number;
   interfaces: number;
   issues: OntologyIssue[];
   relationDefinitions: number;
@@ -49,6 +50,7 @@ export function buildSchemaDiagnostics(index: OntologyIndex): SchemaDiagnostics 
     abstractTypes,
     concreteTypes,
     circularTypes: [...index.circularTypes ?? []].sort(),
+    fieldDefinitions: index.fieldDefinitions.size,
     interfaces,
     issues: index.issues.filter((issue) => isSchemaIssue(index, issue)),
     relationDefinitions: index.relationDefinitions.size,

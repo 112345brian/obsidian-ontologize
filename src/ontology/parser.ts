@@ -47,8 +47,10 @@ function parsePropertyDefinition(value: unknown): PropertyDefinition {
   const record = asRecord(value);
   const type = typeof record['type'] === 'string' ? normalizeLinkTarget(record['type']) : undefined;
   const cardinality = typeof record['cardinality'] === 'string' ? record['cardinality'] : undefined;
+  const frontmatterKey = typeof record['frontmatter-key'] === 'string' ? record['frontmatter-key'] : undefined;
+  const uses = typeof record['uses'] === 'string' ? normalizeLinkTarget(record['uses']) : undefined;
   const values = Array.isArray(record['possible-values']) ? record['possible-values'].map(String) : undefined;
-  return { cardinality, type, values };
+  return { cardinality, frontmatterKey, type, uses, values };
 }
 
 function parsePropertyMap(value: unknown): Map<string, PropertyDefinition> {
@@ -110,6 +112,7 @@ function parseOntologyTypeRecord(name: string, path: string, yaml: Record<string
     implements: extractLinkTargets(yaml['implements']),
     isInterface: yaml['interface'] === true || yaml['type'] === 'interface',
     lockIntent: yaml['lock'] === true,
+    fields: parsePropertyMap(yaml['fields']),
     mustHave: parsePropertyMap(yaml['must-have']),
     name,
     path,
@@ -144,6 +147,13 @@ export function parseOntologySchema(path: string, source: string): OntologyType[
     types.push(parseOntologyTypeRecord('_relations', `${path}#relations`, {
       relations: schema['relations'],
       type: 'relation-definitions',
+    }));
+  }
+
+  if (schema['fields'] !== undefined) {
+    types.push(parseOntologyTypeRecord('_fields', `${path}#fields`, {
+      fields: schema['fields'],
+      type: 'field-definitions',
     }));
   }
 

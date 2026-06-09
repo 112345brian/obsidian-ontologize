@@ -3,15 +3,12 @@ lock: true
 implements:
   - [[observable]]
 must-have:
-  common_name: string
+  common-name:
+    uses: common-name
 can-have:
   habitat: string
   descriptor:
-    type: string
-    possible-values:
-      - happy
-      - sad
-      - weird
+    uses: descriptor
   paws:
     type: number
     cardinality: one

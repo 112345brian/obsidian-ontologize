@@ -8,7 +8,9 @@ export type FrontmatterValue =
 
 export interface PropertyDefinition {
   cardinality?: string | undefined;
+  frontmatterKey?: string | undefined;
   type?: string | undefined;
+  uses?: string | undefined;
   values?: string[] | undefined;
 }
 
@@ -32,6 +34,7 @@ export interface OntologyType {
   implements: string[];
   isInterface: boolean;
   lockIntent: boolean;
+  fields: Map<string, PropertyDefinition>;
   mustHave: Map<string, PropertyDefinition>;
   name: string;
   path: string;
@@ -77,6 +80,7 @@ export interface OntologyIndex {
   effectiveTypeLocks: Map<string, EffectiveLockState>;
   entities: Map<string, OntologyEntity>;
   entitiesByName: Map<string, OntologyEntity>;
+  fieldDefinitions: Map<string, PropertyDefinition>;
   issues: OntologyIssue[];
   relationDefinitions: Map<string, RelationDefinition>;
   generatedAt: string;

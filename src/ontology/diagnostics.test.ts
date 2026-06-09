@@ -11,6 +11,7 @@ function makeType(name: string, path = `_types/${name}.md`): OntologyType {
     cannotHave: new Set(),
     disjoint: [],
     extends: [],
+    fields: new Map(),
     implements: [],
     isInterface: false,
     lockIntent: true,
@@ -31,6 +32,7 @@ function makeIndex(): OntologyIndex {
     effectiveTypeLocks: new Map(),
     entities: new Map(),
     entitiesByName: new Map(),
+    fieldDefinitions: new Map(),
     generatedAt: '2026-06-09T00:00:00.000Z',
     issues: [
       { file: '_types/Person.md', message: 'Unknown parent type Agent', severity: 'error' },
@@ -68,6 +70,7 @@ describe('schema diagnostics', () => {
       abstractTypes: 1,
       concreteTypes: 1,
       circularTypes: ['Loop'],
+      fieldDefinitions: 0,
       interfaces: 1,
       issues: [
         { file: '_types/Person.md', message: 'Unknown parent type Agent', severity: 'error' },

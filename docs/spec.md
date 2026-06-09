@@ -155,10 +155,26 @@ Validation flattens both `extends` and `implements`.
 
 When multiple inherited or implemented contracts define the same frontmatter key, the composed schema follows these rules:
 
-- Identical definitions are allowed.
-- A `can-have` definition can be promoted to `must-have` by another compatible contract.
-- Incompatible definitions for the same key are schema errors.
+- Shared universal fields must be declared in a global `fields` registry and referenced with `uses`.
+- Local fields from different interfaces are different semantic fields, so they cannot silently share one frontmatter key.
+- A compatible `can-have` use of the same global field can be promoted to `must-have`.
+- Incompatible definitions for the same semantic field are schema errors.
 - `cannot-have` combined with `must-have` or `can-have` for the same key is a schema error.
+
+```yaml
+type: field-definitions
+fields:
+  birth-year:
+    type: number
+    cardinality: one
+    frontmatter-key: birth_year
+```
+
+```yaml
+must-have:
+  birth-year:
+    uses: birth-year
+```
 
 ### Inheritance
 

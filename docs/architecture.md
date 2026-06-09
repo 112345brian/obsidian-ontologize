@@ -212,7 +212,11 @@ Interfaces can contribute `must-have`, `can-have`, `cannot-have`, and `relations
 Entities cannot directly instantiate interface types.
 
 Schema composition validates overlapping frontmatter contracts during derived-state recompute.
-Identical property definitions are allowed, compatible optional/required duplicates collapse to the stricter required contract, and incompatible duplicates become schema issues.
+Global field registries are declared with `type: field-definitions`, `type: field-registry`, or `type: fields` and are parsed into `OntologyIndex.fieldDefinitions`.
+Property definitions can reference those universal fields with `uses`.
+The resolved definition can also carry a `frontmatter-key` alias, so a global field such as `birth-year` can validate and scaffold `birth_year` in entity notes.
+Compatible optional/required uses of the same global field collapse to the stricter required contract, and incompatible duplicate definitions become schema issues.
+Local fields from different interfaces are considered different semantic fields; if they compose to the same frontmatter key, that is also a schema issue.
 Any `cannot-have` collision with a `must-have` or `can-have` contract is a schema issue.
 
 Reusable relation definitions are declared in type files with `type: relation-definitions`, `type: relation-registry`, or `type: relations`.

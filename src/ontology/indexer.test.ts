@@ -27,6 +27,7 @@ function makeType(
     cannotHave: new Set(),
     disjoint: [],
     extends: extendsTypes,
+    fields: new Map(),
     implements: options.implementsTypes ?? [],
     isInterface: options.isInterface === true,
     lockIntent,
@@ -58,6 +59,7 @@ function makeIndex(): OntologyIndex {
       }],
     ]),
     entitiesByName: new Map(),
+    fieldDefinitions: new Map(),
     generatedAt: '2026-06-09T00:00:00.000Z',
     issues: [],
     relationDefinitions: new Map(),
@@ -285,16 +287,20 @@ describe('incremental ontology index state', () => {
     }));
   });
 
-  it('allows identical interface fields and lets required beat optional', () => {
+  it('allows shared global fields and lets required beat optional', () => {
     const index = makeIndex();
+    index.types.set('_fields', makeType('_fields', '_types/_fields.md', false, [], {
+      typeKind: 'field-definitions',
+    }));
+    index.types.get('_fields')!.fields.set('label', { type: 'string' });
     index.types.set('Named', makeType('Named', '_types/Named.md', true, [], {
       isInterface: true,
     }));
     index.types.set('Cataloged', makeType('Cataloged', '_types/Cataloged.md', true, [], {
       isInterface: true,
     }));
-    index.types.get('Named')!.canHave.set('label', { type: 'string' });
-    index.types.get('Cataloged')!.mustHave.set('label', { type: 'string' });
+    index.types.get('Named')!.canHave.set('label', { uses: 'label' });
+    index.types.get('Cataloged')!.mustHave.set('label', { uses: 'label' });
     index.types.set('Philosopher', makeType('Philosopher', '_types/Philosopher.md', true, ['Person'], {
       implementsTypes: ['Named', 'Cataloged'],
     }));
@@ -303,9 +309,10 @@ describe('incremental ontology index state', () => {
     recomputeOntologyDerivedState(index);
 
     expect(index.issues.some((issue) => issue.message.includes('Schema conflict on Philosopher.label'))).toBe(false);
+    expect(index.fieldDefinitions.get('label')?.type).toBe('string');
   });
 
-  it('flags incompatible interface field definitions as schema conflicts', () => {
+  it('flags local same-key interface fields as semantic schema conflicts', () => {
     const index = makeIndex();
     index.types.set('Named', makeType('Named', '_types/Named.md', true, [], {
       isInterface: true,
@@ -323,8 +330,58 @@ describe('incremental ontology index state', () => {
 
     expect(index.issues).toContainEqual(expect.objectContaining({
       file: '_types/Philosopher.md',
+      message: 'Schema conflict on Philosopher.label: Named uses semantic field Named.label but Cataloged uses semantic field Cataloged.label',
+      property: 'label',
+      severity: 'error',
+    }));
+  });
+
+  it('flags incompatible overrides of the same global field', () => {
+    const index = makeIndex();
+    index.types.set('_fields', makeType('_fields', '_types/_fields.md', false, [], {
+      typeKind: 'field-definitions',
+    }));
+    index.types.get('_fields')!.fields.set('label', { type: 'string' });
+    index.types.set('Named', makeType('Named', '_types/Named.md', true, [], {
+      isInterface: true,
+    }));
+    index.types.set('Cataloged', makeType('Cataloged', '_types/Cataloged.md', true, [], {
+      isInterface: true,
+    }));
+    index.types.get('Named')!.canHave.set('label', { uses: 'label' });
+    index.types.get('Cataloged')!.canHave.set('label', { type: 'number', uses: 'label' });
+    index.types.set('Philosopher', makeType('Philosopher', '_types/Philosopher.md', true, ['Person'], {
+      implementsTypes: ['Named', 'Cataloged'],
+    }));
+
+    recomputeOntologyDerivedState(index);
+
+    expect(index.issues).toContainEqual(expect.objectContaining({
+      file: '_types/Philosopher.md',
       message: 'Schema conflict on Philosopher.label: Named declares can-have (type string) but Cataloged declares can-have (type number)',
       property: 'label',
+      severity: 'error',
+    }));
+  });
+
+  it('validates and scaffolds global fields using frontmatter aliases', () => {
+    const index = makeIndex();
+    index.types.set('_fields', makeType('_fields', '_types/_fields.md', false, [], {
+      typeKind: 'field-definitions',
+    }));
+    index.types.get('_fields')!.fields.set('birth-year', {
+      frontmatterKey: 'birth_year',
+      type: 'number',
+    });
+    index.types.get('Philosopher')!.mustHave.set('birth-year', { uses: 'birth-year' });
+    index.entities.get('Ada.md')!.frontmatter['birth_year'] = '1815';
+
+    recomputeOntologyDerivedState(index);
+
+    expect(index.issues).toContainEqual(expect.objectContaining({
+      file: 'Ada.md',
+      message: 'birth_year must be number',
+      property: 'birth_year',
       severity: 'error',
     }));
   });

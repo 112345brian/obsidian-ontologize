@@ -22,6 +22,23 @@ vi.mock('obsidian', () => ({
         },
       };
     }
+    if (source.includes('fields:') && source.includes('birth-year:')) {
+      return {
+        fields: {
+          'birth-year': {
+            cardinality: 'one',
+            'frontmatter-key': 'birth_year',
+            type: 'number',
+          },
+        },
+        'must-have': {
+          born: {
+            uses: 'birth-year',
+          },
+        },
+        type: 'field-definitions',
+      };
+    }
     if (source.includes('abstract: true')) {
       return { abstract: true };
     }
@@ -35,7 +52,7 @@ vi.mock('obsidian', () => ({
   },
 }));
 
-import { parseOntologyEntity, parseOntologyType } from './parser.ts';
+import { parseOntologyEntity, parseOntologySchema, parseOntologyType } from './parser.ts';
 
 describe('ontology type parser', () => {
   it('uses frontmatter as the type definition when frontmatter is present', () => {
@@ -86,7 +103,10 @@ can-have:
 ---`);
 
     expect(type.canHave.get('descriptor')).toEqual({
+      cardinality: undefined,
+      frontmatterKey: undefined,
       type: 'string',
+      uses: undefined,
       values: ['happy', 'sad', 'weird'],
     });
   });
@@ -103,8 +123,53 @@ can-have:
 ---`);
 
     expect(type.canHave.get('descriptor')).toEqual({
+      cardinality: undefined,
+      frontmatterKey: undefined,
       type: 'string',
+      uses: undefined,
       values: undefined,
     });
+  });
+
+  it('parses global fields and property uses', () => {
+    const type = parseOntologyType('_types/_fields.md', `---
+type: field-definitions
+fields:
+  birth-year:
+    type: number
+    cardinality: one
+    frontmatter-key: birth_year
+must-have:
+  born:
+    uses: birth-year
+---`);
+
+    expect(type.fields.get('birth-year')).toEqual({
+      cardinality: 'one',
+      frontmatterKey: 'birth_year',
+      type: 'number',
+      uses: undefined,
+      values: undefined,
+    });
+    expect(type.mustHave.get('born')).toEqual({
+      cardinality: undefined,
+      frontmatterKey: undefined,
+      type: undefined,
+      uses: 'birth-year',
+      values: undefined,
+    });
+  });
+
+  it('parses top-level schema fields as a field registry', () => {
+    const types = parseOntologySchema('_types/ontology.schema.json', JSON.stringify({
+      fields: {
+        'birth-year': {
+          type: 'number',
+        },
+      },
+    }));
+
+    expect(types[0]?.typeKind).toBe('field-definitions');
+    expect(types[0]?.fields.get('birth-year')?.type).toBe('number');
   });
 });

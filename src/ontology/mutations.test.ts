@@ -16,6 +16,7 @@ function makeType(): OntologyType {
     cannotHave: new Set(),
     disjoint: [],
     extends: [],
+    fields: new Map(),
     implements: [],
     isInterface: false,
     lockIntent: true,
@@ -41,6 +42,7 @@ function makeInterfaceRelationIndex(): OntologyIndex {
     cannotHave: new Set(),
     disjoint: [],
     extends: [],
+    fields: new Map(),
     implements: [],
     isInterface: false,
     lockIntent: false,
@@ -63,6 +65,7 @@ function makeInterfaceRelationIndex(): OntologyIndex {
     cannotHave: new Set(),
     disjoint: [],
     extends: [],
+    fields: new Map(),
     implements: [],
     isInterface: true,
     lockIntent: true,
@@ -135,6 +138,7 @@ function makeIndex(): OntologyIndex {
       [source.name, source],
       [target.name, target],
     ]),
+    fieldDefinitions: new Map(),
     generatedAt: '2026-06-09T00:00:00.000Z',
     issues: [
       {

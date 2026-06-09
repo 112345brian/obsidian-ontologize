@@ -18,7 +18,8 @@ First functional release.
 
 - Added a schema diagnostics modal for type/interface/relation authoring issues, with schema summary counts and circular type visibility.
 - Scaffolding is now review-first. Manual scaffolding and auto-scaffold detection both open a modal of missing fields before writing selected frontmatter keys.
-- Interface and inheritance composition now detects conflicting duplicate frontmatter contracts while allowing identical fields and compatible optional-to-required promotion.
+- Interface and inheritance composition now detects conflicting duplicate frontmatter contracts while allowing compatible optional-to-required promotion of the same global field.
+- Added global field definitions with property `uses` and `frontmatter-key` aliases, so universal fields can be shared across interfaces while local same-key fields remain distinct.
 - Query result tables include a result count footer.
 - Ambiguous entity names produce an informative validation warning that lists all conflicting paths.
 - `styles.css` is now emitted by `npm run build` alongside `main.js`.

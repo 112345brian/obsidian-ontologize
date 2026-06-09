@@ -90,6 +90,7 @@ function createEmptyOntologyIndex(settings: BuildIndexSettings): OntologyIndex {
     effectiveTypeLocks: new Map<string, EffectiveLockState>(),
     entities: new Map<string, OntologyEntity>(),
     entitiesByName: new Map<string, OntologyEntity>(),
+    fieldDefinitions: new Map<string, PropertyDefinition>(),
     generatedAt: new Date().toISOString(),
     issues: [],
     relationDefinitions: new Map<string, RelationDefinition>(),
@@ -107,6 +108,10 @@ function createEmptyOntologyIndex(settings: BuildIndexSettings): OntologyIndex {
 
 function isRelationDefinitionRegistry(type: OntologyType): boolean {
   return ['relation-definitions', 'relation-registry', 'relations'].includes(type.typeKind ?? '');
+}
+
+function isFieldDefinitionRegistry(type: OntologyType): boolean {
+  return ['field-definitions', 'field-registry', 'fields'].includes(type.typeKind ?? '');
 }
 
 function typeCompositionChain(
@@ -153,12 +158,12 @@ function typeCompositionChain(
   return names;
 }
 
-function collectInheritedMap<T>(
+function collectInheritedPropertyMap(
   typeName: string,
-  index: Pick<OntologyIndex, 'ancestorsByType' | 'types'>,
-  selector: (type: OntologyType) => Map<string, T>
-): Map<string, T> {
-  const result = new Map<string, T>();
+  index: OntologyIndex,
+  selector: (type: OntologyType) => Map<string, PropertyDefinition>
+): Map<string, PropertyDefinition> {
+  const result = new Map<string, PropertyDefinition>();
   const names = typeCompositionChain(typeName, {
     ancestorsByType: index.ancestorsByType,
     issues: [],
@@ -166,11 +171,12 @@ function collectInheritedMap<T>(
   });
   for (const name of names) {
     const type = index.types.get(name);
-    if (!type) {
+    if (!type || isFieldDefinitionRegistry(type)) {
       continue;
     }
-    for (const [key, value] of selector(type)) {
-      result.set(key, value);
+    for (const [property, definition] of selector(type)) {
+      const resolved = resolvePropertyDefinition(index, property, definition);
+      result.set(frontmatterPropertyKey(property, resolved), resolved);
     }
   }
   return result;
@@ -183,6 +189,22 @@ function collectGlobalRelationDefinitions(types: Map<string, OntologyType>): Map
       continue;
     }
     for (const [property, definition] of type.relations) {
+      definitions.set(property, {
+        ...definition,
+        uses: definition.uses === property ? undefined : definition.uses,
+      });
+    }
+  }
+  return definitions;
+}
+
+function collectGlobalFieldDefinitions(types: Map<string, OntologyType>): Map<string, PropertyDefinition> {
+  const definitions = new Map<string, PropertyDefinition>();
+  for (const type of types.values()) {
+    if (!isFieldDefinitionRegistry(type)) {
+      continue;
+    }
+    for (const [property, definition] of type.fields) {
       definitions.set(property, {
         ...definition,
         uses: definition.uses === property ? undefined : definition.uses,
@@ -219,6 +241,22 @@ function resolveRelationDefinition(index: OntologyIndex, property: string, defin
     ...definition,
     uses: definition.uses,
   };
+}
+
+function resolvePropertyDefinition(index: OntologyIndex, property: string, definition: PropertyDefinition): PropertyDefinition {
+  const referenced = definition.uses ? index.fieldDefinitions.get(definition.uses) : index.fieldDefinitions.get(property);
+  if (!referenced) {
+    return definition;
+  }
+  return {
+    ...referenced,
+    ...definition,
+    uses: definition.uses,
+  };
+}
+
+function frontmatterPropertyKey(property: string, definition: PropertyDefinition): string {
+  return definition.frontmatterKey ?? property;
 }
 
 function collectRelations(typeName: string, index: OntologyIndex): Map<string, RelationDefinition> {
@@ -323,16 +361,24 @@ function sameStringArray(left: string[] | undefined, right: string[] | undefined
 }
 
 function samePropertyDefinition(left: PropertyDefinition, right: PropertyDefinition): boolean {
-  return left.cardinality === right.cardinality && left.type === right.type && sameStringArray(left.values, right.values);
+  return left.cardinality === right.cardinality
+    && left.frontmatterKey === right.frontmatterKey
+    && left.type === right.type
+    && sameStringArray(left.values, right.values);
 }
 
 function describePropertyDefinition(definition: PropertyDefinition): string {
   const parts = [
     definition.type ? `type ${definition.type}` : '',
     definition.cardinality ? `cardinality ${definition.cardinality}` : '',
+    definition.frontmatterKey ? `frontmatter-key ${definition.frontmatterKey}` : '',
     definition.values?.length ? `possible-values ${definition.values.join(', ')}` : '',
   ].filter(Boolean);
   return parts.length > 0 ? parts.join('; ') : 'untyped';
+}
+
+function semanticFieldId(source: OntologyType, property: string, definition: PropertyDefinition): string {
+  return definition.uses ?? `${source.name}.${property}`;
 }
 
 function compositionChainWithoutIssues(typeName: string, index: Pick<OntologyIndex, 'ancestorsByType' | 'types'>, seen = new Set<string>()): Set<string> {
@@ -362,12 +408,13 @@ function compositionChainWithoutIssues(typeName: string, index: Pick<OntologyInd
 interface FieldSource {
   bucket: 'can-have' | 'must-have';
   definition: PropertyDefinition;
+  semanticId: string;
   source: OntologyType;
 }
 
 function validateSchemaCompositionConflicts(index: OntologyIndex): void {
   for (const type of index.types.values()) {
-    if (isRelationDefinitionRegistry(type)) {
+    if (isRelationDefinitionRegistry(type) || isFieldDefinitionRegistry(type)) {
       continue;
     }
 
@@ -395,34 +442,47 @@ function validateSchemaCompositionConflicts(index: OntologyIndex): void {
 
       for (const [bucket, definitions] of [['must-have', source.mustHave], ['can-have', source.canHave]] as const) {
         for (const [property, definition] of definitions) {
-          const forbiddenSource = forbidden.get(property);
+          const resolved = resolvePropertyDefinition(index, property, definition);
+          const frontmatterKey = frontmatterPropertyKey(property, resolved);
+          const semanticId = semanticFieldId(source, property, definition);
+          const forbiddenSource = forbidden.get(frontmatterKey);
           if (forbiddenSource) {
             pushIssueOnce(index.issues, {
               file: type.path,
-              message: `Schema conflict on ${type.name}.${property}: ${source.name} declares ${bucket} but ${forbiddenSource.name} declares cannot-have`,
-              property,
+              message: `Schema conflict on ${type.name}.${frontmatterKey}: ${source.name} declares ${bucket} but ${forbiddenSource.name} declares cannot-have`,
+              property: frontmatterKey,
               severity: 'error',
             });
           }
 
-          const existing = fields.get(property);
+          const existing = fields.get(frontmatterKey);
           if (!existing) {
-            fields.set(property, { bucket, definition, source });
+            fields.set(frontmatterKey, { bucket, definition: resolved, semanticId, source });
             continue;
           }
 
-          if (!samePropertyDefinition(existing.definition, definition)) {
+          if (existing.semanticId !== semanticId) {
             pushIssueOnce(index.issues, {
               file: type.path,
-              message: `Schema conflict on ${type.name}.${property}: ${existing.source.name} declares ${existing.bucket} (${describePropertyDefinition(existing.definition)}) but ${source.name} declares ${bucket} (${describePropertyDefinition(definition)})`,
-              property,
+              message: `Schema conflict on ${type.name}.${frontmatterKey}: ${existing.source.name} uses semantic field ${existing.semanticId} but ${source.name} uses semantic field ${semanticId}`,
+              property: frontmatterKey,
+              severity: 'error',
+            });
+            continue;
+          }
+
+          if (!samePropertyDefinition(existing.definition, resolved)) {
+            pushIssueOnce(index.issues, {
+              file: type.path,
+              message: `Schema conflict on ${type.name}.${frontmatterKey}: ${existing.source.name} declares ${existing.bucket} (${describePropertyDefinition(existing.definition)}) but ${source.name} declares ${bucket} (${describePropertyDefinition(resolved)})`,
+              property: frontmatterKey,
               severity: 'error',
             });
             continue;
           }
 
           if (existing.bucket === 'can-have' && bucket === 'must-have') {
-            fields.set(property, { bucket, definition, source });
+            fields.set(frontmatterKey, { bucket, definition: resolved, semanticId, source });
           }
         }
       }
@@ -635,7 +695,7 @@ export function validateIndex(index: OntologyIndex): void {
     }
 
     for (const typeName of entity.instanceOf) {
-      for (const [property, definition] of collectInheritedMap(typeName, index, (type) => type.mustHave)) {
+      for (const [property, definition] of collectInheritedPropertyMap(typeName, index, (type) => type.mustHave)) {
         if (!hasValue(entity.frontmatter, property)) {
           index.issues.push({
             file: entity.path,
@@ -648,7 +708,7 @@ export function validateIndex(index: OntologyIndex): void {
         }
       }
 
-      for (const [property, definition] of collectInheritedMap(typeName, index, (type) => type.canHave)) {
+      for (const [property, definition] of collectInheritedPropertyMap(typeName, index, (type) => type.canHave)) {
         if (hasValue(entity.frontmatter, property)) {
           validatePropertyDefinition(index, entity, property, definition);
         }
@@ -782,6 +842,7 @@ export function recomputeOntologyDerivedState(index: OntologyIndex): OntologyInd
   const circularTypes = new Set<string>();
   index.ancestorsByType = computeAncestors(index.types, index.issues, circularTypes);
   index.circularTypes = circularTypes;
+  index.fieldDefinitions = collectGlobalFieldDefinitions(index.types);
   index.relationDefinitions = collectGlobalRelationDefinitions(index.types);
   validateSchemaCompositionConflicts(index);
 
@@ -882,7 +943,7 @@ export async function buildOntologyIndex(app: App, settings: BuildIndexSettings)
 export function getInheritedMustHave(index: OntologyIndex, entity: OntologyEntity): Map<string, PropertyDefinition> {
   const result = new Map<string, PropertyDefinition>();
   for (const typeName of entity.instanceOf) {
-    for (const [property, definition] of collectInheritedMap(typeName, index, (type) => type.mustHave)) {
+    for (const [property, definition] of collectInheritedPropertyMap(typeName, index, (type) => type.mustHave)) {
       result.set(property, definition);
     }
   }
@@ -892,7 +953,7 @@ export function getInheritedMustHave(index: OntologyIndex, entity: OntologyEntit
 export function getInheritedCanHave(index: OntologyIndex, entity: OntologyEntity): Map<string, PropertyDefinition> {
   const result = new Map<string, PropertyDefinition>();
   for (const typeName of entity.instanceOf) {
-    for (const [property, definition] of collectInheritedMap(typeName, index, (type) => type.canHave)) {
+    for (const [property, definition] of collectInheritedPropertyMap(typeName, index, (type) => type.canHave)) {
       result.set(property, definition);
     }
   }

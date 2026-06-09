@@ -17,7 +17,7 @@ The relevant settings are:
 | Type folder | `_types` | Vault-relative folder containing modular Markdown type/interface files. |
 | Schema file | `_types/ontology.schema.yaml` | Optional vault-relative JSON/YAML schema file. Leave empty to use only modular files. |
 | Entity type fields | `instance_of`, `type` | Ordered frontmatter fields used to read ontology membership from entity notes. |
-| Auto-scaffold entities | off | Add missing inherited property and relation fields when a note has completed ontology membership. |
+| Auto-scaffold entities | off | Open a review modal for missing inherited property and relation fields when a note has completed ontology membership. |
 
 The type folder is configurable.
 Any Markdown file inside that folder is treated as a schema constructor file instead of an entity note.
@@ -26,10 +26,11 @@ Any Markdown file inside that folder is treated as a schema constructor file ins
 
 ### Single Schema File
 
-The single schema file supports three top-level maps:
+The single schema file supports four top-level maps:
 
 | Key | Meaning |
 |---|---|
+| `fields` | Global field definitions reusable by interfaces and types. |
 | `relations` | Global relation definitions reusable by interfaces and types. |
 | `interfaces` | Reusable composition contracts. These are automatically treated as `interface: true`. |
 | `types` | Concrete or abstract type definitions. |
@@ -37,6 +38,12 @@ The single schema file supports three top-level maps:
 Example:
 
 ```yaml
+fields:
+  birth-year:
+    type: number
+    cardinality: one
+    frontmatter-key: birth_year
+
 relations:
   influenced_by:
     value-type: wikilink
@@ -155,14 +162,16 @@ These fields are recognized in type, interface, and single-schema type definitio
 | `must-have` | map | Required frontmatter properties. |
 | `can-have` | map | Optional frontmatter properties that should be validated if present. |
 | `cannot-have` | array or map | Forbidden frontmatter keys. |
+| `fields` | map | Global field definitions when `type: field-definitions`. |
 | `relations` | array or map | Relation contracts available to matching entities. |
 | `lock` | boolean | Type/interface lock intent. |
-| `type` | string | Constructor kind, such as `nominal`, `interface`, or `relation-definitions`. |
+| `type` | string | Constructor kind, such as `nominal`, `interface`, `field-definitions`, or `relation-definitions`. |
 | `values` | array | Allowed values for `type: nominal`. |
 
-When a type composes multiple parents or interfaces, duplicate property keys are legal only when their definitions are compatible.
-Identical definitions are accepted, and a compatible `can-have` can be promoted to `must-have`.
-Different `type`, `cardinality`, or `possible-values` constraints for the same key are schema errors.
+When a type composes multiple parents or interfaces, duplicate frontmatter keys must refer to the same semantic field.
+Use global `fields` plus property `uses` when a key means the same thing everywhere.
+Local fields from different interfaces are treated as different semantic fields even if their definitions look identical, so composing them under the same frontmatter key is a schema error.
+Different `type`, `cardinality`, `frontmatter-key`, or `possible-values` constraints for the same global field are schema errors.
 Combining `cannot-have` with `must-have` or `can-have` for the same key is also a schema error.
 
 Minimum concrete type:
@@ -222,6 +231,28 @@ can-have:
       - sad
       - weird
 ```
+
+Global field registry:
+
+```yaml
+type: field-definitions
+fields:
+  birth-year:
+    type: number
+    cardinality: one
+    frontmatter-key: birth_year
+```
+
+Using a global field:
+
+```yaml
+must-have:
+  birth-year:
+    uses: birth-year
+```
+
+`frontmatter-key` controls how the field is written and validated in entity notes.
+If omitted, the property key itself is used.
 
 Recognized property definition fields:
 

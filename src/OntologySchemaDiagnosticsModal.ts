@@ -38,7 +38,7 @@ export class OntologySchemaDiagnosticsModal extends Modal {
     const summary = summarizeIssues(diagnostics.issues);
     contentEl.createEl('p', {
       cls: 'ontology-diagnostics-summary',
-      text: `${diagnostics.typeFiles} type files, ${diagnostics.concreteTypes} concrete types, ${diagnostics.interfaces} interfaces, ${diagnostics.abstractTypes} abstract types, ${diagnostics.relationDefinitions} global relations.`,
+      text: `${diagnostics.typeFiles} type files, ${diagnostics.concreteTypes} concrete types, ${diagnostics.interfaces} interfaces, ${diagnostics.abstractTypes} abstract types, ${diagnostics.fieldDefinitions} global fields, ${diagnostics.relationDefinitions} global relations.`,
     });
     contentEl.createEl('p', {
       cls: 'ontology-diagnostics-summary',
