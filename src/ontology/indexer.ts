@@ -76,8 +76,10 @@ export function isOntologySchemaFile(file: TFile, schemaPath: string | undefined
 
 function createEmptyOntologyIndex(settings: BuildIndexSettings): OntologyIndex {
   return {
+    ambiguousEntityNames: new Set<string>(),
     ancestorsByType: new Map<string, Set<string>>(),
     cacheVersion: 1,
+    circularTypes: new Set<string>(),
     effectiveEntityLocks: new Map<string, EffectiveLockState>(),
     effectiveTypeLocks: new Map<string, EffectiveLockState>(),
     entities: new Map<string, OntologyEntity>(),
@@ -197,7 +199,14 @@ function resolveRelationDefinition(index: OntologyIndex, property: string, defin
 
 function collectRelations(typeName: string, index: OntologyIndex): Map<string, RelationDefinition> {
   const result = new Map<string, RelationDefinition>();
-  for (const name of typeCompositionChain(typeName, index)) {
+  // Composition issues are reported by entityCompositionChain during validation;
+  // pass a scratch issue list so relation resolution stays side-effect free.
+  const chain = typeCompositionChain(typeName, {
+    ancestorsByType: index.ancestorsByType,
+    issues: [],
+    types: index.types,
+  });
+  for (const name of chain) {
     const type = index.types.get(name);
     if (!type || isRelationDefinitionRegistry(type)) {
       continue;
@@ -209,7 +218,28 @@ function collectRelations(typeName: string, index: OntologyIndex): Map<string, R
   return result;
 }
 
-export function computeAncestors(types: Map<string, OntologyType>, issues: OntologyIssue[]): Map<string, Set<string>> {
+/**
+ * Resolves the effective relation definitions for an entity by merging the
+ * composition chain of every declared type. Later types in `instanceOf` and
+ * more-derived types within a chain win, matching how `validateIndex` raises
+ * relation issues. Mutations resolve inverses through this same function so the
+ * fix that gets written always matches the issue that was reported.
+ */
+export function resolveEntityRelations(index: OntologyIndex, instanceOf: string[]): Map<string, RelationDefinition> {
+  const result = new Map<string, RelationDefinition>();
+  for (const typeName of instanceOf) {
+    for (const [property, definition] of collectRelations(typeName, index)) {
+      result.set(property, definition);
+    }
+  }
+  return result;
+}
+
+export function computeAncestors(
+  types: Map<string, OntologyType>,
+  issues: OntologyIssue[],
+  circularTypes: Set<string> = new Set<string>()
+): Map<string, Set<string>> {
   const ancestorsByType = new Map<string, Set<string>>();
   const visiting = new Set<string>();
 
@@ -223,6 +253,11 @@ export function computeAncestors(types: Map<string, OntologyType>, issues: Ontol
       return ancestors;
     }
     if (visiting.has(name)) {
+      const cycleStart = stack.lastIndexOf(name);
+      for (const member of stack.slice(cycleStart === -1 ? 0 : cycleStart)) {
+        circularTypes.add(member);
+      }
+      circularTypes.add(name);
       issues.push({
         file: type.path,
         message: `Circular inheritance detected: ${[...stack, name].join(' -> ')}`,
@@ -257,12 +292,23 @@ export function computeAncestors(types: Map<string, OntologyType>, issues: Ontol
   return ancestorsByType;
 }
 
-function computeTypeLock(name: string, types: Map<string, OntologyType>, ancestorsByType: Map<string, Set<string>>): EffectiveLockState {
+function computeTypeLock(
+  name: string,
+  types: Map<string, OntologyType>,
+  ancestorsByType: Map<string, Set<string>>,
+  circularTypes: Set<string>
+): EffectiveLockState {
   const type = types.get(name);
   if (!type?.lockIntent) {
     return { state: 'unlocked', reason: 'lock is not true' };
   }
+  if (circularTypes.has(name)) {
+    return { state: 'incomplete', reason: 'type is in a circular inheritance chain' };
+  }
   for (const ancestor of ancestorsByType.get(name) ?? []) {
+    if (circularTypes.has(ancestor)) {
+      return { state: 'incomplete', reason: `ancestor ${ancestor} is in a circular inheritance chain` };
+    }
     if (!types.get(ancestor)?.lockIntent) {
       return { state: 'incomplete', reason: `ancestor ${ancestor} is not locked` };
     }
@@ -517,6 +563,16 @@ function validateRelation(index: OntologyIndex, entity: OntologyEntity, property
     if (hasNegatedTarget(value, targetName)) {
       continue;
     }
+    if (index.ambiguousEntityNames?.has(targetName)) {
+      index.issues.push({
+        file: entity.path,
+        message: `${property} target ${targetName} is ambiguous: multiple notes are named ${targetName}`,
+        property,
+        severity: 'warning',
+        target: targetName,
+      });
+      continue;
+    }
     const target = index.entitiesByName.get(targetName);
     if (!target) {
       index.issues.push({ file: entity.path, message: `${property} points to unknown entity ${targetName}`, property, severity: 'warning', target: targetName });
@@ -564,18 +620,35 @@ function deleteTypesByPath(index: OntologyIndex, path: string): void {
 }
 
 function rebuildEntityNameIndex(index: OntologyIndex): void {
-  index.entitiesByName = new Map([...index.entities.values()].map((entity) => [entity.name, entity]));
+  const byName = new Map<string, OntologyEntity>();
+  const counts = new Map<string, number>();
+  for (const entity of index.entities.values()) {
+    byName.set(entity.name, entity);
+    counts.set(entity.name, (counts.get(entity.name) ?? 0) + 1);
+  }
+  index.entitiesByName = byName;
+  index.ambiguousEntityNames = new Set([...counts].filter(([, count]) => count > 1).map(([name]) => name));
 }
 
 export function recomputeOntologyDerivedState(index: OntologyIndex): OntologyIndex {
   index.issues = [];
   rebuildEntityNameIndex(index);
-  index.ancestorsByType = computeAncestors(index.types, index.issues);
+  for (const name of index.ambiguousEntityNames ?? []) {
+    const paths = [...index.entities.values()].filter((entity) => entity.name === name).map((entity) => entity.path).sort();
+    index.issues.push({
+      file: paths[0] ?? '',
+      message: `Duplicate entity name ${name}: ${paths.join(', ')}. Wiki links to ${name} cannot be resolved unambiguously.`,
+      severity: 'warning',
+    });
+  }
+  const circularTypes = new Set<string>();
+  index.ancestorsByType = computeAncestors(index.types, index.issues, circularTypes);
+  index.circularTypes = circularTypes;
   index.relationDefinitions = collectGlobalRelationDefinitions(index.types);
 
   index.effectiveTypeLocks = new Map<string, EffectiveLockState>();
   for (const name of index.types.keys()) {
-    index.effectiveTypeLocks.set(name, computeTypeLock(name, index.types, index.ancestorsByType));
+    index.effectiveTypeLocks.set(name, computeTypeLock(name, index.types, index.ancestorsByType, circularTypes));
   }
 
   index.effectiveEntityLocks = new Map<string, EffectiveLockState>();

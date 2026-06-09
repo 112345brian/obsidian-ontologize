@@ -25,8 +25,14 @@ interface PredicateNode {
   value: string;
 }
 
+export type QueryIncludeMode = 'all' | 'incomplete' | 'locked';
+
+export interface RunQueryOptions {
+  defaultInclude?: QueryIncludeMode;
+}
+
 interface QueryOptions {
-  include: 'all' | 'incomplete' | 'locked';
+  include: QueryIncludeMode;
 }
 
 interface TrueNode {
@@ -60,8 +66,8 @@ function entityTypeChain(index: OntologyIndex, entity: OntologyEntity): Set<stri
   return chain;
 }
 
-function extractOptions(source: string): { options: QueryOptions; sourceWithoutOptions: string } {
-  const options: QueryOptions = { include: 'locked' };
+function extractOptions(source: string, defaultInclude: QueryIncludeMode): { options: QueryOptions; sourceWithoutOptions: string } {
+  const options: QueryOptions = { include: defaultInclude };
   const sourceWithoutOptions = source.replace(/\binclude\s*:\s*(all|incomplete|locked)\b/gi, (_match, includeValue: string) => {
     options.include = includeValue.toLowerCase() as QueryOptions['include'];
     return '';
@@ -138,8 +144,8 @@ function parseOr(tokens: string[], cursor: { index: number }): QueryNode {
   return node;
 }
 
-function parseQuery(source: string): { node: QueryNode; options: QueryOptions } {
-  const { options, sourceWithoutOptions } = extractOptions(source);
+function parseQuery(source: string, defaultInclude: QueryIncludeMode): { node: QueryNode; options: QueryOptions } {
+  const { options, sourceWithoutOptions } = extractOptions(source, defaultInclude);
   const tokens = tokenize(sourceWithoutOptions);
   return {
     node: tokens.length === 0 ? TRUE_NODE : parseOr(tokens, { index: 0 }),
@@ -200,8 +206,8 @@ function evaluateNode(index: OntologyIndex, entity: OntologyEntity, node: QueryN
   }
 }
 
-export function runOntologyQuery(index: OntologyIndex, source: string): OntologyEntity[] {
-  const { node, options } = parseQuery(source);
+export function runOntologyQuery(index: OntologyIndex, source: string, runOptions: RunQueryOptions = {}): OntologyEntity[] {
+  const { node, options } = parseQuery(source, runOptions.defaultInclude ?? 'locked');
   return [...index.entities.values()]
     .filter((entity) => {
       const lock = index.effectiveEntityLocks.get(entity.path)?.state ?? 'unlocked';

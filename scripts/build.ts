@@ -32,11 +32,20 @@ const buildOptions: BuildOptions = {
   treeShaking: true,
 };
 
+const stylesOptions: BuildOptions = {
+  entryPoints: [{ in: 'src/styles/main.scss', out: 'styles' }],
+  loader: { '.scss': 'css' },
+  logLevel: 'info',
+  outdir: '.',
+};
+
 const isDev = process.argv[2] === 'dev';
 
 if (isDev) {
   const ctx = await context(buildOptions);
-  await ctx.watch();
+  const stylesCtx = await context(stylesOptions);
+  await Promise.all([ctx.watch(), stylesCtx.watch()]);
 } else {
   await build(buildOptions);
+  await build(stylesOptions);
 }

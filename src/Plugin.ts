@@ -29,11 +29,17 @@ export class Plugin extends ObsidianPlugin {
   public pluginSettings: PluginSettings = new PluginSettingsClass();
 
   private cacheWriteTimer: null | number = null;
+  private indexReady = false;
+  private indexTask: Promise<unknown> = Promise.resolve();
   private isAutoFixingInverses = false;
 
   public override async onload(): Promise<void> {
     this.pluginSettings = Object.assign(new PluginSettingsClass(), await this.loadData());
-    this.index = await readOntologyCache(this.app, this.pluginSettings.cachePath);
+    const cachedIndex = await readOntologyCache(this.app, this.pluginSettings.cachePath);
+    // A cache built under different scoping settings describes a different graph;
+    // hydrating it would let pre-rebuild reads see files the user has since
+    // ignored (or miss files they un-ignored). Wait for the cold rebuild instead.
+    this.index = cachedIndex && JSON.stringify(cachedIndex.settings) === JSON.stringify(this.indexSettings()) ? cachedIndex : null;
 
     this.registerMarkdownCodeBlockProcessor('ontology-query', this.renderQueryBlock.bind(this));
 
@@ -93,12 +99,25 @@ export class Plugin extends ObsidianPlugin {
 
     this.registerEvent(this.app.metadataCache.on('changed', (file) => { void this.handleMetadataChanged(file); }));
     this.registerEvent(this.app.vault.on('create', (file) => { void this.handleVaultCreate(file); }));
-    this.registerEvent(this.app.vault.on('delete', (file) => { this.handleVaultDelete(file); }));
+    this.registerEvent(this.app.vault.on('delete', (file) => { void this.handleVaultDelete(file); }));
     this.registerEvent(this.app.vault.on('modify', (file) => { void this.handleVaultModify(file); }));
     this.registerEvent(this.app.vault.on('rename', (file, oldPath) => { void this.handleVaultRename(file, oldPath); }));
     this.addSettingTab(new PluginSettingsTab(this.app, this));
 
-    this.app.workspace.onLayoutReady(() => { void this.rebuildIndex(false); });
+    this.app.workspace.onLayoutReady(() => {
+      void this.rebuildIndex(false).finally(() => { this.indexReady = true; });
+    });
+  }
+
+  /**
+   * Serializes every operation that assigns `this.index` so a long-running
+   * incremental update cannot resolve after a full rebuild and clobber it with
+   * a stale graph. Tasks run in submission order regardless of their duration.
+   */
+  private enqueue<T>(task: () => Promise<T>): Promise<T> {
+    const run = this.indexTask.then(task, task);
+    this.indexTask = run.then(() => undefined, () => undefined);
+    return run;
   }
 
   public override onunload(): void {
@@ -113,27 +132,16 @@ export class Plugin extends ObsidianPlugin {
   }
 
   public async rebuildIndex(showNotice: boolean): Promise<void> {
+    await this.enqueue(() => this.buildAndStore(showNotice));
+  }
+
+  private async buildAndStore(showNotice: boolean): Promise<void> {
     this.index = await buildOntologyIndex(this.app, this.indexSettings());
     await writeOntologyCache(this.app, this.pluginSettings.cachePath, this.index);
 
     let autoFixedInverses = 0;
-    if (this.pluginSettings.autoUpdateInverses && !this.isAutoFixingInverses) {
-      this.isAutoFixingInverses = true;
-      try {
-        autoFixedInverses = await fixMissingInverses(this.app, this.index, { onlyAutoUpdate: true });
-        if (autoFixedInverses > 0) {
-          this.index = await buildOntologyIndex(this.app, {
-            filesToIgnore: this.pluginSettings.filesToIgnore,
-            foldersToIgnore: this.pluginSettings.foldersToIgnore,
-            frontmatterIgnoreRules: this.pluginSettings.frontmatterIgnoreRules,
-            schemaPath: this.pluginSettings.schemaPath,
-            typeFolder: this.pluginSettings.typeFolder,
-          });
-          await writeOntologyCache(this.app, this.pluginSettings.cachePath, this.index);
-        }
-      } finally {
-        this.isAutoFixingInverses = false;
-      }
+    if (this.pluginSettings.autoUpdateInverses) {
+      autoFixedInverses = await this.runAutoInverseFix();
     }
 
     if (showNotice) {
@@ -173,22 +181,28 @@ export class Plugin extends ObsidianPlugin {
     }).open();
   }
 
+  /**
+   * Incremental auto-fix path. Held back until the first full rebuild has run so
+   * an early metadata event cannot trigger inverse writes against the stale
+   * hydrated cache before the vault has been reconciled.
+   */
   private async applyAutoInverseUpdates(): Promise<number> {
-    if (!this.index || !this.pluginSettings.autoUpdateInverses || this.isAutoFixingInverses) {
+    if (!this.index || !this.pluginSettings.autoUpdateInverses || !this.indexReady) {
       return 0;
     }
+    return this.runAutoInverseFix();
+  }
 
+  private async runAutoInverseFix(): Promise<number> {
+    if (!this.index || this.isAutoFixingInverses) {
+      return 0;
+    }
     this.isAutoFixingInverses = true;
     try {
       const fixed = await fixMissingInverses(this.app, this.index, { onlyAutoUpdate: true });
       if (fixed > 0) {
-        this.index = await buildOntologyIndex(this.app, {
-          filesToIgnore: this.pluginSettings.filesToIgnore,
-          foldersToIgnore: this.pluginSettings.foldersToIgnore,
-          frontmatterIgnoreRules: this.pluginSettings.frontmatterIgnoreRules,
-          schemaPath: this.pluginSettings.schemaPath,
-          typeFolder: this.pluginSettings.typeFolder,
-        });
+        this.index = await buildOntologyIndex(this.app, this.indexSettings());
+        await writeOntologyCache(this.app, this.pluginSettings.cachePath, this.index);
       }
       return fixed;
     } finally {
@@ -197,67 +211,84 @@ export class Plugin extends ObsidianPlugin {
   }
 
   private async ensureIndex(): Promise<OntologyIndex> {
+    return this.enqueue(() => this.ensureIndexCore());
+  }
+
+  private async ensureIndexCore(): Promise<OntologyIndex> {
     if (!this.index) {
-      await this.rebuildIndex(false);
+      await this.buildAndStore(false);
     }
     return this.index!;
   }
 
-  private async handleMetadataChanged(file: TFile): Promise<void> {
-    if (isOntologySchemaFile(file, this.pluginSettings.schemaPath)) {
-      await this.rebuildIndex(false);
-      return;
-    }
-    if (isOntologyTypeFile(file, this.pluginSettings.typeFolder) || isIgnoredOntologyPath(file.path, this.indexSettings())) {
-      return;
-    }
-    await this.upsertFile(file);
+  private handleMetadataChanged(file: TFile): Promise<unknown> {
+    return this.enqueue(async () => {
+      if (isOntologySchemaFile(file, this.pluginSettings.schemaPath)) {
+        await this.buildAndStore(false);
+        return;
+      }
+      if (isOntologyTypeFile(file, this.pluginSettings.typeFolder) || isIgnoredOntologyPath(file.path, this.indexSettings())) {
+        return;
+      }
+      await this.upsertFileCore(file);
+    });
   }
 
-  private async handleVaultCreate(file: TAbstractFile): Promise<void> {
-    if (file instanceof TFile && isOntologySchemaFile(file, this.pluginSettings.schemaPath)) {
-      await this.rebuildIndex(false);
-      return;
-    }
-    if (file instanceof TFile && isOntologyTypeFile(file, this.pluginSettings.typeFolder) && !isIgnoredOntologyPath(file.path, this.indexSettings())) {
-      await this.upsertFile(file);
-    }
+  private handleVaultCreate(file: TAbstractFile): Promise<unknown> {
+    return this.enqueue(async () => {
+      if (file instanceof TFile && isOntologySchemaFile(file, this.pluginSettings.schemaPath)) {
+        await this.buildAndStore(false);
+        return;
+      }
+      if (file instanceof TFile && isOntologyTypeFile(file, this.pluginSettings.typeFolder) && !isIgnoredOntologyPath(file.path, this.indexSettings())) {
+        await this.upsertFileCore(file);
+      }
+    });
   }
 
-  private handleVaultDelete(file: TAbstractFile): void {
-    if (!this.index || !('path' in file)) {
-      return;
-    }
-    this.index = removeOntologyFile(this.index, file.path);
-    if (file.path === this.pluginSettings.schemaPath) {
-      void this.rebuildIndex(false);
-      return;
-    }
-    this.scheduleCacheWrite();
+  private handleVaultDelete(file: TAbstractFile): Promise<unknown> {
+    return this.enqueue(async () => {
+      if (!('path' in file)) {
+        return;
+      }
+      if (file.path === this.pluginSettings.schemaPath) {
+        await this.buildAndStore(false);
+        return;
+      }
+      if (!this.index) {
+        return;
+      }
+      this.index = removeOntologyFile(this.index, file.path);
+      this.scheduleCacheWrite();
+    });
   }
 
-  private async handleVaultModify(file: TAbstractFile): Promise<void> {
-    if (file instanceof TFile && isOntologySchemaFile(file, this.pluginSettings.schemaPath)) {
-      await this.rebuildIndex(false);
-      return;
-    }
-    if (file instanceof TFile && isOntologyTypeFile(file, this.pluginSettings.typeFolder)) {
-      await this.upsertFile(file);
-    }
+  private handleVaultModify(file: TAbstractFile): Promise<unknown> {
+    return this.enqueue(async () => {
+      if (file instanceof TFile && isOntologySchemaFile(file, this.pluginSettings.schemaPath)) {
+        await this.buildAndStore(false);
+        return;
+      }
+      if (file instanceof TFile && isOntologyTypeFile(file, this.pluginSettings.typeFolder)) {
+        await this.upsertFileCore(file);
+      }
+    });
   }
 
-  private async handleVaultRename(file: TAbstractFile, oldPath: string): Promise<void> {
-    if ((file instanceof TFile && isOntologySchemaFile(file, this.pluginSettings.schemaPath)) || oldPath === this.pluginSettings.schemaPath) {
-      await this.rebuildIndex(false);
-      return;
-    }
-    const index = await this.ensureIndex();
-    this.index = removeOntologyFile(index, oldPath);
-    if (file instanceof TFile) {
-      await this.upsertFile(file);
-      return;
-    }
-    this.scheduleCacheWrite();
+  private handleVaultRename(file: TAbstractFile, oldPath: string): Promise<unknown> {
+    return this.enqueue(async () => {
+      if ((file instanceof TFile && isOntologySchemaFile(file, this.pluginSettings.schemaPath)) || oldPath === this.pluginSettings.schemaPath) {
+        await this.buildAndStore(false);
+        return;
+      }
+      const index = await this.ensureIndexCore();
+      this.index = removeOntologyFile(index, oldPath);
+      if (file instanceof TFile) {
+        await this.upsertFileCore(file);
+        return;
+      }
+      this.scheduleCacheWrite();
+    });
   }
 
   private scheduleCacheWrite(): void {
@@ -275,25 +306,19 @@ export class Plugin extends ObsidianPlugin {
     }, CACHE_WRITE_DEBOUNCE_MS);
   }
 
-  private async upsertFile(file: TFile): Promise<void> {
-    const index = await this.ensureIndex();
-    this.index = await upsertOntologyFile(this.app, index, file, {
-      filesToIgnore: this.pluginSettings.filesToIgnore,
-      foldersToIgnore: this.pluginSettings.foldersToIgnore,
-      frontmatterIgnoreRules: this.pluginSettings.frontmatterIgnoreRules,
-      schemaPath: this.pluginSettings.schemaPath,
-      typeFolder: this.pluginSettings.typeFolder,
-    });
+  private async upsertFileCore(file: TFile): Promise<void> {
+    const index = await this.ensureIndexCore();
+    this.index = await upsertOntologyFile(this.app, index, file, this.indexSettings());
     await this.applyAutoInverseUpdates();
     this.scheduleCacheWrite();
   }
 
   private async renderQueryBlock(source: string, el: HTMLElement, ctx: MarkdownPostProcessorContext): Promise<void> {
     const index = await this.ensureIndex();
-    const querySource = this.pluginSettings.queryOnlyLocked && !/\binclude:\s*/i.test(source)
-      ? `${source}\ninclude: locked`
-      : source;
-    const results = runOntologyQuery(index, querySource);
+    // An explicit `include:` in the block always wins; the setting only moves the default.
+    const results = runOntologyQuery(index, source, {
+      defaultInclude: this.pluginSettings.queryOnlyLocked ? 'locked' : 'all',
+    });
 
     el.empty();
     el.addClass('ontology-query-results');
@@ -317,6 +342,11 @@ export class Plugin extends ObsidianPlugin {
       row.createEl('td', { text: entity.instanceOf.join(', ') });
       row.createEl('td', { text: index.effectiveEntityLocks.get(entity.path)?.state ?? 'unlocked' });
     }
+
+    el.createEl('p', {
+      cls: 'ontology-query-count',
+      text: `${results.length} ${results.length === 1 ? 'note' : 'notes'}.`,
+    });
   }
 
   private showValidationSummary(): void {

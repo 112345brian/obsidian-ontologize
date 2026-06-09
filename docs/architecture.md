@@ -29,7 +29,9 @@ The product contract remains [`spec.md`](spec.md); this document explains how th
 ## Data Flow
 
 1. On plugin load, `readOntologyCache()` attempts to hydrate the previous graph from the configured cache path.
+   A hydrated cache is discarded when its recorded index settings (type folder, schema path, ignore rules) differ from the current plugin settings, because it describes a different graph.
 2. On layout ready, `Plugin.rebuildIndex()` performs the cold full-vault build with `buildOntologyIndex()`.
+   Until this first cold build completes, automatic inverse writes are suppressed: the hydrated cache may be stale relative to the vault, and frontmatter writes based on stale state are not recoverable.
 3. The indexer scans all Markdown files once.
 4. If the configured schema file exists, it is parsed first.
 5. Files under the configured type folder, `_types` by default, are parsed as modular ontology types.
@@ -50,6 +52,10 @@ Cache writes are debounced; in-memory graph updates are not.
 
 The backend keeps parsed source records and derived state in the same `OntologyIndex`.
 This mirrors the useful part of Breadcrumbs' architecture: the graph stays resident and reacts to Obsidian events instead of treating every edit as a reason to reread the vault.
+
+All operations that replace the in-memory index — full rebuilds, incremental upserts, deletes, and renames — run through a single serialized task queue inside `Plugin`.
+Obsidian events can interleave (an entity edit immediately followed by a schema save, for example), and without ordering, a slow incremental update could resolve after a newer full rebuild and overwrite it with a stale graph.
+The queue guarantees that index assignments land in submission order.
 
 Event handling:
 
@@ -248,6 +254,9 @@ Effective type lock:
 - `incomplete`: type has `lock: true`, but at least one ancestor is not locked
 - `unlocked`: type has no `lock: true`
 
+Types that participate in a circular inheritance chain are tracked in `OntologyIndex.circularTypes` and can never be effectively locked, regardless of lock intent.
+This upholds the spec rule that no file in a circular chain can ever be locked: the cycle is reported as an error and every member (and everything that inherits from a member) computes as `incomplete` at best, keeping cyclic schemas out of trusted query results.
+
 Effective entity lock:
 
 - `locked`: entity has `lock: true` and all direct types are effectively locked
@@ -273,6 +282,11 @@ The current checker reports:
 - Nominal property values outside allowed values
 - Relation values that both assert and explicitly negate the same target
 - Missing inverse or symmetric relation entries
+- Duplicate entity names (two notes with the same basename) and relation targets that resolve to a duplicated name
+
+Entity names are resolved by note basename.
+When two ontology notes share a basename, the name is recorded in `OntologyIndex.ambiguousEntityNames`, a vault-level warning is raised, and relation targets pointing at that name are flagged as ambiguous instead of being validated against an arbitrary file.
+Inverse fixing skips ambiguous targets for the same reason: a write that lands on an arbitrary note is worse than no write.
 
 Missing inverse entries are marked autofixable.
 They are not silently written during validation unless plugin-level automatic inverse updates are enabled and the relation itself declares `auto-update: true`.
@@ -293,6 +307,12 @@ type: Philosopher OR type: Scientist
 type: Person AND birth-date: EXISTS
 type: Philosopher AND include: all
 ```
+
+Query blocks default to locked-only results.
+The `Default locked query results` plugin setting moves that default: when disabled, blocks without an explicit `include:` evaluate as `include: all`.
+An explicit `include:` inside the block always wins over the setting.
+The default is applied as an engine option (`runOntologyQuery`'s `defaultInclude`), not by rewriting the query source, so there is exactly one place where the locked-only rule lives.
+Rendered result tables end with a result count.
 
 Traversal, saved queries, and comparison expressions from the larger spec are not implemented yet.
 

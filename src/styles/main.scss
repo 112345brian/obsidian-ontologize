@@ -11,8 +11,14 @@
   padding: 0.35em 0.5em;
 }
 
-.ontology-query-empty {
+.ontology-query-empty,
+.ontology-query-count {
   color: var(--text-muted);
+}
+
+.ontology-query-count {
+  font-size: var(--font-ui-smaller);
+  margin: 0.35em 0 0;
 }
 
 .ontology-issues-summary,

@@ -84,8 +84,10 @@ export async function readOntologyCache(app: App, cachePath: string): Promise<On
     const entities = hydrateMap<OntologyEntity>(payload['entities'], hydrateEntity);
     const settings = asRecord(payload['settings']);
     return {
+      ambiguousEntityNames: new Set(Array.isArray(payload['ambiguousEntityNames']) ? payload['ambiguousEntityNames'].map(String) : []),
       ancestorsByType: hydrateMap<Set<string>>(payload['ancestorsByType'], (item) => new Set(Array.isArray(item) ? item.map(String) : [])),
       cacheVersion: 1,
+      circularTypes: new Set(Array.isArray(payload['circularTypes']) ? payload['circularTypes'].map(String) : []),
       effectiveEntityLocks: hydrateMap<EffectiveLockState>(payload['effectiveEntityLocks'], (item) => item as EffectiveLockState),
       effectiveTypeLocks: hydrateMap<EffectiveLockState>(payload['effectiveTypeLocks'], (item) => item as EffectiveLockState),
       entities,
@@ -109,8 +111,10 @@ export async function readOntologyCache(app: App, cachePath: string): Promise<On
 
 export async function writeOntologyCache(app: App, cachePath: string, index: OntologyIndex): Promise<void> {
   const payload = {
+    ambiguousEntityNames: [...index.ambiguousEntityNames ?? []],
     ancestorsByType: mapToObject(index.ancestorsByType, (value) => [...value]),
     cacheVersion: index.cacheVersion,
+    circularTypes: [...index.circularTypes ?? []],
     effectiveEntityLocks: mapToObject(index.effectiveEntityLocks, (value) => value),
     effectiveTypeLocks: mapToObject(index.effectiveTypeLocks, (value) => value),
     entities: mapToObject(index.entities, (value) => value),

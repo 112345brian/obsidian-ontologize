@@ -2,9 +2,9 @@ import type { App, TFile } from 'obsidian';
 
 import { Notice } from 'obsidian';
 
-import type { OntologyIndex, OntologyIssue, RelationDefinition } from './types.ts';
+import type { OntologyIndex, OntologyIssue } from './types.ts';
 
-import { getInheritedCanHave, getInheritedMustHave } from './indexer.ts';
+import { getInheritedCanHave, getInheritedMustHave, resolveEntityRelations } from './indexer.ts';
 import { extractAssertedLinkTargets, toWikiLink } from './links.ts';
 
 export interface FixMissingInversesOptions {
@@ -53,44 +53,6 @@ function inverseIssueKey(issue: OntologyIssue): string {
   return `${issue.file}:${issue.property ?? ''}:${issue.target ?? ''}`;
 }
 
-function typeCompositionChain(typeName: string, index: OntologyIndex, seen = new Set<string>()): Set<string> {
-  const names = new Set<string>();
-  const addTypeAndInterfaces = (name: string): void => {
-    if (seen.has(name)) {
-      return;
-    }
-    seen.add(name);
-    names.add(name);
-    const type = index.types.get(name);
-    for (const interfaceName of type?.implements ?? []) {
-      addTypeAndInterfaces(interfaceName);
-    }
-  };
-
-  for (const ancestor of index.ancestorsByType.get(typeName) ?? []) {
-    addTypeAndInterfaces(ancestor);
-  }
-  addTypeAndInterfaces(typeName);
-  return names;
-}
-
-function resolveRelation(index: OntologyIndex, property: string, relation: RelationDefinition): RelationDefinition {
-  const referenced = relation.uses ? index.relationDefinitions.get(relation.uses) : index.relationDefinitions.get(property);
-  return referenced ? { ...referenced, ...relation, uses: relation.uses } : relation;
-}
-
-function findRelation(index: OntologyIndex, typeNames: string[], property: string): RelationDefinition | undefined {
-  for (const typeName of typeNames) {
-    for (const name of typeCompositionChain(typeName, index)) {
-      const relation = index.types.get(name)?.relations.get(property);
-      if (relation) {
-        return resolveRelation(index, property, relation);
-      }
-    }
-  }
-  return undefined;
-}
-
 export function planMissingInverses(index: OntologyIndex, options: FixMissingInversesOptions = {}): MissingInverseFixPlan[] {
   const issues = index.issues.filter((issue) => issue.autofixable && (!options.onlyAutoUpdate || issue.autoUpdate));
   const uniqueIssues = [...new Map(issues.map((issue) => [inverseIssueKey(issue), issue])).values()];
@@ -105,10 +67,15 @@ export function planMissingInverses(index: OntologyIndex, options: FixMissingInv
     if (!sourceEntity || !targetEntity) {
       continue;
     }
+    // An ambiguous target name cannot be resolved to a single file, so writing
+    // the inverse would land on an arbitrary note. Skip rather than guess.
+    if (index.ambiguousEntityNames?.has(issue.target)) {
+      continue;
+    }
 
     const property = issue.property;
     const sourceValue = sourceEntity.frontmatter[property];
-    const relation = findRelation(index, sourceEntity.instanceOf, property);
+    const relation = resolveEntityRelations(index, sourceEntity.instanceOf).get(property);
     const inverseProperty = relation?.symmetric ? property : relation?.inverse;
     if (!inverseProperty || !extractAssertedLinkTargets(sourceValue).includes(targetEntity.name)) {
       continue;

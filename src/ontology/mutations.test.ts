@@ -192,4 +192,35 @@ describe('ontology frontmatter mutations', () => {
       }),
     ]);
   });
+
+  it('skips plans whose target name is ambiguous across multiple notes', () => {
+    const index = makeIndex();
+    index.ambiguousEntityNames = new Set(['Leibniz']);
+    expect(planMissingInverses(index)).toEqual([]);
+  });
+
+  it('resolves the inverse from the most derived type, matching validation', () => {
+    const index = makeIndex();
+    const parent = makeType();
+    parent.name = 'Person';
+    parent.path = '_types/Person.md';
+    parent.relations = new Map([
+      ['influenced', {
+        inverse: 'known_by',
+        range: 'Person',
+      }],
+    ]);
+    index.types.set('Person', parent);
+    index.ancestorsByType.set('Philosopher', new Set(['Person']));
+    index.ancestorsByType.set('Person', new Set());
+
+    // Philosopher (the entity's direct type) overrides the inverse; the fix must
+    // write the property validation reported, not the ancestor's.
+    expect(planMissingInverses(index)).toEqual([
+      expect.objectContaining({
+        inverseProperty: 'influenced_by',
+        sourceProperty: 'influenced',
+      }),
+    ]);
+  });
 });

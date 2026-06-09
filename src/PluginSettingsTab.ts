@@ -98,7 +98,7 @@ export class PluginSettingsTab extends PluginSettingTab {
 
     new Setting(containerEl)
       .setName('Auto-update inverse relations')
-      .setDesc('Reserved for automatic inverse writes after save; command-based fixing is always available.')
+      .setDesc('Automatically write missing inverse entries after rebuilds and note edits, only for relations declaring auto-update: true. Command-based fixing is always available.')
       .addToggle((toggle) =>
         toggle
           .setValue(this.plugin.pluginSettings.autoUpdateInverses)
@@ -116,7 +116,7 @@ export class PluginSettingsTab extends PluginSettingTab {
           .setValue(String(this.plugin.pluginSettings.validationThreshold))
           .onChange(async (value) => {
             const parsed = Number.parseInt(value, 10);
-            this.plugin.pluginSettings.validationThreshold = Number.isFinite(parsed) ? parsed : 100;
+            this.plugin.pluginSettings.validationThreshold = Number.isFinite(parsed) && parsed > 0 ? parsed : 100;
             await this.plugin.savePluginSettings();
           })
       );

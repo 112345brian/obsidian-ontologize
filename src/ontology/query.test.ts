@@ -107,6 +107,14 @@ describe('runOntologyQuery', () => {
     expect(widenedResults.map((entity) => entity.name)).toEqual(['Draft', 'Spinoza']);
   });
 
+  it('honors the configured default include mode while explicit include still wins', () => {
+    const allByDefault = runOntologyQuery(makeIndex(), 'type: Philosopher', { defaultInclude: 'all' });
+    expect(allByDefault.map((entity) => entity.name)).toEqual(['Draft', 'Spinoza']);
+
+    const explicitOverride = runOntologyQuery(makeIndex(), 'type: Philosopher AND include: locked', { defaultInclude: 'all' });
+    expect(explicitOverride.map((entity) => entity.name)).toEqual(['Spinoza']);
+  });
+
   it('matches implemented interfaces in type predicates', () => {
     const results = runOntologyQuery(makeIndex(), 'type: Influenceable');
     expect(results.map((entity) => entity.name)).toEqual(['Spinoza']);

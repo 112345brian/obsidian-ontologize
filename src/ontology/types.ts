@@ -69,8 +69,10 @@ export interface OntologyIssue {
 }
 
 export interface OntologyIndex {
+  ambiguousEntityNames?: Set<string>;
   ancestorsByType: Map<string, Set<string>>;
   cacheVersion: 1;
+  circularTypes?: Set<string>;
   effectiveEntityLocks: Map<string, EffectiveLockState>;
   effectiveTypeLocks: Map<string, EffectiveLockState>;
   entities: Map<string, OntologyEntity>;

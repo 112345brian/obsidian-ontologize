@@ -186,6 +186,62 @@ describe('incremental ontology index state', () => {
     }));
   });
 
+  it('never reports circular types as effectively locked', () => {
+    const index = makeIndex();
+    index.types.set('A', makeType('A', '_types/A.md', true, ['B']));
+    index.types.set('B', makeType('B', '_types/B.md', true, ['A']));
+    index.entities.set('Cyclic.md', {
+      frontmatter: {
+        instance_of: '[[A]]',
+        lock: true,
+      },
+      instanceOf: ['A'],
+      lockIntent: true,
+      name: 'Cyclic',
+      path: 'Cyclic.md',
+    });
+
+    recomputeOntologyDerivedState(index);
+
+    expect(index.issues.some((issue) => issue.message.startsWith('Circular inheritance detected'))).toBe(true);
+    expect(index.circularTypes?.has('A')).toBe(true);
+    expect(index.circularTypes?.has('B')).toBe(true);
+    expect(index.effectiveTypeLocks.get('A')?.state).toBe('incomplete');
+    expect(index.effectiveTypeLocks.get('B')?.state).toBe('incomplete');
+    expect(index.effectiveEntityLocks.get('Cyclic.md')?.state).toBe('incomplete');
+  });
+
+  it('flags duplicate entity names instead of resolving them arbitrarily', () => {
+    const index = makeIndex();
+    index.types.get('Philosopher')!.relations.set('influenced_by', {
+      inverse: 'influenced',
+      range: 'Person',
+    });
+    index.entities.set('people/Smith.md', {
+      frontmatter: { instance_of: '[[Person]]' },
+      instanceOf: ['Person'],
+      lockIntent: false,
+      name: 'Smith',
+      path: 'people/Smith.md',
+    });
+    index.entities.set('works/Smith.md', {
+      frontmatter: { instance_of: '[[Person]]' },
+      instanceOf: ['Person'],
+      lockIntent: false,
+      name: 'Smith',
+      path: 'works/Smith.md',
+    });
+    index.entities.get('Ada.md')!.frontmatter['influenced_by'] = '[[Smith]]';
+
+    recomputeOntologyDerivedState(index);
+
+    expect(index.ambiguousEntityNames?.has('Smith')).toBe(true);
+    expect(index.issues.some((issue) => issue.severity === 'warning' && issue.message.startsWith('Duplicate entity name Smith'))).toBe(true);
+    expect(index.issues.some((issue) => issue.file === 'Ada.md' && issue.property === 'influenced_by' && issue.message.includes('ambiguous'))).toBe(true);
+    // No range error and no autofixable inverse issue may be raised against an arbitrary Smith.
+    expect(index.issues.some((issue) => issue.file === 'Ada.md' && issue.autofixable)).toBe(false);
+  });
+
   it('rejects direct instantiation of interfaces', () => {
     const index = makeIndex();
     index.types.set('Influenceable', makeType('Influenceable', '_types/Influenceable.md', true, [], {
