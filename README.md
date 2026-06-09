@@ -48,7 +48,11 @@ Supported V1 clauses:
 
 ## Type Files
 
-Types live in `_types/`. Example:
+Types live in the configured type folder, `_types` by default.
+Each modular type file may define its schema in frontmatter or in body YAML after the heading.
+Use one style per file; frontmatter wins if both are present.
+
+Example:
 
 ```markdown
 # Philosopher
@@ -127,4 +131,5 @@ npm test           # unit tests
 ## Docs
 
 - [`docs/spec.md`](docs/spec.md) — product and system specification
+- [`docs/schema-api.md`](docs/schema-api.md) — field-by-field schema authoring reference
 - [`docs/architecture.md`](docs/architecture.md) — V1 implementation architecture notes

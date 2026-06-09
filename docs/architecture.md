@@ -111,8 +111,9 @@ This keeps validation review in Obsidian UI instead of requiring users to embed 
 
 ## Type Parsing
 
-Type files are regular Markdown files in `_types/`.
-The parser accepts either YAML frontmatter or the spec's heading-plus-YAML body style:
+Type files are regular Markdown files in the configured type folder, `_types` by default.
+The parser accepts either YAML frontmatter or the spec's heading-plus-YAML body style.
+This is an either/or contract per file: if frontmatter exists, it is the schema definition and body YAML is ignored; otherwise the body is parsed after an optional `# Heading`.
 
 ```markdown
 # Philosopher
@@ -135,6 +136,8 @@ Implemented fields:
 - `lock`
 - `type`
 - `values`
+
+The complete authoring reference lives in [`schema-api.md`](schema-api.md).
 
 ## Schema Sources
 

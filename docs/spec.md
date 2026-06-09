@@ -27,7 +27,7 @@ Everything else in this system â€” validation, relations, queries, migrations â€
 
 ```
 vault/
-  _types/         # Type definitions
+  _types/         # Default configurable type folder
     ontology.schema.yaml  # Optional single-file schema
   _queries/       # Saved queries (first-class entities)
   _migrations/    # Migration history and audit trail
@@ -50,8 +50,41 @@ Saved queries, migrations, and the full query language are depth features built 
 
 ## Types
 
-Types are Markdown files in `_types/`. They define inheritance, properties, relations, and constraints.
+Types are Markdown files in the configured type folder, `_types` by default.
+They define inheritance, properties, relations, and constraints.
 Alternatively, the same constructors can be declared in one JSON or YAML schema file configured in plugin settings.
+See [`schema-api.md`](schema-api.md) for the complete field reference.
+
+### Modular Type File Format
+
+A modular constructor file may define schema in YAML frontmatter or in YAML body text after an optional heading.
+Use one style per file.
+If frontmatter exists, it is the schema definition and body YAML is ignored.
+
+Frontmatter style:
+
+```markdown
+---
+extends:
+  - [[Person]]
+implements:
+  - [[Influenceable]]
+lock: true
+---
+
+# Philosopher
+```
+
+Body style:
+
+```markdown
+# Philosopher
+extends:
+  - [[Person]]
+implements:
+  - [[Influenceable]]
+lock: true
+```
 
 ### Single Schema File
 
