@@ -6,7 +6,31 @@ import { extractAssertedLinkTargets, extractLinkTargets, extractNegatedLinkTarge
 import { parseOntologyEntity, parseOntologyType } from './parser.ts';
 
 export interface BuildIndexSettings {
+  filesToIgnore?: string[];
+  foldersToIgnore?: string[];
   typeFolder: string;
+}
+
+function normalizedFolders(folders: string[] | undefined): string[] {
+  return (folders ?? []).map((folder) => folder.trim().replace(/\/$/, '')).filter(Boolean);
+}
+
+function safePatternMatches(pattern: string, path: string): boolean {
+  try {
+    return new RegExp(pattern).test(path);
+  } catch {
+    return false;
+  }
+}
+
+export function isIgnoredOntologyPath(path: string, settings: BuildIndexSettings): boolean {
+  for (const folder of normalizedFolders(settings.foldersToIgnore)) {
+    if (path === folder || path.startsWith(`${folder}/`)) {
+      return true;
+    }
+  }
+
+  return (settings.filesToIgnore ?? []).some((pattern) => pattern.trim() && safePatternMatches(pattern.trim(), path));
 }
 
 export function isOntologyTypeFile(file: TFile, typeFolder: string): boolean {
@@ -23,7 +47,11 @@ function createEmptyOntologyIndex(settings: BuildIndexSettings): OntologyIndex {
     entitiesByName: new Map<string, OntologyEntity>(),
     generatedAt: new Date().toISOString(),
     issues: [],
-    settings: { typeFolder: settings.typeFolder },
+    settings: {
+      filesToIgnore: settings.filesToIgnore ?? [],
+      foldersToIgnore: settings.foldersToIgnore ?? [],
+      typeFolder: settings.typeFolder,
+    },
     types: new Map<string, OntologyType>(),
   };
 }
@@ -390,6 +418,9 @@ export function removeOntologyFile(index: OntologyIndex, path: string): Ontology
 
 export async function upsertOntologyFile(app: App, index: OntologyIndex, file: TFile, settings: BuildIndexSettings): Promise<OntologyIndex> {
   removeOntologyFile(index, file.path);
+  if (isIgnoredOntologyPath(file.path, settings)) {
+    return recomputeOntologyDerivedState(index);
+  }
 
   if (isOntologyTypeFile(file, settings.typeFolder)) {
     const type = parseOntologyType(file.path, await app.vault.read(file));
@@ -409,6 +440,10 @@ export async function buildOntologyIndex(app: App, settings: BuildIndexSettings)
   const index = createEmptyOntologyIndex(settings);
 
   for (const file of app.vault.getMarkdownFiles()) {
+    if (isIgnoredOntologyPath(file.path, settings)) {
+      continue;
+    }
+
     if (isOntologyTypeFile(file, settings.typeFolder)) {
       const type = parseOntologyType(file.path, await app.vault.read(file));
       index.types.set(type.name, type);

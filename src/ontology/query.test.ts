@@ -55,7 +55,11 @@ function makeIndex(): OntologyIndex {
     entitiesByName: new Map(),
     generatedAt: '2026-06-09T00:00:00.000Z',
     issues: [],
-    settings: { typeFolder: '_types' },
+    settings: {
+      filesToIgnore: [],
+      foldersToIgnore: [],
+      typeFolder: '_types',
+    },
     types: new Map(),
   };
 }

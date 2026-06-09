@@ -76,5 +76,31 @@ export class PluginSettingsTab extends PluginSettingTab {
             await this.plugin.savePluginSettings();
           })
       );
+
+    new Setting(containerEl)
+      .setName('Ignored folders')
+      .setDesc('One vault-relative folder path per line. Files in these folders are excluded from ontology indexing and validation.')
+      .addTextArea((text) =>
+        text
+          .setPlaceholder('Archive\nTemplates')
+          .setValue(this.plugin.pluginSettings.foldersToIgnore.join('\n'))
+          .onChange(async (value) => {
+            this.plugin.pluginSettings.foldersToIgnore = value.split(/\r?\n/).map((line) => line.trim()).filter(Boolean);
+            await this.plugin.savePluginSettings();
+          })
+      );
+
+    new Setting(containerEl)
+      .setName('Ignored file patterns')
+      .setDesc('One JavaScript regex per line matched against vault-relative file paths.')
+      .addTextArea((text) =>
+        text
+          .setPlaceholder('^Daily/\n\\.canvas\\.md$')
+          .setValue(this.plugin.pluginSettings.filesToIgnore.join('\n'))
+          .onChange(async (value) => {
+            this.plugin.pluginSettings.filesToIgnore = value.split(/\r?\n/).map((line) => line.trim()).filter(Boolean);
+            await this.plugin.savePluginSettings();
+          })
+      );
   }
 }

@@ -45,7 +45,11 @@ function makeIndex(): OntologyIndex {
     entitiesByName: new Map(),
     generatedAt: '2026-06-09T00:00:00.000Z',
     issues: [],
-    settings: { typeFolder: '_types' },
+    settings: {
+      filesToIgnore: [],
+      foldersToIgnore: [],
+      typeFolder: '_types',
+    },
     types: new Map([
       ['Person', makeType('Person', '_types/Person.md', true)],
       ['Philosopher', makeType('Philosopher', '_types/Philosopher.md', true, ['Person'])],
@@ -72,5 +76,24 @@ describe('incremental ontology index state', () => {
     expect(index.entities.has('Ada.md')).toBe(false);
     expect(index.entitiesByName.has('Ada')).toBe(false);
     expect(index.issues).toEqual([]);
+  });
+
+  it('can ignore folder paths before validation', () => {
+    const index = makeIndex();
+    index.settings.foldersToIgnore = ['Archive'];
+    index.entities.set('Archive/Draft.md', {
+      frontmatter: {
+        instance_of: '[[UnknownType]]',
+        lock: true,
+      },
+      instanceOf: ['UnknownType'],
+      lockIntent: true,
+      name: 'Draft',
+      path: 'Archive/Draft.md',
+    });
+
+    removeOntologyFile(index, 'Archive');
+    expect(index.entities.has('Archive/Draft.md')).toBe(false);
+    expect(index.issues.some((issue) => issue.file === 'Archive/Draft.md')).toBe(false);
   });
 });

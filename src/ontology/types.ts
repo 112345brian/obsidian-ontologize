@@ -69,6 +69,8 @@ export interface OntologyIndex {
   issues: OntologyIssue[];
   generatedAt: string;
   settings: {
+    filesToIgnore: string[];
+    foldersToIgnore: string[];
     typeFolder: string;
   };
   types: Map<string, OntologyType>;

@@ -8,6 +8,7 @@ import type { PluginSettings } from './PluginSettings.ts';
 import { readOntologyCache, writeOntologyCache } from './ontology/cache.ts';
 import {
   buildOntologyIndex,
+  isIgnoredOntologyPath,
   isOntologyTypeFile,
   removeOntologyFile,
   upsertOntologyFile
@@ -31,6 +32,21 @@ export class Plugin extends ObsidianPlugin {
     this.index = await readOntologyCache(this.app, this.pluginSettings.cachePath);
 
     this.registerMarkdownCodeBlockProcessor('ontology-query', this.renderQueryBlock.bind(this));
+
+    this.addCommand({
+      checkCallback: (checking) => {
+        const file = this.app.workspace.getActiveFile();
+        if (!file) {
+          return false;
+        }
+        if (!checking) {
+          void this.showActiveFileIssues(file);
+        }
+        return true;
+      },
+      id: 'check-active-note',
+      name: 'Check active ontology note',
+    });
 
     this.addCommand({
       callback: () => { void this.rebuildIndex(true); },
@@ -87,9 +103,7 @@ export class Plugin extends ObsidianPlugin {
   }
 
   public async rebuildIndex(showNotice: boolean): Promise<void> {
-    this.index = await buildOntologyIndex(this.app, {
-      typeFolder: this.pluginSettings.typeFolder,
-    });
+    this.index = await buildOntologyIndex(this.app, this.indexSettings());
     await writeOntologyCache(this.app, this.pluginSettings.cachePath, this.index);
 
     let autoFixedInverses = 0;
@@ -99,6 +113,8 @@ export class Plugin extends ObsidianPlugin {
         autoFixedInverses = await fixMissingInverses(this.app, this.index, { onlyAutoUpdate: true });
         if (autoFixedInverses > 0) {
           this.index = await buildOntologyIndex(this.app, {
+            filesToIgnore: this.pluginSettings.filesToIgnore,
+            foldersToIgnore: this.pluginSettings.foldersToIgnore,
             typeFolder: this.pluginSettings.typeFolder,
           });
           await writeOntologyCache(this.app, this.pluginSettings.cachePath, this.index);
@@ -124,6 +140,8 @@ export class Plugin extends ObsidianPlugin {
       const fixed = await fixMissingInverses(this.app, this.index, { onlyAutoUpdate: true });
       if (fixed > 0) {
         this.index = await buildOntologyIndex(this.app, {
+          filesToIgnore: this.pluginSettings.filesToIgnore,
+          foldersToIgnore: this.pluginSettings.foldersToIgnore,
           typeFolder: this.pluginSettings.typeFolder,
         });
       }
@@ -141,14 +159,14 @@ export class Plugin extends ObsidianPlugin {
   }
 
   private async handleMetadataChanged(file: TFile): Promise<void> {
-    if (isOntologyTypeFile(file, this.pluginSettings.typeFolder)) {
+    if (isOntologyTypeFile(file, this.pluginSettings.typeFolder) || isIgnoredOntologyPath(file.path, this.indexSettings())) {
       return;
     }
     await this.upsertFile(file);
   }
 
   private async handleVaultCreate(file: TAbstractFile): Promise<void> {
-    if (file instanceof TFile && isOntologyTypeFile(file, this.pluginSettings.typeFolder)) {
+    if (file instanceof TFile && isOntologyTypeFile(file, this.pluginSettings.typeFolder) && !isIgnoredOntologyPath(file.path, this.indexSettings())) {
       await this.upsertFile(file);
     }
   }
@@ -195,6 +213,8 @@ export class Plugin extends ObsidianPlugin {
   private async upsertFile(file: TFile): Promise<void> {
     const index = await this.ensureIndex();
     this.index = await upsertOntologyFile(this.app, index, file, {
+      filesToIgnore: this.pluginSettings.filesToIgnore,
+      foldersToIgnore: this.pluginSettings.foldersToIgnore,
       typeFolder: this.pluginSettings.typeFolder,
     });
     await this.applyAutoInverseUpdates();
@@ -241,6 +261,37 @@ export class Plugin extends ObsidianPlugin {
     const warnings = this.index.issues.length - errors;
     new Notice(`Ontology consistency: ${errors} errors, ${warnings} warnings.`);
     console.table(this.index.issues);
+  }
+
+  private indexSettings(): {
+    filesToIgnore: string[];
+    foldersToIgnore: string[];
+    typeFolder: string;
+  } {
+    return {
+      filesToIgnore: this.pluginSettings.filesToIgnore,
+      foldersToIgnore: this.pluginSettings.foldersToIgnore,
+      typeFolder: this.pluginSettings.typeFolder,
+    };
+  }
+
+  private async showActiveFileIssues(file: TFile): Promise<void> {
+    const index = await this.ensureIndex();
+    if (isIgnoredOntologyPath(file.path, this.indexSettings())) {
+      new Notice('Active note is ignored by ontology settings.');
+      return;
+    }
+
+    const issues = index.issues.filter((issue) => issue.file === file.path);
+    if (issues.length === 0) {
+      new Notice('Active note has no ontology issues.');
+      return;
+    }
+
+    const errors = issues.filter((issue) => issue.severity === 'error').length;
+    const warnings = issues.length - errors;
+    new Notice(`Active note ontology: ${errors} errors, ${warnings} warnings.`);
+    console.table(issues);
   }
 
   private async scaffoldActiveNote(file: TFile): Promise<void> {

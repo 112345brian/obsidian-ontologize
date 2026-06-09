@@ -9,6 +9,7 @@ The product contract remains [`spec.md`](spec.md); this document explains how th
 - Keep ontology logic independent from Obsidian UI surfaces where practical.
 - Treat indexing as a graph problem over vault files, not a tag expansion problem.
 - Keep the in-memory graph hot by applying file-level updates as Obsidian reports changes.
+- Support Linter-style path scoping so users can exclude generated notes, templates, archives, or private folders from enforcement.
 - Keep automatic relation writes opt-in at both the plugin setting and relation definition levels.
 - Cache derived graph state for startup and debugging.
 
@@ -64,6 +65,22 @@ Each event applies one raw source change:
 For entity edits, this avoids rereading unrelated files.
 For type edits, the derived pass still revalidates the graph because inheritance and schema changes can affect every downstream entity.
 This keeps schema validity current without forcing full vault I/O on every ordinary note edit.
+
+## Linter-Inspired Operational Model
+
+The Obsidian Linter plugin is a useful model for operational control.
+For ontology, the equivalent is not formatting text; it is deciding where schema enforcement applies and how checks/fixes are scoped.
+
+Borrowed patterns:
+
+- Ignored folders and ignored file patterns are settings, not ontology facts.
+- Commands can target a scope, starting with the active note and the whole vault.
+- Bulk writes remain explicit commands unless both plugin settings and schema relation definitions opt in.
+- Settings and cache writes are debounced; validation state stays in memory.
+
+Ignored folders are vault-relative path prefixes.
+Ignored file patterns are JavaScript regular expressions matched against vault-relative paths.
+Ignored files are skipped during cold indexing and removed from the hot index on incremental updates.
 
 ## Type Parsing
 

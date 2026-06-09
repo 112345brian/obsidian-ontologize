@@ -14,6 +14,10 @@ function stringValue(value: unknown, fallback = ''): string {
   return typeof value === 'string' ? value : fallback;
 }
 
+function stringArrayValue(value: unknown): string[] {
+  return Array.isArray(value) ? value.map(String) : [];
+}
+
 function hydrateMap<T>(value: unknown, mapper: (value: unknown) => T): Map<string, T> {
   return new Map(Object.entries(asRecord(value)).map(([key, item]) => [key, mapper(item)]));
 }
@@ -58,6 +62,7 @@ export async function readOntologyCache(app: App, cachePath: string): Promise<On
     }
 
     const entities = hydrateMap<OntologyEntity>(payload['entities'], hydrateEntity);
+    const settings = asRecord(payload['settings']);
     return {
       ancestorsByType: hydrateMap<Set<string>>(payload['ancestorsByType'], (item) => new Set(Array.isArray(item) ? item.map(String) : [])),
       cacheVersion: 1,
@@ -67,7 +72,11 @@ export async function readOntologyCache(app: App, cachePath: string): Promise<On
       entitiesByName: new Map([...entities.values()].map((entity) => [entity.name, entity])),
       generatedAt: stringValue(payload['generatedAt']),
       issues: Array.isArray(payload['issues']) ? payload['issues'] as OntologyIssue[] : [],
-      settings: { typeFolder: stringValue(asRecord(payload['settings'])['typeFolder'], '_types') },
+      settings: {
+        filesToIgnore: stringArrayValue(settings['filesToIgnore']),
+        foldersToIgnore: stringArrayValue(settings['foldersToIgnore']),
+        typeFolder: stringValue(settings['typeFolder'], '_types'),
+      },
       types: hydrateMap<OntologyType>(payload['types'], hydrateType),
     };
   } catch {
