@@ -22,16 +22,21 @@
 }
 
 .ontology-issues-summary,
+.ontology-diagnostics-empty,
+.ontology-diagnostics-summary,
 .ontology-issues-empty,
 .ontology-fix-empty,
 .ontology-fix-meta,
 .ontology-fix-summary,
-.ontology-issue-meta {
+.ontology-issue-meta,
+.ontology-scaffold-empty,
+.ontology-scaffold-summary {
   color: var(--text-muted);
 }
 
 .ontology-fix-list,
-.ontology-issues-list {
+.ontology-issues-list,
+.ontology-scaffold-list {
   display: flex;
   flex-direction: column;
   gap: 0.75em;
@@ -102,4 +107,8 @@
 .ontology-fix-change {
   font-family: var(--font-monospace);
   margin-bottom: 0.35em;
+}
+
+.ontology-diagnostics-section {
+  margin-top: 1em;
 }

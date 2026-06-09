@@ -310,6 +310,8 @@ Manual inverse fixes are reviewed in a modal before frontmatter is written.
 The `Scaffold active ontology note` command and the optional `Auto-scaffold entities` setting use the same scaffolder.
 The scaffolder adds missing inherited `must-have`, `can-have`, and relation fields with `null` values.
 It does not overwrite existing frontmatter values.
+Both manual and automatic scaffolding open a review modal first.
+The modal lists the missing fields, labels them as required, optional, or relation fields, and writes only the selected fields.
 
 Automatic scaffolding runs only after the initial full-vault index rebuild.
 For an automatic scaffold to run, the note must have completed ontology membership:

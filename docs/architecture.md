@@ -105,10 +105,15 @@ Validation issues are exposed through:
 - `Check ontology consistency`
 - `Check active ontology note`
 - `Open ontology issues`
+- `Open ontology schema diagnostics`
 - the `Issue report` button in plugin settings
+- the `Schema diagnostics` button in plugin settings
 
 The issue modal shows current in-memory validation results, supports severity and autofixable filters, opens affected files, rebuilds the index, and runs inverse-relation fixes.
 This keeps validation review in Obsidian UI instead of requiring users to embed operational code blocks in notes.
+
+The schema diagnostics modal is a narrower authoring surface for type/interface/relation problems.
+It summarizes the current schema shape, lists circular types, and filters issues down to schema files and schema-composition failures such as unknown parents or invalid interface usage.
 
 ## Type Parsing
 
@@ -329,11 +334,11 @@ The plugin mutates frontmatter through explicit commands and one guarded automat
 - `Fix missing inverse relations`
 
 Scaffolding adds missing inherited `must-have`, `can-have`, and relation fields with `null` values.
-Manual scaffolding runs through `Scaffold active ontology note`.
+Manual scaffolding runs through `Scaffold active ontology note`, which opens a review modal before writing.
 
-When `autoScaffoldEntities` is enabled, metadata changes on entity notes can trigger the same scaffold write automatically.
+When `autoScaffoldEntities` is enabled, metadata changes on entity notes can trigger the same scaffold review automatically.
 The automatic path only runs after the first full cold-vault rebuild and only when the note has completed ontology membership: the configured entity type field parses to at least one direct type, and every direct type exists, is not abstract, is not an interface, and is not part of a circular inheritance chain.
-This lets setting `instance_of`, `type`, or another configured membership field expand the note shape without requiring a command.
+This lets setting `instance_of`, `type`, or another configured membership field prompt for the expanded note shape without silently writing frontmatter.
 
 Inverse fixing reads validation issues, finds missing inverse or symmetric relation entries, and appends wiki links to the target note's frontmatter.
 

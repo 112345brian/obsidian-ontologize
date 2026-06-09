@@ -27,25 +27,43 @@ export interface ScaffoldEntityOptions {
   showNotice?: boolean;
 }
 
+export interface ScaffoldFieldPlan {
+  kind: 'optional' | 'relation' | 'required';
+  property: string;
+}
+
 function findFile(app: App, path: string): TFile | null {
   const file = app.vault.getAbstractFileByPath(path);
   return file && 'extension' in file && file.extension === 'md' ? file as TFile : null;
 }
 
-export async function scaffoldEntity(app: App, index: OntologyIndex, file: TFile, options: ScaffoldEntityOptions = {}): Promise<number> {
-  const entity = index.entities.get(file.path);
+export function planScaffoldEntity(index: OntologyIndex, path: string): ScaffoldFieldPlan[] {
+  const entity = index.entities.get(path);
   if (!entity) {
-    if (options.showNotice !== false) {
-      new Notice('This note has no ontology type frontmatter.');
-    }
-    return 0;
+    return [];
   }
 
-  const properties = new Set([
-    ...getInheritedCanHave(index, entity).keys(),
-    ...getInheritedMustHave(index, entity).keys(),
-    ...resolveEntityRelations(index, entity.instanceOf).keys(),
-  ]);
+  const plans = new Map<string, ScaffoldFieldPlan>();
+  for (const property of getInheritedMustHave(index, entity).keys()) {
+    if (!(property in entity.frontmatter)) {
+      plans.set(property, { kind: 'required', property });
+    }
+  }
+  for (const property of getInheritedCanHave(index, entity).keys()) {
+    if (!(property in entity.frontmatter) && !plans.has(property)) {
+      plans.set(property, { kind: 'optional', property });
+    }
+  }
+  for (const property of resolveEntityRelations(index, entity.instanceOf).keys()) {
+    if (!(property in entity.frontmatter) && !plans.has(property)) {
+      plans.set(property, { kind: 'relation', property });
+    }
+  }
+  return [...plans.values()];
+}
+
+export async function applyScaffoldPlan(app: App, file: TFile, plans: ScaffoldFieldPlan[]): Promise<number> {
+  const properties = [...new Set(plans.map((plan) => plan.property))];
   let added = 0;
   await app.fileManager.processFrontMatter(file, (frontmatter) => {
     const data = frontmatter as Record<string, unknown>;
@@ -57,6 +75,18 @@ export async function scaffoldEntity(app: App, index: OntologyIndex, file: TFile
     }
   });
   return added;
+}
+
+export async function scaffoldEntity(app: App, index: OntologyIndex, file: TFile, options: ScaffoldEntityOptions = {}): Promise<number> {
+  const entity = index.entities.get(file.path);
+  if (!entity) {
+    if (options.showNotice !== false) {
+      new Notice('This note has no ontology type frontmatter.');
+    }
+    return 0;
+  }
+
+  return applyScaffoldPlan(app, file, planScaffoldEntity(index, file.path));
 }
 
 function inverseIssueKey(issue: OntologyIssue): string {

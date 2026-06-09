@@ -7,7 +7,7 @@ vi.mock('obsidian', () => ({
   Notice: vi.fn(),
 }));
 
-import { planMissingInverses, scaffoldEntity } from './mutations.ts';
+import { planMissingInverses, planScaffoldEntity, scaffoldEntity } from './mutations.ts';
 
 function makeType(): OntologyType {
   return {
@@ -254,5 +254,21 @@ describe('ontology frontmatter mutations', () => {
       instance_of: '[[Philosopher]]',
       school: null,
     });
+  });
+
+  it('plans scaffold fields before writing frontmatter', () => {
+    const index = makeIndex();
+    const philosopher = index.types.get('Philosopher')!;
+    philosopher.mustHave.set('school', { type: 'string' });
+    philosopher.canHave.set('birth_year', { type: 'number' });
+    index.entities.get('Spinoza.md')!.frontmatter = {
+      birth_year: 1632,
+      instance_of: '[[Philosopher]]',
+    };
+
+    expect(planScaffoldEntity(index, 'Spinoza.md')).toEqual([
+      { kind: 'required', property: 'school' },
+      { kind: 'relation', property: 'influenced' },
+    ]);
   });
 });

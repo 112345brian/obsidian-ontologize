@@ -16,6 +16,8 @@ First functional release.
 
 ### Improvements
 
+- Added a schema diagnostics modal for type/interface/relation authoring issues, with schema summary counts and circular type visibility.
+- Scaffolding is now review-first. Manual scaffolding and auto-scaffold detection both open a modal of missing fields before writing selected frontmatter keys.
 - Query result tables include a result count footer.
 - Ambiguous entity names produce an informative validation warning that lists all conflicting paths.
 - `styles.css` is now emitted by `npm run build` alongside `main.js`.

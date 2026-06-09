@@ -46,6 +46,17 @@ export class PluginSettingsTab extends PluginSettingTab {
       );
 
     new Setting(containerEl)
+      .setName('Schema diagnostics')
+      .setDesc('Review type, interface, relation, and composition issues.')
+      .addButton((button) =>
+        button
+          .setButtonText('Open diagnostics')
+          .onClick(() => {
+            void this.plugin.openSchemaDiagnosticsModal();
+          })
+      );
+
+    new Setting(containerEl)
       .setName('Type folder')
       .setDesc('Markdown folder containing ontology type definitions.')
       .addText((text) =>
@@ -124,7 +135,7 @@ export class PluginSettingsTab extends PluginSettingTab {
 
     new Setting(containerEl)
       .setName('Auto-scaffold entities')
-      .setDesc('Automatically add inherited property and relation fields when a note has complete ontology membership frontmatter.')
+      .setDesc('When a note has complete ontology membership frontmatter, open a review modal for inherited property and relation fields.')
       .addToggle((toggle) =>
         toggle
           .setValue(this.plugin.pluginSettings.autoScaffoldEntities)

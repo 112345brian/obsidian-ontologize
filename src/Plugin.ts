@@ -14,11 +14,13 @@ import {
   removeOntologyFile,
   upsertOntologyFile
 } from './ontology/indexer.ts';
-import { applyMissingInversePlans, fixMissingInverses, planMissingInverses, scaffoldEntity } from './ontology/mutations.ts';
+import { applyMissingInversePlans, applyScaffoldPlan, fixMissingInverses, planMissingInverses, planScaffoldEntity } from './ontology/mutations.ts';
 import { runOntologyQuery } from './ontology/query.ts';
 import { summarizeIssues } from './ontology/issues.ts';
 import { OntologyIssuesModal } from './OntologyIssuesModal.ts';
 import { OntologyRelationFixModal } from './OntologyRelationFixModal.ts';
+import { OntologyScaffoldReviewModal } from './OntologyScaffoldReviewModal.ts';
+import { OntologySchemaDiagnosticsModal } from './OntologySchemaDiagnosticsModal.ts';
 import { PluginSettings as PluginSettingsClass } from './PluginSettings.ts';
 import { PluginSettingsTab } from './PluginSettingsTab.ts';
 
@@ -32,7 +34,7 @@ export class Plugin extends ObsidianPlugin {
   private indexReady = false;
   private indexTask: Promise<unknown> = Promise.resolve();
   private isAutoFixingInverses = false;
-  private isAutoScaffolding = false;
+  private scaffoldReviewOpenPaths = new Set<string>();
 
   public override async onload(): Promise<void> {
     this.pluginSettings = Object.assign(new PluginSettingsClass(), await this.loadData());
@@ -75,6 +77,12 @@ export class Plugin extends ObsidianPlugin {
       callback: () => { void this.openIssuesModal(); },
       id: 'open-issues',
       name: 'Open ontology issues',
+    });
+
+    this.addCommand({
+      callback: () => { void this.openSchemaDiagnosticsModal(); },
+      id: 'open-schema-diagnostics',
+      name: 'Open ontology schema diagnostics',
     });
 
     this.addCommand({
@@ -182,6 +190,19 @@ export class Plugin extends ObsidianPlugin {
     }).open();
   }
 
+  public async openSchemaDiagnosticsModal(): Promise<void> {
+    await this.ensureIndex();
+    new OntologySchemaDiagnosticsModal(this.app, {
+      getIndex: () => this.index,
+      onOpenIssues: async () => {
+        await this.openIssuesModal();
+      },
+      onRebuild: async () => {
+        await this.rebuildIndex(true);
+      },
+    }).open();
+  }
+
   /**
    * Incremental auto-fix path. Held back until the first full rebuild has run so
    * an early metadata event cannot trigger inverse writes against the stale
@@ -209,22 +230,17 @@ export class Plugin extends ObsidianPlugin {
   }
 
   private async applyAutoScaffold(file: TFile): Promise<number> {
-    if (!this.index || !this.pluginSettings.autoScaffoldEntities || !this.indexReady || this.isAutoScaffolding || !this.canAutoScaffold(file)) {
+    if (!this.index || !this.pluginSettings.autoScaffoldEntities || !this.indexReady || !this.canAutoScaffold(file)) {
       return 0;
     }
 
-    this.isAutoScaffolding = true;
-    try {
-      const added = await scaffoldEntity(this.app, this.index, file, { showNotice: false });
-      if (added > 0) {
-        this.index = await buildOntologyIndex(this.app, this.indexSettings());
-        await writeOntologyCache(this.app, this.pluginSettings.cachePath, this.index);
-        new Notice(`Ontology auto-scaffolded ${added} fields.`);
-      }
-      return added;
-    } finally {
-      this.isAutoScaffolding = false;
+    const plans = planScaffoldEntity(this.index, file.path);
+    if (plans.length === 0 || this.scaffoldReviewOpenPaths.has(file.path)) {
+      return 0;
     }
+    new Notice(`Ontology scaffold available: ${plans.length} fields.`);
+    this.openScaffoldReviewModal(file, plans);
+    return 0;
   }
 
   private async runAutoInverseFix(): Promise<number> {
@@ -428,9 +444,37 @@ export class Plugin extends ObsidianPlugin {
 
   private async scaffoldActiveNote(file: TFile): Promise<void> {
     const index = await this.ensureIndex();
-    const added = await scaffoldEntity(this.app, index, file);
-    new Notice(`Ontology scaffold added ${added} fields.`);
-    await this.rebuildIndex(false);
+    if (!index.entities.has(file.path)) {
+      new Notice('This note has no ontology type frontmatter.');
+      return;
+    }
+    const plans = planScaffoldEntity(index, file.path);
+    if (plans.length === 0) {
+      new Notice('No ontology scaffold fields are missing.');
+      return;
+    }
+    this.openScaffoldReviewModal(file, plans);
+  }
+
+  private openScaffoldReviewModal(file: TFile, plans: ReturnType<typeof planScaffoldEntity>): void {
+    if (this.scaffoldReviewOpenPaths.has(file.path)) {
+      return;
+    }
+    this.scaffoldReviewOpenPaths.add(file.path);
+    const modal = new OntologyScaffoldReviewModal(this.app, {
+      file,
+      onApply: async (selectedPlans) => applyScaffoldPlan(this.app, file, selectedPlans),
+      onDone: async () => {
+        await this.rebuildIndex(false);
+      },
+      plans,
+    });
+    const originalClose = modal.onClose.bind(modal);
+    modal.onClose = () => {
+      this.scaffoldReviewOpenPaths.delete(file.path);
+      originalClose();
+    };
+    modal.open();
   }
 
 }

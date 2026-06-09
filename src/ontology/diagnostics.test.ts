@@ -1,0 +1,79 @@
+import { describe, expect, it } from 'vitest';
+
+import type { OntologyIndex, OntologyType } from './types.ts';
+
+import { buildSchemaDiagnostics, isSchemaIssue } from './diagnostics.ts';
+
+function makeType(name: string, path = `_types/${name}.md`): OntologyType {
+  return {
+    abstract: false,
+    canHave: new Map(),
+    cannotHave: new Set(),
+    disjoint: [],
+    extends: [],
+    implements: [],
+    isInterface: false,
+    lockIntent: true,
+    mustHave: new Map(),
+    name,
+    path,
+    relations: new Map(),
+    values: [],
+  };
+}
+
+function makeIndex(): OntologyIndex {
+  return {
+    ancestorsByType: new Map(),
+    cacheVersion: 1,
+    circularTypes: new Set(['Loop']),
+    effectiveEntityLocks: new Map(),
+    effectiveTypeLocks: new Map(),
+    entities: new Map(),
+    entitiesByName: new Map(),
+    generatedAt: '2026-06-09T00:00:00.000Z',
+    issues: [
+      { file: '_types/Person.md', message: 'Unknown parent type Agent', severity: 'error' },
+      { file: 'Notes/Spinoza.md', message: 'Missing required property school', severity: 'error' },
+    ],
+    relationDefinitions: new Map([
+      ['influenced_by', { inverse: 'influenced' }],
+    ]),
+    settings: {
+      entityTypeFields: ['instance_of'],
+      filesToIgnore: [],
+      foldersToIgnore: [],
+      frontmatterIgnoreRules: [],
+      schemaPath: '_types/ontology.schema.yaml',
+      typeFolder: '_types',
+    },
+    types: new Map([
+      ['Person', makeType('Person')],
+      ['Thinker', { ...makeType('Thinker'), isInterface: true }],
+      ['AbstractThing', { ...makeType('AbstractThing'), abstract: true }],
+    ]),
+  };
+}
+
+describe('schema diagnostics', () => {
+  it('filters schema issues separately from entity validation issues', () => {
+    const index = makeIndex();
+
+    expect(isSchemaIssue(index, index.issues[0]!)).toBe(true);
+    expect(isSchemaIssue(index, index.issues[1]!)).toBe(false);
+  });
+
+  it('summarizes schema shape and schema issues', () => {
+    expect(buildSchemaDiagnostics(makeIndex())).toEqual({
+      abstractTypes: 1,
+      concreteTypes: 1,
+      circularTypes: ['Loop'],
+      interfaces: 1,
+      issues: [
+        { file: '_types/Person.md', message: 'Unknown parent type Agent', severity: 'error' },
+      ],
+      relationDefinitions: 1,
+      typeFiles: 3,
+    });
+  });
+});

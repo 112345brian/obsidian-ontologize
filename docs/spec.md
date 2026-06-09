@@ -690,19 +690,12 @@ The indexer, type graph, inheritance resolver, query engine, constraint checker,
 ### Scaffolding
 
 The system watches metadata changes on entity notes.
-When `Auto-scaffold entities` is enabled and a note has completed ontology membership frontmatter, the plugin resolves the full type/interface chain and writes missing inherited fields.
+When `Auto-scaffold entities` is enabled and a note has completed ontology membership frontmatter, the plugin resolves the full type/interface chain and opens a review modal for missing inherited fields.
 
 Completed membership means the configured entity type field has at least one value and every direct type exists, is instantiable, and is not part of a circular inheritance chain.
 
-Scaffolding writes missing inherited `must-have`, `can-have`, and relation fields with empty values:
-
-```yaml
-time-period: 
-school-of-thought: 
-magnum-opus: 
-wrote: 
-influenced_by: 
-```
+Scaffolding can add missing inherited `must-have`, `can-have`, and relation fields with empty values.
+The review modal labels each field as required, optional, or relation-backed and writes only the selected fields.
 
 Manual scaffolding is also available through the `Scaffold active ontology note` command.
 
