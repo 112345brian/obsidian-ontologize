@@ -134,3 +134,8 @@ npm test           # unit tests
 - [`docs/spec.md`](docs/spec.md) — product and system specification
 - [`docs/schema-api.md`](docs/schema-api.md) — field-by-field schema authoring reference
 - [`docs/architecture.md`](docs/architecture.md) — V1 implementation architecture notes
+
+## Demo Vault
+
+The [`demo-vault`](demo-vault) folder contains a small animal/person ontology with global relations, interfaces, inheritance, nominal values, entity notes, and query blocks.
+Open it as an Obsidian vault to test the plugin against a known schema.
