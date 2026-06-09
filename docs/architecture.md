@@ -211,6 +211,10 @@ Validation flattens both inherited types and implemented interfaces.
 Interfaces can contribute `must-have`, `can-have`, `cannot-have`, and `relations` contracts.
 Entities cannot directly instantiate interface types.
 
+Schema composition validates overlapping frontmatter contracts during derived-state recompute.
+Identical property definitions are allowed, compatible optional/required duplicates collapse to the stricter required contract, and incompatible duplicates become schema issues.
+Any `cannot-have` collision with a `must-have` or `can-have` contract is a schema issue.
+
 Reusable relation definitions are declared in type files with `type: relation-definitions`, `type: relation-registry`, or `type: relations`.
 Those files are parsed into `OntologyIndex.relationDefinitions`.
 Interface and class relation declarations can reference them with shorthand list syntax or with `uses`.

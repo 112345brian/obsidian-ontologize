@@ -153,6 +153,13 @@ An instance of `Philosopher` is treated as a `Person` through inheritance and as
 Queries such as `type: Influenceable` include philosophers that implement that interface.
 Validation flattens both `extends` and `implements`.
 
+When multiple inherited or implemented contracts define the same frontmatter key, the composed schema follows these rules:
+
+- Identical definitions are allowed.
+- A `can-have` definition can be promoted to `must-have` by another compatible contract.
+- Incompatible definitions for the same key are schema errors.
+- `cannot-have` combined with `must-have` or `can-have` for the same key is a schema error.
+
 ### Inheritance
 
 ```markdown

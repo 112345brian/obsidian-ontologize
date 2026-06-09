@@ -285,6 +285,74 @@ describe('incremental ontology index state', () => {
     }));
   });
 
+  it('allows identical interface fields and lets required beat optional', () => {
+    const index = makeIndex();
+    index.types.set('Named', makeType('Named', '_types/Named.md', true, [], {
+      isInterface: true,
+    }));
+    index.types.set('Cataloged', makeType('Cataloged', '_types/Cataloged.md', true, [], {
+      isInterface: true,
+    }));
+    index.types.get('Named')!.canHave.set('label', { type: 'string' });
+    index.types.get('Cataloged')!.mustHave.set('label', { type: 'string' });
+    index.types.set('Philosopher', makeType('Philosopher', '_types/Philosopher.md', true, ['Person'], {
+      implementsTypes: ['Named', 'Cataloged'],
+    }));
+    index.entities.get('Ada.md')!.frontmatter['label'] = 'Ada';
+
+    recomputeOntologyDerivedState(index);
+
+    expect(index.issues.some((issue) => issue.message.includes('Schema conflict on Philosopher.label'))).toBe(false);
+  });
+
+  it('flags incompatible interface field definitions as schema conflicts', () => {
+    const index = makeIndex();
+    index.types.set('Named', makeType('Named', '_types/Named.md', true, [], {
+      isInterface: true,
+    }));
+    index.types.set('Cataloged', makeType('Cataloged', '_types/Cataloged.md', true, [], {
+      isInterface: true,
+    }));
+    index.types.get('Named')!.canHave.set('label', { type: 'string' });
+    index.types.get('Cataloged')!.canHave.set('label', { type: 'number' });
+    index.types.set('Philosopher', makeType('Philosopher', '_types/Philosopher.md', true, ['Person'], {
+      implementsTypes: ['Named', 'Cataloged'],
+    }));
+
+    recomputeOntologyDerivedState(index);
+
+    expect(index.issues).toContainEqual(expect.objectContaining({
+      file: '_types/Philosopher.md',
+      message: 'Schema conflict on Philosopher.label: Named declares can-have (type string) but Cataloged declares can-have (type number)',
+      property: 'label',
+      severity: 'error',
+    }));
+  });
+
+  it('flags cannot-have collisions in composed schemas', () => {
+    const index = makeIndex();
+    index.types.set('Named', makeType('Named', '_types/Named.md', true, [], {
+      isInterface: true,
+    }));
+    index.types.set('Anonymous', makeType('Anonymous', '_types/Anonymous.md', true, [], {
+      isInterface: true,
+    }));
+    index.types.get('Named')!.mustHave.set('label', { type: 'string' });
+    index.types.get('Anonymous')!.cannotHave.add('label');
+    index.types.set('Philosopher', makeType('Philosopher', '_types/Philosopher.md', true, ['Person'], {
+      implementsTypes: ['Named', 'Anonymous'],
+    }));
+
+    recomputeOntologyDerivedState(index);
+
+    expect(index.issues).toContainEqual(expect.objectContaining({
+      file: '_types/Philosopher.md',
+      message: 'Schema conflict on Philosopher.label: Anonymous declares cannot-have but Named declares must-have',
+      property: 'label',
+      severity: 'error',
+    }));
+  });
+
   it('loads a single JSON schema file as ontology constructors', async () => {
     const schema = JSON.stringify({
       interfaces: {

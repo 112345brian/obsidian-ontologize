@@ -128,7 +128,7 @@ function typeCompositionChain(
     for (const interfaceName of type.implements) {
       const interfaceType = index.types.get(interfaceName);
       if (!interfaceType) {
-        index.issues.push({
+        pushIssueOnce(index.issues, {
           file: type.path,
           message: `Unknown interface ${interfaceName}`,
           severity: 'error',
@@ -136,7 +136,7 @@ function typeCompositionChain(
         continue;
       }
       if (!interfaceType.isInterface) {
-        index.issues.push({
+        pushIssueOnce(index.issues, {
           file: type.path,
           message: `${interfaceName} is implemented but is not marked interface: true`,
           severity: 'warning',
@@ -190,6 +190,23 @@ function collectGlobalRelationDefinitions(types: Map<string, OntologyType>): Map
     }
   }
   return definitions;
+}
+
+function issueKey(issue: OntologyIssue): string {
+  return [
+    issue.file,
+    issue.severity,
+    issue.message,
+    issue.property ?? '',
+    issue.target ?? '',
+  ].join('\u0000');
+}
+
+function pushIssueOnce(issues: OntologyIssue[], issue: OntologyIssue): void {
+  const key = issueKey(issue);
+  if (!issues.some((existing) => issueKey(existing) === key)) {
+    issues.push(issue);
+  }
 }
 
 function resolveRelationDefinition(index: OntologyIndex, property: string, definition: RelationDefinition): RelationDefinition {
@@ -265,7 +282,7 @@ export function computeAncestors(
         circularTypes.add(member);
       }
       circularTypes.add(name);
-      issues.push({
+      pushIssueOnce(issues, {
         file: type.path,
         message: `Circular inheritance detected: ${[...stack, name].join(' -> ')}`,
         severity: 'error',
@@ -276,7 +293,7 @@ export function computeAncestors(
     visiting.add(name);
     for (const parent of type.extends) {
       if (!types.has(parent)) {
-        issues.push({
+        pushIssueOnce(issues, {
           file: type.path,
           message: `Unknown parent type ${parent}`,
           severity: 'error',
@@ -297,6 +314,120 @@ export function computeAncestors(
     visit(name, []);
   }
   return ancestorsByType;
+}
+
+function sameStringArray(left: string[] | undefined, right: string[] | undefined): boolean {
+  const normalizedLeft = [...left ?? []].sort();
+  const normalizedRight = [...right ?? []].sort();
+  return normalizedLeft.length === normalizedRight.length && normalizedLeft.every((value, index) => value === normalizedRight[index]);
+}
+
+function samePropertyDefinition(left: PropertyDefinition, right: PropertyDefinition): boolean {
+  return left.cardinality === right.cardinality && left.type === right.type && sameStringArray(left.values, right.values);
+}
+
+function describePropertyDefinition(definition: PropertyDefinition): string {
+  const parts = [
+    definition.type ? `type ${definition.type}` : '',
+    definition.cardinality ? `cardinality ${definition.cardinality}` : '',
+    definition.values?.length ? `possible-values ${definition.values.join(', ')}` : '',
+  ].filter(Boolean);
+  return parts.length > 0 ? parts.join('; ') : 'untyped';
+}
+
+function compositionChainWithoutIssues(typeName: string, index: Pick<OntologyIndex, 'ancestorsByType' | 'types'>, seen = new Set<string>()): Set<string> {
+  const names = new Set<string>();
+  const addTypeAndInterfaces = (name: string): void => {
+    if (seen.has(name)) {
+      return;
+    }
+    seen.add(name);
+    names.add(name);
+    const type = index.types.get(name);
+    if (!type) {
+      return;
+    }
+    for (const interfaceName of type.implements) {
+      addTypeAndInterfaces(interfaceName);
+    }
+  };
+
+  for (const ancestor of index.ancestorsByType.get(typeName) ?? []) {
+    addTypeAndInterfaces(ancestor);
+  }
+  addTypeAndInterfaces(typeName);
+  return names;
+}
+
+interface FieldSource {
+  bucket: 'can-have' | 'must-have';
+  definition: PropertyDefinition;
+  source: OntologyType;
+}
+
+function validateSchemaCompositionConflicts(index: OntologyIndex): void {
+  for (const type of index.types.values()) {
+    if (isRelationDefinitionRegistry(type)) {
+      continue;
+    }
+
+    const fields = new Map<string, FieldSource>();
+    const forbidden = new Map<string, OntologyType>();
+
+    for (const typeName of compositionChainWithoutIssues(type.name, index)) {
+      const source = index.types.get(typeName);
+      if (!source) {
+        continue;
+      }
+
+      for (const property of source.cannotHave) {
+        const existing = fields.get(property);
+        if (existing) {
+          pushIssueOnce(index.issues, {
+            file: type.path,
+            message: `Schema conflict on ${type.name}.${property}: ${source.name} declares cannot-have but ${existing.source.name} declares ${existing.bucket}`,
+            property,
+            severity: 'error',
+          });
+        }
+        forbidden.set(property, source);
+      }
+
+      for (const [bucket, definitions] of [['must-have', source.mustHave], ['can-have', source.canHave]] as const) {
+        for (const [property, definition] of definitions) {
+          const forbiddenSource = forbidden.get(property);
+          if (forbiddenSource) {
+            pushIssueOnce(index.issues, {
+              file: type.path,
+              message: `Schema conflict on ${type.name}.${property}: ${source.name} declares ${bucket} but ${forbiddenSource.name} declares cannot-have`,
+              property,
+              severity: 'error',
+            });
+          }
+
+          const existing = fields.get(property);
+          if (!existing) {
+            fields.set(property, { bucket, definition, source });
+            continue;
+          }
+
+          if (!samePropertyDefinition(existing.definition, definition)) {
+            pushIssueOnce(index.issues, {
+              file: type.path,
+              message: `Schema conflict on ${type.name}.${property}: ${existing.source.name} declares ${existing.bucket} (${describePropertyDefinition(existing.definition)}) but ${source.name} declares ${bucket} (${describePropertyDefinition(definition)})`,
+              property,
+              severity: 'error',
+            });
+            continue;
+          }
+
+          if (existing.bucket === 'can-have' && bucket === 'must-have') {
+            fields.set(property, { bucket, definition, source });
+          }
+        }
+      }
+    }
+  }
 }
 
 function computeTypeLock(
@@ -652,6 +783,7 @@ export function recomputeOntologyDerivedState(index: OntologyIndex): OntologyInd
   index.ancestorsByType = computeAncestors(index.types, index.issues, circularTypes);
   index.circularTypes = circularTypes;
   index.relationDefinitions = collectGlobalRelationDefinitions(index.types);
+  validateSchemaCompositionConflicts(index);
 
   index.effectiveTypeLocks = new Map<string, EffectiveLockState>();
   for (const name of index.types.keys()) {

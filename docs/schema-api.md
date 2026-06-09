@@ -160,6 +160,11 @@ These fields are recognized in type, interface, and single-schema type definitio
 | `type` | string | Constructor kind, such as `nominal`, `interface`, or `relation-definitions`. |
 | `values` | array | Allowed values for `type: nominal`. |
 
+When a type composes multiple parents or interfaces, duplicate property keys are legal only when their definitions are compatible.
+Identical definitions are accepted, and a compatible `can-have` can be promoted to `must-have`.
+Different `type`, `cardinality`, or `possible-values` constraints for the same key are schema errors.
+Combining `cannot-have` with `must-have` or `can-have` for the same key is also a schema error.
+
 Minimum concrete type:
 
 ```yaml
@@ -290,6 +295,7 @@ The plugin validates:
 - Unknown parent types.
 - Unknown implemented interfaces.
 - Circular inheritance.
+- Schema composition conflicts from incompatible duplicate interface/inheritance fields.
 - Direct instantiation of abstract types or interfaces.
 - Disjoint type conflicts.
 - Missing `must-have` properties.
