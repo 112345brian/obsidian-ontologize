@@ -276,7 +276,7 @@ can-have:
       - weird
 ```
 
-`possible_values` and `values` are accepted as aliases.
+Use `values` only for `type: nominal` constructors, not ordinary property definitions.
 
 ### Constraint Inheritance
 

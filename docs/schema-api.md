@@ -225,8 +225,8 @@ Recognized property definition fields:
 | `type` | Scalar type, nominal type, or linked ontology type. |
 | `cardinality` | Currently validates `one` and `one-to-one` as single-value constraints. |
 | `possible-values` | Inline allowed values for this property. |
-| `possible_values` | Alias for `possible-values`. |
-| `values` | Backward-compatible alias for `possible-values`; also used by `type: nominal` constructors. |
+
+Use `values` only on `type: nominal` constructors, not on ordinary property definitions.
 
 Detected scalar types:
 

@@ -12,6 +12,16 @@ vi.mock('obsidian', () => ({
         },
       };
     }
+    if (source.includes('values:') && source.includes('descriptor:')) {
+      return {
+        'can-have': {
+          descriptor: {
+            type: 'string',
+            values: ['happy', 'sad', 'weird'],
+          },
+        },
+      };
+    }
     if (source.includes('abstract: true')) {
       return { abstract: true };
     }
@@ -78,6 +88,23 @@ can-have:
     expect(type.canHave.get('descriptor')).toEqual({
       type: 'string',
       values: ['happy', 'sad', 'weird'],
+    });
+  });
+
+  it('does not treat property values as a possible-values alias', () => {
+    const type = parseOntologyType('_types/Mood.md', `---
+can-have:
+  descriptor:
+    type: string
+    values:
+      - happy
+      - sad
+      - weird
+---`);
+
+    expect(type.canHave.get('descriptor')).toEqual({
+      type: 'string',
+      values: undefined,
     });
   });
 });
