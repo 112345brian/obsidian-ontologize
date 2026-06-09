@@ -1,6 +1,6 @@
 import type { App } from 'obsidian';
 
-import type { EffectiveLockState, OntologyEntity, OntologyIndex, OntologyIssue, OntologyType, PropertyDefinition, RelationDefinition } from './types.ts';
+import type { EffectiveLockState, FrontmatterIgnoreRule, OntologyEntity, OntologyIndex, OntologyIssue, OntologyType, PropertyDefinition, RelationDefinition } from './types.ts';
 
 function mapToObject<T>(map: Map<string, T>, mapper: (value: T) => unknown): Record<string, unknown> {
   return Object.fromEntries([...map.entries()].map(([key, value]) => [key, mapper(value)]));
@@ -16,6 +16,24 @@ function stringValue(value: unknown, fallback = ''): string {
 
 function stringArrayValue(value: unknown): string[] {
   return Array.isArray(value) ? value.map(String) : [];
+}
+
+function frontmatterIgnoreRulesValue(value: unknown): FrontmatterIgnoreRule[] {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+  return value.flatMap((item) => {
+    const record = asRecord(item);
+    const key = stringValue(record['key']).trim();
+    if (!key) {
+      return [];
+    }
+    const valueString = stringValue(record['value']).trim();
+    return [{
+      key,
+      ...(valueString ? { value: valueString } : {}),
+    }];
+  });
 }
 
 function hydrateMap<T>(value: unknown, mapper: (value: unknown) => T): Map<string, T> {
@@ -75,6 +93,7 @@ export async function readOntologyCache(app: App, cachePath: string): Promise<On
       settings: {
         filesToIgnore: stringArrayValue(settings['filesToIgnore']),
         foldersToIgnore: stringArrayValue(settings['foldersToIgnore']),
+        frontmatterIgnoreRules: frontmatterIgnoreRulesValue(settings['frontmatterIgnoreRules']),
         typeFolder: stringValue(settings['typeFolder'], '_types'),
       },
       types: hydrateMap<OntologyType>(payload['types'], hydrateType),

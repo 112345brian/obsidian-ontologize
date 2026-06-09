@@ -12,7 +12,7 @@ The project was scaffolded from the fork of [`mnaoumov/generator-obsidian-plugin
 - Resolves inherited type chains for entities with `instance_of` or `type` frontmatter
 - Computes effective lock state from entity/type lock intent and ancestor locks
 - Keeps a hot in-memory ontology graph updated from Obsidian file and metadata events
-- Supports Linter-style ignored folders and ignored file path patterns
+- Supports Linter-style ignored folders, ignored file path patterns, and ignored frontmatter rules
 - Renders inheritance-aware queries in `ontology-query` code blocks
 - Writes `.obsidian/ontology-cache.json` after index rebuilds
 - Hydrates the in-memory graph from cache before the first rebuild when possible

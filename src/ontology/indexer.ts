@@ -1,6 +1,6 @@
 import type { App, TFile } from 'obsidian';
 
-import type { EffectiveLockState, OntologyEntity, OntologyIndex, OntologyIssue, OntologyType, PropertyDefinition, RelationDefinition } from './types.ts';
+import type { EffectiveLockState, FrontmatterIgnoreRule, OntologyEntity, OntologyIndex, OntologyIssue, OntologyType, PropertyDefinition, RelationDefinition } from './types.ts';
 
 import { extractAssertedLinkTargets, extractLinkTargets, extractNegatedLinkTargets, hasNegatedTarget, normalizeLinkTarget } from './links.ts';
 import { parseOntologyEntity, parseOntologyType } from './parser.ts';
@@ -8,6 +8,7 @@ import { parseOntologyEntity, parseOntologyType } from './parser.ts';
 export interface BuildIndexSettings {
   filesToIgnore?: string[];
   foldersToIgnore?: string[];
+  frontmatterIgnoreRules?: FrontmatterIgnoreRule[];
   typeFolder: string;
 }
 
@@ -33,6 +34,35 @@ export function isIgnoredOntologyPath(path: string, settings: BuildIndexSettings
   return (settings.filesToIgnore ?? []).some((pattern) => pattern.trim() && safePatternMatches(pattern.trim(), path));
 }
 
+function frontmatterValues(value: unknown): string[] {
+  if (Array.isArray(value)) {
+    return value.flatMap((item) => frontmatterValues(item));
+  }
+  if (typeof value === 'string' || typeof value === 'number' || typeof value === 'boolean') {
+    return [String(value)];
+  }
+  return [];
+}
+
+export function isIgnoredByFrontmatter(frontmatter: Record<string, unknown>, settings: BuildIndexSettings): boolean {
+  for (const rule of settings.frontmatterIgnoreRules ?? []) {
+    const key = rule.key.trim();
+    if (!key || !(key in frontmatter)) {
+      continue;
+    }
+
+    const expectedValue = rule.value?.trim();
+    if (!expectedValue) {
+      return true;
+    }
+
+    if (frontmatterValues(frontmatter[key]).includes(expectedValue)) {
+      return true;
+    }
+  }
+  return false;
+}
+
 export function isOntologyTypeFile(file: TFile, typeFolder: string): boolean {
   return file.extension === 'md' && file.path.startsWith(`${typeFolder.replace(/\/$/, '')}/`);
 }
@@ -50,6 +80,7 @@ function createEmptyOntologyIndex(settings: BuildIndexSettings): OntologyIndex {
     settings: {
       filesToIgnore: settings.filesToIgnore ?? [],
       foldersToIgnore: settings.foldersToIgnore ?? [],
+      frontmatterIgnoreRules: settings.frontmatterIgnoreRules ?? [],
       typeFolder: settings.typeFolder,
     },
     types: new Map<string, OntologyType>(),
@@ -429,6 +460,9 @@ export async function upsertOntologyFile(app: App, index: OntologyIndex, file: T
   }
 
   const frontmatter = app.metadataCache.getFileCache(file)?.frontmatter;
+  if (isIgnoredByFrontmatter(frontmatter ?? {}, settings)) {
+    return recomputeOntologyDerivedState(index);
+  }
   const entity = parseOntologyEntity(file.path, frontmatter ?? {});
   if (entity) {
     index.entities.set(entity.path, entity);
@@ -451,6 +485,9 @@ export async function buildOntologyIndex(app: App, settings: BuildIndexSettings)
     }
 
     const frontmatter = app.metadataCache.getFileCache(file)?.frontmatter;
+    if (isIgnoredByFrontmatter(frontmatter ?? {}, settings)) {
+      continue;
+    }
     const entity = parseOntologyEntity(file.path, frontmatter ?? {});
     if (entity) {
       index.entities.set(entity.path, entity);

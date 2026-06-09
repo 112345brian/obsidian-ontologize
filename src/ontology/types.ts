@@ -49,6 +49,11 @@ export interface EffectiveLockState {
   state: 'incomplete' | 'locked' | 'unlocked';
 }
 
+export interface FrontmatterIgnoreRule {
+  key: string;
+  value?: string;
+}
+
 export interface OntologyIssue {
   autoUpdate?: boolean;
   autofixable?: boolean;
@@ -71,6 +76,7 @@ export interface OntologyIndex {
   settings: {
     filesToIgnore: string[];
     foldersToIgnore: string[];
+    frontmatterIgnoreRules: FrontmatterIgnoreRule[];
     typeFolder: string;
   };
   types: Map<string, OntologyType>;

@@ -115,6 +115,7 @@ export class Plugin extends ObsidianPlugin {
           this.index = await buildOntologyIndex(this.app, {
             filesToIgnore: this.pluginSettings.filesToIgnore,
             foldersToIgnore: this.pluginSettings.foldersToIgnore,
+            frontmatterIgnoreRules: this.pluginSettings.frontmatterIgnoreRules,
             typeFolder: this.pluginSettings.typeFolder,
           });
           await writeOntologyCache(this.app, this.pluginSettings.cachePath, this.index);
@@ -142,6 +143,7 @@ export class Plugin extends ObsidianPlugin {
         this.index = await buildOntologyIndex(this.app, {
           filesToIgnore: this.pluginSettings.filesToIgnore,
           foldersToIgnore: this.pluginSettings.foldersToIgnore,
+          frontmatterIgnoreRules: this.pluginSettings.frontmatterIgnoreRules,
           typeFolder: this.pluginSettings.typeFolder,
         });
       }
@@ -215,6 +217,7 @@ export class Plugin extends ObsidianPlugin {
     this.index = await upsertOntologyFile(this.app, index, file, {
       filesToIgnore: this.pluginSettings.filesToIgnore,
       foldersToIgnore: this.pluginSettings.foldersToIgnore,
+      frontmatterIgnoreRules: this.pluginSettings.frontmatterIgnoreRules,
       typeFolder: this.pluginSettings.typeFolder,
     });
     await this.applyAutoInverseUpdates();
@@ -266,11 +269,13 @@ export class Plugin extends ObsidianPlugin {
   private indexSettings(): {
     filesToIgnore: string[];
     foldersToIgnore: string[];
+    frontmatterIgnoreRules: PluginSettings['frontmatterIgnoreRules'];
     typeFolder: string;
   } {
     return {
       filesToIgnore: this.pluginSettings.filesToIgnore,
       foldersToIgnore: this.pluginSettings.foldersToIgnore,
+      frontmatterIgnoreRules: this.pluginSettings.frontmatterIgnoreRules,
       typeFolder: this.pluginSettings.typeFolder,
     };
   }

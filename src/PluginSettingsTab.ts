@@ -4,6 +4,26 @@ import { PluginSettingTab, Setting } from 'obsidian';
 
 import type { Plugin } from './Plugin.ts';
 
+function formatFrontmatterIgnoreRules(rules: { key: string; value?: string }[]): string {
+  return rules.map((rule) => rule.value ? `${rule.key}: ${rule.value}` : rule.key).join('\n');
+}
+
+function parseFrontmatterIgnoreRules(value: string): { key: string; value?: string }[] {
+  return value.split(/\r?\n/).flatMap((line) => {
+    const trimmed = line.trim();
+    if (!trimmed) {
+      return [];
+    }
+    const separator = trimmed.indexOf(':');
+    if (separator === -1) {
+      return [{ key: trimmed }];
+    }
+    const key = trimmed.slice(0, separator).trim();
+    const ruleValue = trimmed.slice(separator + 1).trim();
+    return key ? [{ key, ...(ruleValue ? { value: ruleValue } : {}) }] : [];
+  });
+}
+
 export class PluginSettingsTab extends PluginSettingTab {
   public constructor(app: App, private readonly plugin: Plugin) {
     super(app, plugin);
@@ -99,6 +119,19 @@ export class PluginSettingsTab extends PluginSettingTab {
           .setValue(this.plugin.pluginSettings.filesToIgnore.join('\n'))
           .onChange(async (value) => {
             this.plugin.pluginSettings.filesToIgnore = value.split(/\r?\n/).map((line) => line.trim()).filter(Boolean);
+            await this.plugin.savePluginSettings();
+          })
+      );
+
+    new Setting(containerEl)
+      .setName('Ignored frontmatter')
+      .setDesc('One rule per line. Use "key" to ignore when present, or "key: value" to ignore when a scalar or array value matches.')
+      .addTextArea((text) =>
+        text
+          .setPlaceholder('ontology-ignore\nstatus: private')
+          .setValue(formatFrontmatterIgnoreRules(this.plugin.pluginSettings.frontmatterIgnoreRules))
+          .onChange(async (value) => {
+            this.plugin.pluginSettings.frontmatterIgnoreRules = parseFrontmatterIgnoreRules(value);
             await this.plugin.savePluginSettings();
           })
       );

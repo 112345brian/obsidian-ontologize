@@ -73,7 +73,7 @@ For ontology, the equivalent is not formatting text; it is deciding where schema
 
 Borrowed patterns:
 
-- Ignored folders and ignored file patterns are settings, not ontology facts.
+- Ignored folders, ignored file patterns, and ignored frontmatter rules are settings, not ontology facts.
 - Commands can target a scope, starting with the active note and the whole vault.
 - Bulk writes remain explicit commands unless both plugin settings and schema relation definitions opt in.
 - Settings and cache writes are debounced; validation state stays in memory.
@@ -81,6 +81,10 @@ Borrowed patterns:
 Ignored folders are vault-relative path prefixes.
 Ignored file patterns are JavaScript regular expressions matched against vault-relative paths.
 Ignored files are skipped during cold indexing and removed from the hot index on incremental updates.
+
+Ignored frontmatter rules apply to entity notes, not type files.
+Each rule is either a key presence check or a `key: value` match.
+For value rules, scalar values and array entries are compared as strings.
 
 ## Type Parsing
 

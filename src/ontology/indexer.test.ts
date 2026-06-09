@@ -6,7 +6,7 @@ vi.mock('obsidian', () => ({
   parseYaml: () => ({}),
 }));
 
-import { recomputeOntologyDerivedState, removeOntologyFile } from './indexer.ts';
+import { isIgnoredByFrontmatter, recomputeOntologyDerivedState, removeOntologyFile } from './indexer.ts';
 
 function makeType(name: string, path: string, lockIntent: boolean, extendsTypes: string[] = []): OntologyType {
   return {
@@ -48,6 +48,7 @@ function makeIndex(): OntologyIndex {
     settings: {
       filesToIgnore: [],
       foldersToIgnore: [],
+      frontmatterIgnoreRules: [],
       typeFolder: '_types',
     },
     types: new Map([
@@ -95,5 +96,22 @@ describe('incremental ontology index state', () => {
     removeOntologyFile(index, 'Archive');
     expect(index.entities.has('Archive/Draft.md')).toBe(false);
     expect(index.issues.some((issue) => issue.file === 'Archive/Draft.md')).toBe(false);
+  });
+
+  it('matches frontmatter ignore rules by presence or value', () => {
+    expect(isIgnoredByFrontmatter(
+      { ontology_ignore: true },
+      { frontmatterIgnoreRules: [{ key: 'ontology_ignore' }], typeFolder: '_types' }
+    )).toBe(true);
+
+    expect(isIgnoredByFrontmatter(
+      { status: ['draft', 'private'] },
+      { frontmatterIgnoreRules: [{ key: 'status', value: 'private' }], typeFolder: '_types' }
+    )).toBe(true);
+
+    expect(isIgnoredByFrontmatter(
+      { status: 'public' },
+      { frontmatterIgnoreRules: [{ key: 'status', value: 'private' }], typeFolder: '_types' }
+    )).toBe(false);
   });
 });
