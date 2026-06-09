@@ -17,10 +17,14 @@
 
 .ontology-issues-summary,
 .ontology-issues-empty,
+.ontology-fix-empty,
+.ontology-fix-meta,
+.ontology-fix-summary,
 .ontology-issue-meta {
   color: var(--text-muted);
 }
 
+.ontology-fix-list,
 .ontology-issues-list {
   display: flex;
   flex-direction: column;
@@ -28,11 +32,15 @@
   margin-top: 1em;
 }
 
+.ontology-fix-plan,
 .ontology-issue {
   border: 1px solid var(--background-modifier-border);
-  border-left-width: 4px;
   border-radius: 4px;
   padding: 0.75em;
+}
+
+.ontology-issue {
+  border-left-width: 4px;
 }
 
 .ontology-issue-error {
@@ -61,5 +69,31 @@
 }
 
 .ontology-issue-message {
+  margin-bottom: 0.35em;
+}
+
+.ontology-fix-plan-header {
+  align-items: center;
+  display: flex;
+  gap: 0.5em;
+  justify-content: space-between;
+  margin-bottom: 0.35em;
+}
+
+.ontology-fix-target {
+  color: var(--text-accent);
+  font-family: var(--font-monospace);
+}
+
+.ontology-fix-badge {
+  background: var(--background-modifier-border);
+  border-radius: 4px;
+  color: var(--text-muted);
+  font-size: var(--font-ui-smaller);
+  padding: 0.1em 0.35em;
+}
+
+.ontology-fix-change {
+  font-family: var(--font-monospace);
   margin-bottom: 0.35em;
 }

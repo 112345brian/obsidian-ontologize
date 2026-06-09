@@ -13,10 +13,11 @@ import {
   removeOntologyFile,
   upsertOntologyFile
 } from './ontology/indexer.ts';
-import { fixMissingInverses, scaffoldEntity } from './ontology/mutations.ts';
+import { applyMissingInversePlans, fixMissingInverses, planMissingInverses, scaffoldEntity } from './ontology/mutations.ts';
 import { runOntologyQuery } from './ontology/query.ts';
 import { summarizeIssues } from './ontology/issues.ts';
 import { OntologyIssuesModal } from './OntologyIssuesModal.ts';
+import { OntologyRelationFixModal } from './OntologyRelationFixModal.ts';
 import { PluginSettings as PluginSettingsClass } from './PluginSettings.ts';
 import { PluginSettingsTab } from './PluginSettingsTab.ts';
 
@@ -84,7 +85,7 @@ export class Plugin extends ObsidianPlugin {
     });
 
     this.addCommand({
-      callback: () => { void this.fixInverses(); },
+      callback: () => { void this.openRelationFixModal(); },
       id: 'fix-missing-inverses',
       name: 'Fix missing inverse relations',
     });
@@ -149,11 +150,24 @@ export class Plugin extends ObsidianPlugin {
       getIssues: () => this.index?.issues ?? [],
       initialFilter: file ? { file } : undefined,
       onFixInverses: async () => {
-        await this.fixInverses(false);
+        await this.openRelationFixModal();
       },
       onRebuild: async () => {
         await this.rebuildIndex(true);
       },
+    }).open();
+  }
+
+  public async openRelationFixModal(): Promise<void> {
+    const index = await this.ensureIndex();
+    const plans = planMissingInverses(index);
+
+    new OntologyRelationFixModal(this.app, {
+      onApply: async (fixPlans) => applyMissingInversePlans(this.app, fixPlans),
+      onDone: async () => {
+        await this.rebuildIndex(false);
+      },
+      plans,
     }).open();
   }
 
@@ -326,12 +340,4 @@ export class Plugin extends ObsidianPlugin {
     await this.rebuildIndex(false);
   }
 
-  private async fixInverses(showNotice = true): Promise<void> {
-    const index = await this.ensureIndex();
-    const fixed = await fixMissingInverses(this.app, index);
-    if (showNotice) {
-      new Notice(`Ontology fixed ${fixed} inverse relation entries.`);
-    }
-    await this.rebuildIndex(false);
-  }
 }

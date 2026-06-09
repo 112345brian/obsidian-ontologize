@@ -1,0 +1,115 @@
+import { describe, expect, it, vi } from 'vitest';
+
+import type { OntologyIndex, OntologyType } from './types.ts';
+
+vi.mock('obsidian', () => ({
+  Notice: vi.fn(),
+}));
+
+import { planMissingInverses } from './mutations.ts';
+
+function makeType(): OntologyType {
+  return {
+    abstract: false,
+    canHave: new Map(),
+    cannotHave: new Set(),
+    disjoint: [],
+    extends: [],
+    lockIntent: true,
+    mustHave: new Map(),
+    name: 'Philosopher',
+    path: '_types/Philosopher.md',
+    relations: new Map([
+      ['influenced', {
+        autoUpdate: true,
+        inverse: 'influenced_by',
+        range: 'Philosopher',
+      }],
+    ]),
+    values: [],
+  };
+}
+
+function makeIndex(): OntologyIndex {
+  const source = {
+    frontmatter: {
+      influenced: ['[[Leibniz]]'],
+      instance_of: '[[Philosopher]]',
+    },
+    instanceOf: ['Philosopher'],
+    lockIntent: true,
+    name: 'Spinoza',
+    path: 'Spinoza.md',
+  };
+  const target = {
+    frontmatter: {
+      instance_of: '[[Philosopher]]',
+    },
+    instanceOf: ['Philosopher'],
+    lockIntent: true,
+    name: 'Leibniz',
+    path: 'Leibniz.md',
+  };
+
+  return {
+    ancestorsByType: new Map([
+      ['Philosopher', new Set()],
+    ]),
+    cacheVersion: 1,
+    effectiveEntityLocks: new Map(),
+    effectiveTypeLocks: new Map(),
+    entities: new Map([
+      [source.path, source],
+      [target.path, target],
+    ]),
+    entitiesByName: new Map([
+      [source.name, source],
+      [target.name, target],
+    ]),
+    generatedAt: '2026-06-09T00:00:00.000Z',
+    issues: [
+      {
+        autoUpdate: true,
+        autofixable: true,
+        file: source.path,
+        message: 'Missing inverse relation influenced_by on Leibniz.',
+        property: 'influenced',
+        severity: 'warning',
+        target: target.name,
+      },
+    ],
+    settings: {
+      filesToIgnore: [],
+      foldersToIgnore: [],
+      frontmatterIgnoreRules: [],
+      typeFolder: '_types',
+    },
+    types: new Map([
+      ['Philosopher', makeType()],
+    ]),
+  };
+}
+
+describe('ontology frontmatter mutations', () => {
+  it('plans missing inverse relation frontmatter changes without writing', () => {
+    expect(planMissingInverses(makeIndex())).toEqual([
+      {
+        autoUpdate: true,
+        inverseProperty: 'influenced_by',
+        message: 'Missing inverse relation influenced_by on Leibniz.',
+        sourceName: 'Spinoza',
+        sourcePath: 'Spinoza.md',
+        sourceProperty: 'influenced',
+        targetName: 'Leibniz',
+        targetPath: 'Leibniz.md',
+        value: '[[Spinoza]]',
+      },
+    ]);
+  });
+
+  it('can limit plans to auto-update relation issues', () => {
+    const index = makeIndex();
+    index.issues[0]!.autoUpdate = false;
+    expect(planMissingInverses(index, { onlyAutoUpdate: true })).toEqual([]);
+  });
+});

@@ -11,6 +11,18 @@ export interface FixMissingInversesOptions {
   onlyAutoUpdate?: boolean;
 }
 
+export interface MissingInverseFixPlan {
+  autoUpdate: boolean;
+  inverseProperty: string;
+  message: string;
+  sourceName: string;
+  sourcePath: string;
+  sourceProperty: string;
+  targetName: string;
+  targetPath: string;
+  value: string;
+}
+
 function findFile(app: App, path: string): TFile | null {
   const file = app.vault.getAbstractFileByPath(path);
   return file && 'extension' in file && file.extension === 'md' ? file as TFile : null;
@@ -41,10 +53,10 @@ function inverseIssueKey(issue: OntologyIssue): string {
   return `${issue.file}:${issue.property ?? ''}:${issue.target ?? ''}`;
 }
 
-export async function fixMissingInverses(app: App, index: OntologyIndex, options: FixMissingInversesOptions = {}): Promise<number> {
+export function planMissingInverses(index: OntologyIndex, options: FixMissingInversesOptions = {}): MissingInverseFixPlan[] {
   const issues = index.issues.filter((issue) => issue.autofixable && (!options.onlyAutoUpdate || issue.autoUpdate));
   const uniqueIssues = [...new Map(issues.map((issue) => [inverseIssueKey(issue), issue])).values()];
-  let fixed = 0;
+  const plans: MissingInverseFixPlan[] = [];
 
   for (const issue of uniqueIssues) {
     if (!issue.property || !issue.target) {
@@ -52,8 +64,7 @@ export async function fixMissingInverses(app: App, index: OntologyIndex, options
     }
     const sourceEntity = index.entities.get(issue.file);
     const targetEntity = index.entitiesByName.get(issue.target);
-    const targetFile = targetEntity ? findFile(app, targetEntity.path) : null;
-    if (!sourceEntity || !targetEntity || !targetFile) {
+    if (!sourceEntity || !targetEntity) {
       continue;
     }
 
@@ -69,23 +80,52 @@ export async function fixMissingInverses(app: App, index: OntologyIndex, options
       continue;
     }
 
+    plans.push({
+      autoUpdate: issue.autoUpdate === true,
+      inverseProperty,
+      message: issue.message,
+      sourceName: sourceEntity.name,
+      sourcePath: sourceEntity.path,
+      sourceProperty: property,
+      targetName: targetEntity.name,
+      targetPath: targetEntity.path,
+      value: toWikiLink(sourceEntity.name),
+    });
+  }
+
+  return plans;
+}
+
+export async function applyMissingInversePlans(app: App, plans: MissingInverseFixPlan[]): Promise<number> {
+  let fixed = 0;
+
+  for (const plan of plans) {
+    const targetFile = findFile(app, plan.targetPath);
+    if (!targetFile) {
+      continue;
+    }
+
     await app.fileManager.processFrontMatter(targetFile, (frontmatter) => {
       const data = frontmatter as Record<string, unknown>;
-      const existing = data[inverseProperty];
+      const existing = data[plan.inverseProperty];
       const existingTargets = extractAssertedLinkTargets(existing);
-      if (existingTargets.includes(sourceEntity.name)) {
+      if (existingTargets.includes(plan.sourceName)) {
         return;
       }
       if (Array.isArray(existing)) {
-        existing.push(toWikiLink(sourceEntity.name));
+        existing.push(plan.value);
       } else if (existing === undefined || existing === null || existing === '') {
-        data[inverseProperty] = [toWikiLink(sourceEntity.name)];
+        data[plan.inverseProperty] = [plan.value];
       } else {
-        data[inverseProperty] = [existing, toWikiLink(sourceEntity.name)];
+        data[plan.inverseProperty] = [existing, plan.value];
       }
       fixed++;
     });
   }
 
   return fixed;
+}
+
+export async function fixMissingInverses(app: App, index: OntologyIndex, options: FixMissingInversesOptions = {}): Promise<number> {
+  return applyMissingInversePlans(app, planMissingInverses(index, options));
 }
