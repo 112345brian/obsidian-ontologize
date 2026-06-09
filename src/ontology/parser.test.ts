@@ -15,7 +15,7 @@ vi.mock('obsidian', () => ({
   },
 }));
 
-import { parseOntologyType } from './parser.ts';
+import { parseOntologyEntity, parseOntologyType } from './parser.ts';
 
 describe('ontology type parser', () => {
   it('uses frontmatter as the type definition when frontmatter is present', () => {
@@ -43,5 +43,14 @@ lock: true
 
     expect(type.extends).toEqual(['Person']);
     expect(type.lockIntent).toBe(true);
+  });
+
+  it('uses configured entity type fields for ontology membership', () => {
+    const entity = parseOntologyEntity('Ada.md', {
+      ontology: ['[[Person]]'],
+      type: '[[Ignored]]',
+    }, ['ontology']);
+
+    expect(entity?.instanceOf).toEqual(['Person']);
   });
 });

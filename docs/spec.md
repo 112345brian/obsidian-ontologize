@@ -11,13 +11,14 @@ No proprietary database. No cloud dependency. No vendor lock-in.
 The fundamental problem this solves: **you should not have to repeat yourself**.
 
 If you declare a note as `instance_of: [[Friend]]`, you should never also have to tag it `people`, `friends-and-family`, or any other parent type. The system resolves the full inheritance chain automatically. Querying `type: Person` returns your friend. You said it once.
+`instance_of` is the default membership field; vaults can configure different frontmatter fields for ontology membership.
 
 Everything else in this system — validation, relations, queries, migrations — exists to make that inheritance trustworthy at scale. The consistency checker exists not as an end in itself but so that when you query "philosophers who didn't influence Nietzsche who were women" you can trust the answer.
 
 ### Day-to-Day Goals
 
 1. **Declare a type once** — never manually maintain what that implies
-2. **Auto-scaffold new notes** — `instance_of: [[Philosopher]]` fills in the right fields automatically via templates
+2. **Auto-scaffold new notes** — setting the configured ontology membership field to `[[Philosopher]]` fills in the right fields automatically via templates
 3. **Auto-maintain relations** — writing `influenced: [[Leibniz]]` on Spinoza's page writes `influenced_by: [[Spinoza]]` on Leibniz's page automatically
 4. **Query correctly** — inheritance-aware queries that return the right answer without manual tagging
 
@@ -196,6 +197,8 @@ disjoint:
 ## Entities
 
 Regular Markdown notes. All ontology data is stored in **YAML frontmatter** — standard Obsidian frontmatter, compatible with every other plugin that reads it.
+An entity enters the ontology when it has one of the configured ontology membership fields.
+The default fields are `instance_of` and `type`, checked in that order.
 
 ```markdown
 ---
@@ -209,7 +212,8 @@ influenced_by:
 # Spinoza
 ```
 
-`type` is supported as a shorthand alias for `instance_of`.
+`type` is supported as a default shorthand alias for `instance_of`.
+The membership field list is configurable in plugin settings, so a vault can use a field such as `ontology`, `kind`, or `class` instead.
 
 ---
 

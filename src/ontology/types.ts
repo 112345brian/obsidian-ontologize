@@ -81,6 +81,7 @@ export interface OntologyIndex {
   relationDefinitions: Map<string, RelationDefinition>;
   generatedAt: string;
   settings: {
+    entityTypeFields: string[];
     filesToIgnore: string[];
     foldersToIgnore: string[];
     frontmatterIgnoreRules: FrontmatterIgnoreRule[];

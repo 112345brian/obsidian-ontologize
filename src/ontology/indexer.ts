@@ -6,6 +6,7 @@ import { extractAssertedLinkTargets, extractLinkTargets, extractNegatedLinkTarge
 import { parseOntologyEntity, parseOntologySchema, parseOntologyType } from './parser.ts';
 
 export interface BuildIndexSettings {
+  entityTypeFields?: string[];
   filesToIgnore?: string[];
   foldersToIgnore?: string[];
   frontmatterIgnoreRules?: FrontmatterIgnoreRule[];
@@ -15,6 +16,11 @@ export interface BuildIndexSettings {
 
 function normalizedFolders(folders: string[] | undefined): string[] {
   return (folders ?? []).map((folder) => folder.trim().replace(/\/$/, '')).filter(Boolean);
+}
+
+function normalizedEntityTypeFields(fields: string[] | undefined): string[] {
+  const normalized = (fields ?? []).map((field) => field.trim()).filter(Boolean);
+  return normalized.length > 0 ? normalized : ['instance_of', 'type'];
 }
 
 function safePatternMatches(pattern: string, path: string): boolean {
@@ -88,6 +94,7 @@ function createEmptyOntologyIndex(settings: BuildIndexSettings): OntologyIndex {
     issues: [],
     relationDefinitions: new Map<string, RelationDefinition>(),
     settings: {
+      entityTypeFields: normalizedEntityTypeFields(settings.entityTypeFields),
       filesToIgnore: settings.filesToIgnore ?? [],
       foldersToIgnore: settings.foldersToIgnore ?? [],
       frontmatterIgnoreRules: settings.frontmatterIgnoreRules ?? [],
@@ -702,7 +709,7 @@ export async function upsertOntologyFile(app: App, index: OntologyIndex, file: T
   if (isIgnoredByFrontmatter(frontmatter ?? {}, settings)) {
     return recomputeOntologyDerivedState(index);
   }
-  const entity = parseOntologyEntity(file.path, frontmatter ?? {});
+  const entity = parseOntologyEntity(file.path, frontmatter ?? {}, normalizedEntityTypeFields(settings.entityTypeFields));
   if (entity) {
     index.entities.set(entity.path, entity);
   }
@@ -731,7 +738,7 @@ export async function buildOntologyIndex(app: App, settings: BuildIndexSettings)
     if (isIgnoredByFrontmatter(frontmatter ?? {}, settings)) {
       continue;
     }
-    const entity = parseOntologyEntity(file.path, frontmatter ?? {});
+    const entity = parseOntologyEntity(file.path, frontmatter ?? {}, normalizedEntityTypeFields(settings.entityTypeFields));
     if (entity) {
       index.entities.set(entity.path, entity);
     }

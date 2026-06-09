@@ -72,6 +72,20 @@ export class PluginSettingsTab extends PluginSettingTab {
       );
 
     new Setting(containerEl)
+      .setName('Entity type fields')
+      .setDesc('One frontmatter field per line used to read ontology membership from entity notes. The first matching field wins.')
+      .addTextArea((text) =>
+        text
+          .setPlaceholder('instance_of\ntype')
+          .setValue(this.plugin.pluginSettings.entityTypeFields.join('\n'))
+          .onChange(async (value) => {
+            const fields = value.split(/\r?\n/).map((line) => line.trim()).filter(Boolean);
+            this.plugin.pluginSettings.entityTypeFields = fields.length > 0 ? fields : ['instance_of', 'type'];
+            await this.plugin.savePluginSettings();
+          })
+      );
+
+    new Setting(containerEl)
       .setName('Cache path')
       .setDesc('Vault-relative JSON cache path.')
       .addText((text) =>

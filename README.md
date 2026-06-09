@@ -7,7 +7,7 @@ It keeps ontology data in ordinary Markdown and YAML frontmatter, then adds inhe
 
 - Reads type definitions from `_types/*.md` or a single `_types/ontology.schema.yaml`
 - Supports `extends`, `abstract`, `interface`, `implements`, `disjoint`, `must-have`, `can-have`, `cannot-have`, `relations`, `lock`, and nominal `values`
-- Resolves inherited and composed type chains for entities with `instance_of` or `type` frontmatter
+- Resolves inherited and composed type chains for entities with configured ontology membership frontmatter fields
 - Computes effective lock state from entity/type lock intent and ancestor locks
 - Keeps a hot in-memory ontology graph updated from Obsidian file and metadata events; all graph writes are serialized to prevent stale state from clobbering a newer rebuild
 - Suppresses automatic inverse writes until after the first full cold-vault rebuild, preventing frontmatter edits based on a stale startup cache
@@ -111,6 +111,7 @@ types:
 |---|---|---|
 | Type folder | `_types` | Folder containing type definition files |
 | Schema file | `_types/ontology.schema.yaml` | Optional single-file schema |
+| Entity type fields | `instance_of`, `type` | Frontmatter fields used to read entity ontology membership |
 | Cache path | `.obsidian/ontology-cache.json` | Derived-state cache |
 | Default locked query results | on | Query blocks default to locked-only results |
 | Auto-update inverse relations | off | Write missing inverses after rebuilds for `auto-update: true` relations |

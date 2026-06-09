@@ -358,6 +358,7 @@ export class Plugin extends ObsidianPlugin {
   }
 
   private indexSettings(): {
+    entityTypeFields: string[];
     filesToIgnore: string[];
     foldersToIgnore: string[];
     frontmatterIgnoreRules: PluginSettings['frontmatterIgnoreRules'];
@@ -365,6 +366,7 @@ export class Plugin extends ObsidianPlugin {
     typeFolder: string;
   } {
     return {
+      entityTypeFields: this.pluginSettings.entityTypeFields,
       filesToIgnore: this.pluginSettings.filesToIgnore,
       foldersToIgnore: this.pluginSettings.foldersToIgnore,
       frontmatterIgnoreRules: this.pluginSettings.frontmatterIgnoreRules,

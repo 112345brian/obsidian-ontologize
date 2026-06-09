@@ -16,6 +16,7 @@ The relevant settings are:
 |---|---|---|
 | Type folder | `_types` | Vault-relative folder containing modular Markdown type/interface files. |
 | Schema file | `_types/ontology.schema.yaml` | Optional vault-relative JSON/YAML schema file. Leave empty to use only modular files. |
+| Entity type fields | `instance_of`, `type` | Ordered frontmatter fields used to read ontology membership from entity notes. |
 
 The type folder is configurable.
 Any Markdown file inside that folder is treated as a schema constructor file instead of an entity note.
@@ -98,12 +99,15 @@ lock: true
 ## Entity Detection
 
 Entity notes are Markdown files outside the configured type folder.
-The plugin indexes an entity note only when its frontmatter contains one of:
+The plugin indexes an entity note only when its frontmatter contains one of the configured entity type fields.
+By default, those fields are `instance_of` and `type`.
+The first configured field with a non-empty value wins.
 
 | Field | Meaning |
 |---|---|
-| `instance_of` | Direct type or types for the note. |
-| `type` | Alias for `instance_of` on entity notes. |
+| `instance_of` | Default direct type field. |
+| `type` | Default alias for `instance_of` on entity notes. |
+| custom fields | Any configured field, such as `ontology`, `kind`, or `class`. |
 
 Values can be a string, wikilink, or array.
 
@@ -117,14 +121,27 @@ influenced_by:
 ---
 ```
 
+Custom field example:
+
+```yaml
+---
+ontology:
+  - [[Philosopher]]
+lock: true
+---
+```
+
 Detected entity fields:
 
 | Field | Required | Meaning |
 |---|---:|---|
-| `instance_of` or `type` | yes | Direct ontology type membership. |
+| configured entity type field | yes | Direct ontology type membership. |
 | `lock` | no | When `true`, the entity can enter trusted locked query results if its types are locked. |
 | Any schema property | no | Validated when declared in `must-have` or `can-have`. |
 | Any schema relation | no | Validated when declared in `relations`. |
+
+The query language still uses `type:` and `instance_of:` as semantic type predicates.
+Those query operators are independent of the frontmatter field names configured for entity detection.
 
 ## Type Constructor Fields
 

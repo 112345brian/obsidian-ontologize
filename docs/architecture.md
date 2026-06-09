@@ -35,7 +35,7 @@ The product contract remains [`spec.md`](spec.md); this document explains how th
 3. The indexer scans all Markdown files once.
 4. If the configured schema file exists, it is parsed first.
 5. Files under the configured type folder, `_types` by default, are parsed as modular ontology types.
-6. Other Markdown files with `instance_of` or `type` frontmatter are parsed as ontology entities.
+6. Other Markdown files with one of the configured entity type frontmatter fields are parsed as ontology entities.
 7. The indexer computes ancestor sets for each type.
 8. The indexer collects global relation definitions from relation-registry type files.
 9. The indexer resolves type composition from `extends` and `implements`.
@@ -233,7 +233,9 @@ The query engine uses the same composition chain, so `type: Influenceable` match
 ## Entity Parsing
 
 Entities are regular Markdown notes outside the type folder.
-An entity participates in the ontology only when its frontmatter contains `instance_of` or `type`.
+An entity participates in the ontology only when its frontmatter contains one of the configured entity type fields.
+The defaults are `instance_of` and `type`.
+The first configured field with a non-empty value wins.
 
 ```yaml
 ---
@@ -244,7 +246,7 @@ influenced_by:
 ---
 ```
 
-Notes without a type field are ignored by V1 ontology validation and trusted query results.
+Notes without a configured ontology membership field are ignored by V1 ontology validation and trusted query results.
 
 ## Inheritance And Locks
 

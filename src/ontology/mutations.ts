@@ -31,7 +31,7 @@ function findFile(app: App, path: string): TFile | null {
 export async function scaffoldEntity(app: App, index: OntologyIndex, file: TFile): Promise<number> {
   const entity = index.entities.get(file.path);
   if (!entity) {
-    new Notice('This note has no instance_of/type frontmatter.');
+    new Notice('This note has no ontology type frontmatter.');
     return 0;
   }
 

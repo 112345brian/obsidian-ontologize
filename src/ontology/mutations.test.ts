@@ -148,6 +148,7 @@ function makeIndex(): OntologyIndex {
     ],
     relationDefinitions: new Map(),
     settings: {
+      entityTypeFields: ['instance_of', 'type'],
       filesToIgnore: [],
       foldersToIgnore: [],
       frontmatterIgnoreRules: [],

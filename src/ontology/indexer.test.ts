@@ -62,6 +62,7 @@ function makeIndex(): OntologyIndex {
     issues: [],
     relationDefinitions: new Map(),
     settings: {
+      entityTypeFields: ['instance_of', 'type'],
       filesToIgnore: [],
       foldersToIgnore: [],
       frontmatterIgnoreRules: [],
@@ -316,6 +317,7 @@ describe('incremental ontology index state', () => {
     } as unknown as App;
 
     const index = await buildOntologyIndex(app, {
+      entityTypeFields: ['instance_of', 'type'],
       schemaPath: '_types/ontology.schema.json',
       typeFolder: '_types',
     });
@@ -329,5 +331,38 @@ describe('incremental ontology index state', () => {
       property: 'influenced_by',
       target: 'Descartes',
     }));
+  });
+
+  it('uses configured entity type frontmatter fields', async () => {
+    const file = {
+      extension: 'md',
+      path: 'Ada.md',
+    } as TFile;
+    const app = {
+      metadataCache: {
+        getFileCache: () => ({
+          frontmatter: {
+            ontology: '[[Person]]',
+          },
+        }),
+      },
+      vault: {
+        adapter: {
+          exists: () => Promise.resolve(false),
+        },
+        getMarkdownFiles: () => [file],
+        read: () => Promise.resolve('lock: true'),
+      },
+    } as unknown as App;
+
+    const index = await buildOntologyIndex(app, {
+      entityTypeFields: ['ontology'],
+      typeFolder: '_types',
+    });
+    index.types.set('Person', makeType('Person', '_types/Person.md', true));
+    recomputeOntologyDerivedState(index);
+
+    expect(index.entities.get('Ada.md')?.instanceOf).toEqual(['Person']);
+    expect(index.settings.entityTypeFields).toEqual(['ontology']);
   });
 });
