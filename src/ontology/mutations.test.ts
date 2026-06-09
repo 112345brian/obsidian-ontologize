@@ -15,6 +15,8 @@ function makeType(): OntologyType {
     cannotHave: new Set(),
     disjoint: [],
     extends: [],
+    implements: [],
+    isInterface: false,
     lockIntent: true,
     mustHave: new Map(),
     name: 'Philosopher',
@@ -28,6 +30,72 @@ function makeType(): OntologyType {
     ]),
     values: [],
   };
+}
+
+function makeInterfaceRelationIndex(): OntologyIndex {
+  const index = makeIndex();
+  index.types.set('_relations', {
+    abstract: false,
+    canHave: new Map(),
+    cannotHave: new Set(),
+    disjoint: [],
+    extends: [],
+    implements: [],
+    isInterface: false,
+    lockIntent: false,
+    mustHave: new Map(),
+    name: '_relations',
+    path: '_types/_relations.md',
+    relations: new Map([
+      ['influenced_by', {
+        inverse: 'influenced',
+        range: 'Philosopher',
+        valueType: 'wikilink',
+      }],
+    ]),
+    typeKind: 'relation-definitions',
+    values: [],
+  });
+  index.types.set('Influenceable', {
+    abstract: false,
+    canHave: new Map(),
+    cannotHave: new Set(),
+    disjoint: [],
+    extends: [],
+    implements: [],
+    isInterface: true,
+    lockIntent: true,
+    mustHave: new Map(),
+    name: 'Influenceable',
+    path: '_types/Influenceable.md',
+    relations: new Map([
+      ['influenced_by', { uses: 'influenced_by' }],
+    ]),
+    values: [],
+  });
+  index.relationDefinitions.set('influenced_by', {
+    inverse: 'influenced',
+    range: 'Philosopher',
+    valueType: 'wikilink',
+  });
+  index.types.set('Philosopher', {
+    ...makeType(),
+    implements: ['Influenceable'],
+  });
+  index.issues[0] = {
+    autoUpdate: false,
+    autofixable: true,
+    file: 'Spinoza.md',
+    message: 'Missing inverse relation influenced on Leibniz.',
+    property: 'influenced_by',
+    severity: 'warning',
+    target: 'Leibniz',
+  };
+  index.entities.get('Spinoza.md')!.frontmatter = {
+    influenced_by: ['[[Leibniz]]'],
+    instance_of: '[[Philosopher]]',
+  };
+  return index;
 }
 
 function makeIndex(): OntologyIndex {
@@ -78,6 +146,7 @@ function makeIndex(): OntologyIndex {
         target: target.name,
       },
     ],
+    relationDefinitions: new Map(),
     settings: {
       filesToIgnore: [],
       foldersToIgnore: [],
@@ -111,5 +180,15 @@ describe('ontology frontmatter mutations', () => {
     const index = makeIndex();
     index.issues[0]!.autoUpdate = false;
     expect(planMissingInverses(index, { onlyAutoUpdate: true })).toEqual([]);
+  });
+
+  it('plans fixes for relations inherited from implemented interfaces', () => {
+    expect(planMissingInverses(makeInterfaceRelationIndex())).toEqual([
+      expect.objectContaining({
+        inverseProperty: 'influenced',
+        sourceProperty: 'influenced_by',
+        value: '[[Spinoza]]',
+      }),
+    ]);
   });
 });

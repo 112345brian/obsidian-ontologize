@@ -19,6 +19,8 @@ export interface RelationDefinition {
   range?: string | undefined;
   symmetric?: boolean;
   transitive?: boolean;
+  uses?: string | undefined;
+  valueType?: string | undefined;
 }
 
 export interface OntologyType {
@@ -27,6 +29,8 @@ export interface OntologyType {
   cannotHave: Set<string>;
   disjoint: string[];
   extends: string[];
+  implements: string[];
+  isInterface: boolean;
   lockIntent: boolean;
   mustHave: Map<string, PropertyDefinition>;
   name: string;
@@ -72,6 +76,7 @@ export interface OntologyIndex {
   entities: Map<string, OntologyEntity>;
   entitiesByName: Map<string, OntologyEntity>;
   issues: OntologyIssue[];
+  relationDefinitions: Map<string, RelationDefinition>;
   generatedAt: string;
   settings: {
     filesToIgnore: string[];

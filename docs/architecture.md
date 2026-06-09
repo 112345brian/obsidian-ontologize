@@ -34,11 +34,13 @@ The product contract remains [`spec.md`](spec.md); this document explains how th
 4. Files under the configured type folder, `_types` by default, are parsed as ontology types.
 5. Other Markdown files with `instance_of` or `type` frontmatter are parsed as ontology entities.
 6. The indexer computes ancestor sets for each type.
-7. The indexer computes effective lock states for types and entities.
-8. Validation issues are collected into `OntologyIndex.issues`.
-9. If automatic inverse updates are enabled, missing inverse entries are repaired only for relations declaring `auto-update: true`.
-10. The cache writer saves the derived index to `.obsidian/ontology-cache.json` by default.
-11. Query blocks and commands use the in-memory index, rebuilding only if the index is missing or the user runs the rebuild command.
+7. The indexer collects global relation definitions from relation-registry type files.
+8. The indexer resolves type composition from `extends` and `implements`.
+9. The indexer computes effective lock states for types and entities.
+10. Validation issues are collected into `OntologyIndex.issues`.
+11. If automatic inverse updates are enabled, missing inverse entries are repaired only for relations declaring `auto-update: true`.
+12. The cache writer saves the derived index to `.obsidian/ontology-cache.json` by default.
+13. Query blocks and commands use the in-memory index, rebuilding only if the index is missing or the user runs the rebuild command.
 
 After the cold build, file events update the hot graph incrementally.
 Cache writes are debounced; in-memory graph updates are not.
@@ -114,6 +116,8 @@ lock: true
 Implemented fields:
 
 - `extends`
+- `implements`
+- `interface`
 - `abstract`
 - `disjoint`
 - `must-have`
@@ -123,6 +127,56 @@ Implemented fields:
 - `lock`
 - `type`
 - `values`
+
+## Composition And Global Relations
+
+The backend now treats interfaces as first-class schema nodes.
+Inheritance still models identity, but reusable capabilities should be represented with `interface: true` and consumed through `implements`.
+
+Example:
+
+```yaml
+# _types/Influenceable.md
+interface: true
+relations:
+  - influenced_by
+```
+
+```yaml
+# _types/Philosopher.md
+extends:
+  - [[Person]]
+implements:
+  - [[Influenceable]]
+```
+
+Validation flattens both inherited types and implemented interfaces.
+Interfaces can contribute `must-have`, `can-have`, `cannot-have`, and `relations` contracts.
+Entities cannot directly instantiate interface types.
+
+Reusable relation definitions are declared in type files with `type: relation-definitions`, `type: relation-registry`, or `type: relations`.
+Those files are parsed into `OntologyIndex.relationDefinitions`.
+Interface and class relation declarations can reference them with shorthand list syntax or with `uses`.
+
+```yaml
+# _types/_relations.md
+type: relation-definitions
+relations:
+  influenced_by:
+    value-type: wikilink
+    range: [[Person]]
+    inverse: influenced
+    auto-update: true
+```
+
+```yaml
+relations:
+  - influenced_by
+```
+
+The resolver merges the global relation definition with local overrides.
+Local declarations win, so an interface can narrow `range` or cardinality without redefining inverse behavior everywhere.
+The query engine uses the same composition chain, so `type: Influenceable` matches entities whose direct type implements that interface.
 
 ## Entity Parsing
 

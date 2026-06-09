@@ -51,6 +51,34 @@ Saved queries, migrations, and the full query language are depth features built 
 
 Types are Markdown files in `_types/`. They define inheritance, properties, relations, and constraints.
 
+### Composition And Interfaces
+
+Inheritance is for identity hierarchies.
+Composition is for reusable capabilities.
+
+Interfaces are type files that define reusable property and relation contracts but cannot be directly instantiated:
+
+```markdown
+# Influenceable
+interface: true
+relations:
+  - influenced_by
+```
+
+Concrete types opt into those contracts:
+
+```markdown
+# Philosopher
+extends:
+  - [[Person]]
+implements:
+  - [[Influenceable]]
+```
+
+An instance of `Philosopher` is treated as a `Person` through inheritance and as `Influenceable` through composition.
+Queries such as `type: Influenceable` include philosophers that implement that interface.
+Validation flattens both `extends` and `implements`.
+
 ### Inheritance
 
 ```markdown
@@ -201,6 +229,46 @@ Global nominals are themselves entities in the system and can have properties an
 ## Relations
 
 Relations are defined in type files with domain, range, cardinality, and behavior.
+Reusable relation definitions can also be declared globally and then implemented by interfaces or concrete types.
+
+### Global Relation Definitions
+
+Global relation definitions live in a type file marked as a relation registry:
+
+```markdown
+# _types/_relations.md
+type: relation-definitions
+relations:
+  influenced_by:
+    value-type: wikilink
+    range: [[Person]]
+    inverse: influenced
+    auto-update: true
+
+  influenced:
+    value-type: wikilink
+    range: [[Person]]
+    inverse: influenced_by
+    auto-update: true
+```
+
+Interfaces or types can reference those global definitions by name:
+
+```markdown
+# Influenceable
+interface: true
+relations:
+  - influenced_by
+```
+
+The explicit form can override part of the global definition:
+
+```markdown
+relations:
+  influenced_by:
+    uses: influenced_by
+    range: [[Philosopher]]
+```
 
 ```markdown
 # Philosopher

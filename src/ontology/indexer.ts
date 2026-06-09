@@ -79,6 +79,7 @@ function createEmptyOntologyIndex(settings: BuildIndexSettings): OntologyIndex {
     entitiesByName: new Map<string, OntologyEntity>(),
     generatedAt: new Date().toISOString(),
     issues: [],
+    relationDefinitions: new Map<string, RelationDefinition>(),
     settings: {
       filesToIgnore: settings.filesToIgnore ?? [],
       foldersToIgnore: settings.foldersToIgnore ?? [],
@@ -89,13 +90,65 @@ function createEmptyOntologyIndex(settings: BuildIndexSettings): OntologyIndex {
   };
 }
 
+function isRelationDefinitionRegistry(type: OntologyType): boolean {
+  return ['relation-definitions', 'relation-registry', 'relations'].includes(type.typeKind ?? '');
+}
+
+function typeCompositionChain(
+  typeName: string,
+  index: Pick<OntologyIndex, 'ancestorsByType' | 'issues' | 'types'>,
+  seen = new Set<string>()
+): Set<string> {
+  const names = new Set<string>();
+  const addTypeAndInterfaces = (name: string): void => {
+    if (seen.has(name)) {
+      return;
+    }
+    seen.add(name);
+    names.add(name);
+    const type = index.types.get(name);
+    if (!type) {
+      return;
+    }
+    for (const interfaceName of type.implements) {
+      const interfaceType = index.types.get(interfaceName);
+      if (!interfaceType) {
+        index.issues.push({
+          file: type.path,
+          message: `Unknown interface ${interfaceName}`,
+          severity: 'error',
+        });
+        continue;
+      }
+      if (!interfaceType.isInterface) {
+        index.issues.push({
+          file: type.path,
+          message: `${interfaceName} is implemented but is not marked interface: true`,
+          severity: 'warning',
+        });
+      }
+      addTypeAndInterfaces(interfaceName);
+    }
+  };
+
+  for (const ancestor of index.ancestorsByType.get(typeName) ?? []) {
+    addTypeAndInterfaces(ancestor);
+  }
+  addTypeAndInterfaces(typeName);
+  return names;
+}
+
 function collectInheritedMap<T>(
   typeName: string,
   index: Pick<OntologyIndex, 'ancestorsByType' | 'types'>,
   selector: (type: OntologyType) => Map<string, T>
 ): Map<string, T> {
   const result = new Map<string, T>();
-  const names = [...(index.ancestorsByType.get(typeName) ?? new Set<string>()), typeName];
+  const names = typeCompositionChain(typeName, {
+    ancestorsByType: index.ancestorsByType,
+    issues: [],
+    types: index.types,
+  });
   for (const name of names) {
     const type = index.types.get(name);
     if (!type) {
@@ -103,6 +156,48 @@ function collectInheritedMap<T>(
     }
     for (const [key, value] of selector(type)) {
       result.set(key, value);
+    }
+  }
+  return result;
+}
+
+function collectGlobalRelationDefinitions(types: Map<string, OntologyType>): Map<string, RelationDefinition> {
+  const definitions = new Map<string, RelationDefinition>();
+  for (const type of types.values()) {
+    if (!isRelationDefinitionRegistry(type)) {
+      continue;
+    }
+    for (const [property, definition] of type.relations) {
+      definitions.set(property, {
+        ...definition,
+        uses: definition.uses === property ? undefined : definition.uses,
+      });
+    }
+  }
+  return definitions;
+}
+
+function resolveRelationDefinition(index: OntologyIndex, property: string, definition: RelationDefinition): RelationDefinition {
+  const referenced = definition.uses ? index.relationDefinitions.get(definition.uses) : index.relationDefinitions.get(property);
+  if (!referenced) {
+    return definition;
+  }
+  return {
+    ...referenced,
+    ...definition,
+    uses: definition.uses,
+  };
+}
+
+function collectRelations(typeName: string, index: OntologyIndex): Map<string, RelationDefinition> {
+  const result = new Map<string, RelationDefinition>();
+  for (const name of typeCompositionChain(typeName, index)) {
+    const type = index.types.get(name);
+    if (!type || isRelationDefinitionRegistry(type)) {
+      continue;
+    }
+    for (const [property, definition] of type.relations) {
+      result.set(property, resolveRelationDefinition(index, property, definition));
     }
   }
   return result;
@@ -166,15 +261,19 @@ function computeTypeLock(name: string, types: Map<string, OntologyType>, ancesto
       return { state: 'incomplete', reason: `ancestor ${ancestor} is not locked` };
     }
   }
+  for (const interfaceName of type.implements) {
+    if (!types.get(interfaceName)?.lockIntent) {
+      return { state: 'incomplete', reason: `interface ${interfaceName} is not locked` };
+    }
+  }
   return { state: 'locked' };
 }
 
-function entityTypeChain(entity: OntologyEntity, ancestorsByType: Map<string, Set<string>>): Set<string> {
+function entityCompositionChain(entity: OntologyEntity, index: OntologyIndex): Set<string> {
   const chain = new Set<string>();
   for (const typeName of entity.instanceOf) {
-    chain.add(typeName);
-    for (const ancestor of ancestorsByType.get(typeName) ?? []) {
-      chain.add(ancestor);
+    for (const name of typeCompositionChain(typeName, index)) {
+      chain.add(name);
     }
   }
   return chain;
@@ -234,6 +333,44 @@ function valuesForValidation(value: unknown): string[] {
   return [];
 }
 
+function validateValueType(file: string, property: string, expectedType: string | undefined, value: unknown, issues: OntologyIssue[]): void {
+  if (!expectedType || value === undefined || value === null || value === '') {
+    return;
+  }
+
+  const normalizedType = normalizeLinkTarget(expectedType).toLowerCase();
+  const values = Array.isArray(value) ? value : [value];
+  for (const item of values) {
+    const valid = (() => {
+      switch (normalizedType) {
+        case 'boolean':
+          return typeof item === 'boolean';
+        case 'date':
+          return typeof item === 'string' && !Number.isNaN(Date.parse(item));
+        case 'link':
+        case 'wikilink':
+          return extractAssertedLinkTargets(item).length > 0;
+        case 'number':
+          return typeof item === 'number';
+        case 'string':
+        case 'text':
+          return typeof item === 'string';
+        default:
+          return true;
+      }
+    })();
+
+    if (!valid) {
+      issues.push({
+        file,
+        message: `${property} must be ${expectedType}`,
+        property,
+        severity: 'error',
+      });
+    }
+  }
+}
+
 function nominalValues(index: OntologyIndex, definition: PropertyDefinition): string[] {
   if (definition.values && definition.values.length > 0) {
     return definition.values;
@@ -253,6 +390,7 @@ function validatePropertyDefinition(
 ): void {
   const value = entity.frontmatter[property];
   validateCardinality(entity.path, property, definition, value, index.issues);
+  validateValueType(entity.path, property, definition.type, value, index.issues);
 
   const allowedValues = nominalValues(index, definition);
   if (allowedValues.length === 0) {
@@ -274,7 +412,7 @@ function validatePropertyDefinition(
 
 export function validateIndex(index: OntologyIndex): void {
   for (const entity of index.entities.values()) {
-    const chain = entityTypeChain(entity, index.ancestorsByType);
+    const chain = entityCompositionChain(entity, index);
 
     for (const typeName of entity.instanceOf) {
       const type = index.types.get(typeName);
@@ -284,6 +422,9 @@ export function validateIndex(index: OntologyIndex): void {
       }
       if (type.abstract) {
         index.issues.push({ file: entity.path, message: `Cannot instantiate abstract type ${typeName}`, severity: 'error' });
+      }
+      if (type.isInterface) {
+        index.issues.push({ file: entity.path, message: `Cannot instantiate interface ${typeName}`, severity: 'error' });
       }
     }
 
@@ -324,7 +465,7 @@ export function validateIndex(index: OntologyIndex): void {
       }
 
       const cannotHave = new Set<string>();
-      for (const ancestor of [...(index.ancestorsByType.get(typeName) ?? []), typeName]) {
+      for (const ancestor of typeCompositionChain(typeName, index)) {
         const type = index.types.get(ancestor);
         for (const property of type?.cannotHave ?? []) {
           cannotHave.add(property);
@@ -336,7 +477,7 @@ export function validateIndex(index: OntologyIndex): void {
         }
       }
 
-      for (const [property, relation] of collectInheritedMap(typeName, index, (type) => type.relations)) {
+      for (const [property, relation] of collectRelations(typeName, index)) {
         validateRelation(index, entity, property, relation);
       }
     }
@@ -350,6 +491,7 @@ function validateRelation(index: OntologyIndex, entity: OntologyEntity, property
   }
 
   validateCardinality(entity.path, property, relation, value, index.issues);
+  validateValueType(entity.path, property, relation.valueType, value, index.issues);
 
   const assertedTargets = new Set(extractAssertedLinkTargets(value));
   const negatedTargets = new Set(extractNegatedLinkTargets(value));
@@ -376,7 +518,7 @@ function validateRelation(index: OntologyIndex, entity: OntologyEntity, property
     }
 
     if (relation.range) {
-      const targetChain = entityTypeChain(target, index.ancestorsByType);
+      const targetChain = entityCompositionChain(target, index);
       if (!targetChain.has(relation.range)) {
         index.issues.push({
           file: entity.path,
@@ -423,6 +565,7 @@ export function recomputeOntologyDerivedState(index: OntologyIndex): OntologyInd
   index.issues = [];
   rebuildEntityNameIndex(index);
   index.ancestorsByType = computeAncestors(index.types, index.issues);
+  index.relationDefinitions = collectGlobalRelationDefinitions(index.types);
 
   index.effectiveTypeLocks = new Map<string, EffectiveLockState>();
   for (const name of index.types.keys()) {

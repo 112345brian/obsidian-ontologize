@@ -50,6 +50,12 @@ function parseCannotHave(value: unknown): Set<string> {
 }
 
 function parseRelationDefinition(value: unknown): RelationDefinition {
+  if (value === true || value === null) {
+    return {};
+  }
+  if (typeof value === 'string') {
+    return { uses: normalizeLinkTarget(value) };
+  }
   const record = asRecord(value);
   return {
     autoUpdate: record['auto-update'] === true,
@@ -58,10 +64,24 @@ function parseRelationDefinition(value: unknown): RelationDefinition {
     range: typeof record['range'] === 'string' ? normalizeLinkTarget(record['range']) : undefined,
     symmetric: record['symmetric'] === true,
     transitive: record['transitive'] === true,
+    uses: typeof record['uses'] === 'string' ? normalizeLinkTarget(record['uses']) : undefined,
+    valueType: typeof record['value-type'] === 'string'
+      ? normalizeLinkTarget(record['value-type'])
+      : typeof record['type'] === 'string'
+        ? normalizeLinkTarget(record['type'])
+        : typeof record['value'] === 'string'
+          ? normalizeLinkTarget(record['value'])
+          : undefined,
   };
 }
 
 function parseRelations(value: unknown): Map<string, RelationDefinition> {
+  if (Array.isArray(value)) {
+    return new Map(value.map((item) => {
+      const key = normalizeLinkTarget(String(item));
+      return [key, { uses: key }];
+    }));
+  }
   return new Map(Object.entries(asRecord(value)).map(([key, definition]) => [key, parseRelationDefinition(definition)]));
 }
 
@@ -74,6 +94,8 @@ export function parseOntologyType(path: string, markdown: string): OntologyType 
     cannotHave: parseCannotHave(yaml['cannot-have']),
     disjoint: extractLinkTargets(yaml['disjoint']),
     extends: extractLinkTargets(yaml['extends']),
+    implements: extractLinkTargets(yaml['implements']),
+    isInterface: yaml['interface'] === true || yaml['type'] === 'interface',
     lockIntent: yaml['lock'] === true,
     mustHave: parsePropertyMap(yaml['must-have']),
     name,

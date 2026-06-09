@@ -39,10 +39,22 @@ const TRUE_NODE: TrueNode = { type: 'true' };
 
 function entityTypeChain(index: OntologyIndex, entity: OntologyEntity): Set<string> {
   const chain = new Set<string>();
-  for (const typeName of entity.instanceOf) {
+  const addTypeAndInterfaces = (typeName: string, seen = new Set<string>()): void => {
+    if (seen.has(typeName)) {
+      return;
+    }
+    seen.add(typeName);
     chain.add(typeName);
+    const type = index.types.get(typeName);
+    for (const interfaceName of type?.implements ?? []) {
+      addTypeAndInterfaces(interfaceName, seen);
+    }
+  };
+
+  for (const typeName of entity.instanceOf) {
+    addTypeAndInterfaces(typeName);
     for (const ancestor of index.ancestorsByType.get(typeName) ?? []) {
-      chain.add(ancestor);
+      addTypeAndInterfaces(ancestor);
     }
   }
   return chain;

@@ -1,8 +1,26 @@
 import { describe, expect, it } from 'vitest';
 
-import type { OntologyIndex } from './types.ts';
+import type { OntologyIndex, OntologyType } from './types.ts';
 
 import { runOntologyQuery } from './query.ts';
+
+function makeType(name: string, implementsTypes: string[] = []): OntologyType {
+  return {
+    abstract: false,
+    canHave: new Map(),
+    cannotHave: new Set(),
+    disjoint: [],
+    extends: [],
+    implements: implementsTypes,
+    isInterface: false,
+    lockIntent: true,
+    mustHave: new Map(),
+    name,
+    path: `_types/${name}.md`,
+    relations: new Map(),
+    values: [],
+  };
+}
 
 function makeIndex(): OntologyIndex {
   return {
@@ -55,13 +73,22 @@ function makeIndex(): OntologyIndex {
     entitiesByName: new Map(),
     generatedAt: '2026-06-09T00:00:00.000Z',
     issues: [],
+    relationDefinitions: new Map(),
     settings: {
       filesToIgnore: [],
       foldersToIgnore: [],
       frontmatterIgnoreRules: [],
       typeFolder: '_types',
     },
-    types: new Map(),
+    types: new Map([
+      ['Person', makeType('Person')],
+      ['Philosopher', makeType('Philosopher')],
+      ['Rationalist', makeType('Rationalist', ['Influenceable'])],
+      ['Influenceable', {
+        ...makeType('Influenceable'),
+        isInterface: true,
+      }],
+    ]),
   };
 }
 
@@ -77,6 +104,11 @@ describe('runOntologyQuery', () => {
 
     const widenedResults = runOntologyQuery(makeIndex(), 'type: Philosopher AND include: incomplete');
     expect(widenedResults.map((entity) => entity.name)).toEqual(['Draft', 'Spinoza']);
+  });
+
+  it('matches implemented interfaces in type predicates', () => {
+    const results = runOntologyQuery(makeIndex(), 'type: Influenceable');
+    expect(results.map((entity) => entity.name)).toEqual(['Spinoza']);
   });
 
   it('supports OR groups and explicit negated relation facts', () => {

@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 
-import type { OntologyIndex, OntologyType } from './types.ts';
+import type { OntologyIndex, OntologyType, RelationDefinition } from './types.ts';
 
 vi.mock('obsidian', () => ({
   parseYaml: () => ({}),
@@ -8,18 +8,32 @@ vi.mock('obsidian', () => ({
 
 import { isIgnoredByFrontmatter, recomputeOntologyDerivedState, removeOntologyFile } from './indexer.ts';
 
-function makeType(name: string, path: string, lockIntent: boolean, extendsTypes: string[] = []): OntologyType {
+function makeType(
+  name: string,
+  path: string,
+  lockIntent: boolean,
+  extendsTypes: string[] = [],
+  options: {
+    implementsTypes?: string[];
+    isInterface?: boolean;
+    relations?: Map<string, RelationDefinition>;
+    typeKind?: string;
+  } = {}
+): OntologyType {
   return {
     abstract: false,
     canHave: new Map(),
     cannotHave: new Set(),
     disjoint: [],
     extends: extendsTypes,
+    implements: options.implementsTypes ?? [],
+    isInterface: options.isInterface === true,
     lockIntent,
     mustHave: new Map(),
     name,
     path,
-    relations: new Map(),
+    relations: options.relations ?? new Map<string, RelationDefinition>(),
+    typeKind: options.typeKind,
     values: [],
   };
 }
@@ -45,6 +59,7 @@ function makeIndex(): OntologyIndex {
     entitiesByName: new Map(),
     generatedAt: '2026-06-09T00:00:00.000Z',
     issues: [],
+    relationDefinitions: new Map(),
     settings: {
       filesToIgnore: [],
       foldersToIgnore: [],
@@ -118,5 +133,78 @@ describe('incremental ontology index state', () => {
       { up: '[[Philosopher]]' },
       { frontmatterIgnoreRules: [{ key: 'up', value: 'Philosopher' }], typeFolder: '_types' }
     )).toBe(true);
+  });
+
+  it('validates relation contracts composed through implemented interfaces', () => {
+    const index = makeIndex();
+    index.types.set('_relations', makeType('_relations', '_types/_relations.md', false, [], {
+      relations: new Map([
+        ['influenced_by', {
+          inverse: 'influenced',
+          range: 'Person',
+          valueType: 'wikilink',
+        }],
+        ['influenced', {
+          inverse: 'influenced_by',
+          range: 'Person',
+          valueType: 'wikilink',
+        }],
+      ]),
+      typeKind: 'relation-definitions',
+    }));
+    index.types.set('Influenceable', makeType('Influenceable', '_types/Influenceable.md', true, [], {
+      isInterface: true,
+      relations: new Map([
+        ['influenced_by', { uses: 'influenced_by' }],
+      ]),
+    }));
+    index.types.set('Philosopher', makeType('Philosopher', '_types/Philosopher.md', true, ['Person'], {
+      implementsTypes: ['Influenceable'],
+    }));
+    index.entities.set('Spinoza.md', {
+      frontmatter: {
+        influenced_by: '[[Ada]]',
+        instance_of: '[[Philosopher]]',
+        lock: true,
+      },
+      instanceOf: ['Philosopher'],
+      lockIntent: true,
+      name: 'Spinoza',
+      path: 'Spinoza.md',
+    });
+
+    recomputeOntologyDerivedState(index);
+
+    expect(index.relationDefinitions.get('influenced_by')?.inverse).toBe('influenced');
+    expect(index.issues).toContainEqual(expect.objectContaining({
+      autofixable: true,
+      file: 'Spinoza.md',
+      property: 'influenced_by',
+      target: 'Ada',
+    }));
+  });
+
+  it('rejects direct instantiation of interfaces', () => {
+    const index = makeIndex();
+    index.types.set('Influenceable', makeType('Influenceable', '_types/Influenceable.md', true, [], {
+      isInterface: true,
+    }));
+    index.entities.set('Trait.md', {
+      frontmatter: {
+        instance_of: '[[Influenceable]]',
+      },
+      instanceOf: ['Influenceable'],
+      lockIntent: false,
+      name: 'Trait',
+      path: 'Trait.md',
+    });
+
+    recomputeOntologyDerivedState(index);
+
+    expect(index.issues).toContainEqual(expect.objectContaining({
+      file: 'Trait.md',
+      message: 'Cannot instantiate interface Influenceable',
+      severity: 'error',
+    }));
   });
 });
