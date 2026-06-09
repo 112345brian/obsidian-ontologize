@@ -1,4 +1,4 @@
-# person
+---
 lock: true
 must-have:
   full_name: string
@@ -9,3 +9,4 @@ can-have:
 relations:
   - observed
   - has_companion
+---

@@ -1,4 +1,4 @@
-# conservation-status
+---
 type: nominal
 values:
   - domesticated
@@ -6,3 +6,4 @@ values:
   - vulnerable
   - endangered
   - extinct
+---

@@ -1,4 +1,4 @@
-# dog
+---
 extends:
   - [[mammal]]
 implements:
@@ -10,3 +10,4 @@ must-have:
   breed: string
 can-have:
   trained: boolean
+---

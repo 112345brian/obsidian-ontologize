@@ -1,4 +1,4 @@
-# mammal
+---
 extends:
   - [[animal]]
 lock: true
@@ -8,3 +8,4 @@ must-have:
     cardinality: one
 can-have:
   fur: boolean
+---

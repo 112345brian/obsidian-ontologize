@@ -1,4 +1,4 @@
-# cat
+---
 extends:
   - [[mammal]]
 implements:
@@ -8,3 +8,4 @@ disjoint:
   - [[dog]]
 can-have:
   indoor: boolean
+---

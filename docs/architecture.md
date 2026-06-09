@@ -116,7 +116,6 @@ The parser accepts either YAML frontmatter or the spec's heading-plus-YAML body 
 This is an either/or contract per file: if frontmatter exists, it is the schema definition and body YAML is ignored; otherwise the body is parsed after an optional `# Heading`.
 
 ```markdown
-# Philosopher
 extends:
   - [[Person]]
 lock: true

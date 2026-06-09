@@ -1,4 +1,4 @@
-# animal
+---
 lock: true
 implements:
   - [[observable]]
@@ -10,3 +10,4 @@ can-have:
     type: number
     cardinality: one
   conservation_status: [[conservation-status]]
+---

@@ -55,7 +55,7 @@ Use one style per file; frontmatter wins if both are present.
 Example:
 
 ```markdown
-# Philosopher
+---
 extends:
   - [[Person]]
 implements:
@@ -70,6 +70,7 @@ relations:
     range: [[Person]]
     inverse: influenced_by
     auto-update: true
+---
 ```
 
 Or declare everything in one schema file (`_types/ontology.schema.yaml`):

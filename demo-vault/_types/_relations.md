@@ -1,4 +1,4 @@
-# _relations
+---
 type: relation-definitions
 relations:
   observed_by:
@@ -19,3 +19,4 @@ relations:
     value-type: wikilink
     range: [[animal]]
     inverse: companion_of
+---

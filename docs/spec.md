@@ -72,14 +72,11 @@ implements:
   - [[Influenceable]]
 lock: true
 ---
-
-# Philosopher
 ```
 
 Body style:
 
 ```markdown
-# Philosopher
 extends:
   - [[Person]]
 implements:
