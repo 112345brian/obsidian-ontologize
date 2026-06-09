@@ -60,3 +60,4 @@ Build artifacts are emitted as `main.js`, `manifest.json`, and `styles.css`.
 ## Spec
 
 The product/system specification lives at [`docs/spec.md`](docs/spec.md).
+Architecture notes for the current V1 implementation live at [`docs/architecture.md`](docs/architecture.md).
