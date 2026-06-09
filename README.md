@@ -11,6 +11,7 @@ The project was scaffolded from the fork of [`mnaoumov/generator-obsidian-plugin
 - Supports `extends`, `abstract`, `disjoint`, `must-have`, `can-have`, `cannot-have`, `relations`, `lock`, and nominal `values`
 - Resolves inherited type chains for entities with `instance_of` or `type` frontmatter
 - Computes effective lock state from entity/type lock intent and ancestor locks
+- Keeps a hot in-memory ontology graph updated from Obsidian file and metadata events
 - Renders inheritance-aware queries in `ontology-query` code blocks
 - Writes `.obsidian/ontology-cache.json` after index rebuilds
 - Hydrates the in-memory graph from cache before the first rebuild when possible

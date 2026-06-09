@@ -1,25 +1,30 @@
-import type { MarkdownPostProcessorContext, TFile } from 'obsidian';
+import type { MarkdownPostProcessorContext, TAbstractFile } from 'obsidian';
 
-import { MarkdownRenderer, Notice, Plugin as ObsidianPlugin } from 'obsidian';
+import { MarkdownRenderer, Notice, Plugin as ObsidianPlugin, TFile } from 'obsidian';
 
 import type { OntologyIndex } from './ontology/types.ts';
 import type { PluginSettings } from './PluginSettings.ts';
 
 import { readOntologyCache, writeOntologyCache } from './ontology/cache.ts';
-import { buildOntologyIndex } from './ontology/indexer.ts';
+import {
+  buildOntologyIndex,
+  isOntologyTypeFile,
+  removeOntologyFile,
+  upsertOntologyFile
+} from './ontology/indexer.ts';
 import { fixMissingInverses, scaffoldEntity } from './ontology/mutations.ts';
 import { runOntologyQuery } from './ontology/query.ts';
 import { PluginSettings as PluginSettingsClass } from './PluginSettings.ts';
 import { PluginSettingsTab } from './PluginSettingsTab.ts';
 
-const REBUILD_DEBOUNCE_MS = 800;
+const CACHE_WRITE_DEBOUNCE_MS = 800;
 
 export class Plugin extends ObsidianPlugin {
   public index: null | OntologyIndex = null;
   public pluginSettings: PluginSettings = new PluginSettingsClass();
 
+  private cacheWriteTimer: null | number = null;
   private isAutoFixingInverses = false;
-  private rebuildTimer: null | number = null;
 
   public override async onload(): Promise<void> {
     this.pluginSettings = Object.assign(new PluginSettingsClass(), await this.loadData());
@@ -60,17 +65,19 @@ export class Plugin extends ObsidianPlugin {
       name: 'Fix missing inverse relations',
     });
 
-    this.registerEvent(this.app.vault.on('create', () => { this.scheduleRebuild(); }));
-    this.registerEvent(this.app.vault.on('modify', () => { this.scheduleRebuild(); }));
-    this.registerEvent(this.app.vault.on('delete', () => { this.scheduleRebuild(); }));
+    this.registerEvent(this.app.metadataCache.on('changed', (file) => { void this.handleMetadataChanged(file); }));
+    this.registerEvent(this.app.vault.on('create', (file) => { void this.handleVaultCreate(file); }));
+    this.registerEvent(this.app.vault.on('delete', (file) => { this.handleVaultDelete(file); }));
+    this.registerEvent(this.app.vault.on('modify', (file) => { void this.handleVaultModify(file); }));
+    this.registerEvent(this.app.vault.on('rename', (file, oldPath) => { void this.handleVaultRename(file, oldPath); }));
     this.addSettingTab(new PluginSettingsTab(this.app, this));
 
     this.app.workspace.onLayoutReady(() => { void this.rebuildIndex(false); });
   }
 
   public override onunload(): void {
-    if (this.rebuildTimer !== null) {
-      window.clearTimeout(this.rebuildTimer);
+    if (this.cacheWriteTimer !== null) {
+      window.clearTimeout(this.cacheWriteTimer);
     }
   }
 
@@ -107,6 +114,25 @@ export class Plugin extends ObsidianPlugin {
     }
   }
 
+  private async applyAutoInverseUpdates(): Promise<number> {
+    if (!this.index || !this.pluginSettings.autoUpdateInverses || this.isAutoFixingInverses) {
+      return 0;
+    }
+
+    this.isAutoFixingInverses = true;
+    try {
+      const fixed = await fixMissingInverses(this.app, this.index, { onlyAutoUpdate: true });
+      if (fixed > 0) {
+        this.index = await buildOntologyIndex(this.app, {
+          typeFolder: this.pluginSettings.typeFolder,
+        });
+      }
+      return fixed;
+    } finally {
+      this.isAutoFixingInverses = false;
+    }
+  }
+
   private async ensureIndex(): Promise<OntologyIndex> {
     if (!this.index) {
       await this.rebuildIndex(false);
@@ -114,14 +140,65 @@ export class Plugin extends ObsidianPlugin {
     return this.index!;
   }
 
-  private scheduleRebuild(): void {
-    if (this.rebuildTimer !== null) {
-      window.clearTimeout(this.rebuildTimer);
+  private async handleMetadataChanged(file: TFile): Promise<void> {
+    if (isOntologyTypeFile(file, this.pluginSettings.typeFolder)) {
+      return;
     }
-    this.rebuildTimer = window.setTimeout(() => {
-      this.rebuildTimer = null;
-      void this.rebuildIndex(false);
-    }, REBUILD_DEBOUNCE_MS);
+    await this.upsertFile(file);
+  }
+
+  private async handleVaultCreate(file: TAbstractFile): Promise<void> {
+    if (file instanceof TFile && isOntologyTypeFile(file, this.pluginSettings.typeFolder)) {
+      await this.upsertFile(file);
+    }
+  }
+
+  private handleVaultDelete(file: TAbstractFile): void {
+    if (!this.index || !('path' in file)) {
+      return;
+    }
+    this.index = removeOntologyFile(this.index, file.path);
+    this.scheduleCacheWrite();
+  }
+
+  private async handleVaultModify(file: TAbstractFile): Promise<void> {
+    if (file instanceof TFile && isOntologyTypeFile(file, this.pluginSettings.typeFolder)) {
+      await this.upsertFile(file);
+    }
+  }
+
+  private async handleVaultRename(file: TAbstractFile, oldPath: string): Promise<void> {
+    const index = await this.ensureIndex();
+    this.index = removeOntologyFile(index, oldPath);
+    if (file instanceof TFile) {
+      await this.upsertFile(file);
+      return;
+    }
+    this.scheduleCacheWrite();
+  }
+
+  private scheduleCacheWrite(): void {
+    if (!this.index) {
+      return;
+    }
+    if (this.cacheWriteTimer !== null) {
+      window.clearTimeout(this.cacheWriteTimer);
+    }
+    this.cacheWriteTimer = window.setTimeout(() => {
+      this.cacheWriteTimer = null;
+      if (this.index) {
+        void writeOntologyCache(this.app, this.pluginSettings.cachePath, this.index);
+      }
+    }, CACHE_WRITE_DEBOUNCE_MS);
+  }
+
+  private async upsertFile(file: TFile): Promise<void> {
+    const index = await this.ensureIndex();
+    this.index = await upsertOntologyFile(this.app, index, file, {
+      typeFolder: this.pluginSettings.typeFolder,
+    });
+    await this.applyAutoInverseUpdates();
+    this.scheduleCacheWrite();
   }
 
   private async renderQueryBlock(source: string, el: HTMLElement, ctx: MarkdownPostProcessorContext): Promise<void> {

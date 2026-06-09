@@ -9,8 +9,23 @@ export interface BuildIndexSettings {
   typeFolder: string;
 }
 
-function isTypeFile(file: TFile, typeFolder: string): boolean {
+export function isOntologyTypeFile(file: TFile, typeFolder: string): boolean {
   return file.extension === 'md' && file.path.startsWith(`${typeFolder.replace(/\/$/, '')}/`);
+}
+
+function createEmptyOntologyIndex(settings: BuildIndexSettings): OntologyIndex {
+  return {
+    ancestorsByType: new Map<string, Set<string>>(),
+    cacheVersion: 1,
+    effectiveEntityLocks: new Map<string, EffectiveLockState>(),
+    effectiveTypeLocks: new Map<string, EffectiveLockState>(),
+    entities: new Map<string, OntologyEntity>(),
+    entitiesByName: new Map<string, OntologyEntity>(),
+    generatedAt: new Date().toISOString(),
+    issues: [],
+    settings: { typeFolder: settings.typeFolder },
+    types: new Map<string, OntologyType>(),
+  };
 }
 
 function collectInheritedMap<T>(
@@ -32,7 +47,7 @@ function collectInheritedMap<T>(
   return result;
 }
 
-function computeAncestors(types: Map<string, OntologyType>, issues: OntologyIssue[]): Map<string, Set<string>> {
+export function computeAncestors(types: Map<string, OntologyType>, issues: OntologyIssue[]): Map<string, Set<string>> {
   const ancestorsByType = new Map<string, Set<string>>();
   const visiting = new Set<string>();
 
@@ -196,7 +211,7 @@ function validatePropertyDefinition(
   }
 }
 
-function validateIndex(index: OntologyIndex): void {
+export function validateIndex(index: OntologyIndex): void {
   for (const entity of index.entities.values()) {
     const chain = entityTypeChain(entity, index.ancestorsByType);
 
@@ -327,52 +342,87 @@ function validateRelation(index: OntologyIndex, entity: OntologyEntity, property
   }
 }
 
+function matchesPathOrChild(candidatePath: string, path: string): boolean {
+  return candidatePath === path || candidatePath.startsWith(`${path}/`);
+}
+
+function deleteTypesByPath(index: OntologyIndex, path: string): void {
+  for (const [name, type] of index.types.entries()) {
+    if (matchesPathOrChild(type.path, path)) {
+      index.types.delete(name);
+    }
+  }
+}
+
+function rebuildEntityNameIndex(index: OntologyIndex): void {
+  index.entitiesByName = new Map([...index.entities.values()].map((entity) => [entity.name, entity]));
+}
+
+export function recomputeOntologyDerivedState(index: OntologyIndex): OntologyIndex {
+  index.issues = [];
+  rebuildEntityNameIndex(index);
+  index.ancestorsByType = computeAncestors(index.types, index.issues);
+
+  index.effectiveTypeLocks = new Map<string, EffectiveLockState>();
+  for (const name of index.types.keys()) {
+    index.effectiveTypeLocks.set(name, computeTypeLock(name, index.types, index.ancestorsByType));
+  }
+
+  index.effectiveEntityLocks = new Map<string, EffectiveLockState>();
+  for (const entity of index.entities.values()) {
+    index.effectiveEntityLocks.set(entity.path, computeEntityLock(entity, index.effectiveTypeLocks));
+  }
+
+  index.generatedAt = new Date().toISOString();
+  validateIndex(index);
+  return index;
+}
+
+export function removeOntologyFile(index: OntologyIndex, path: string): OntologyIndex {
+  for (const [entityPath] of index.entities.entries()) {
+    if (matchesPathOrChild(entityPath, path)) {
+      index.entities.delete(entityPath);
+    }
+  }
+  deleteTypesByPath(index, path);
+  return recomputeOntologyDerivedState(index);
+}
+
+export async function upsertOntologyFile(app: App, index: OntologyIndex, file: TFile, settings: BuildIndexSettings): Promise<OntologyIndex> {
+  removeOntologyFile(index, file.path);
+
+  if (isOntologyTypeFile(file, settings.typeFolder)) {
+    const type = parseOntologyType(file.path, await app.vault.read(file));
+    index.types.set(type.name, type);
+    return recomputeOntologyDerivedState(index);
+  }
+
+  const frontmatter = app.metadataCache.getFileCache(file)?.frontmatter;
+  const entity = parseOntologyEntity(file.path, frontmatter ?? {});
+  if (entity) {
+    index.entities.set(entity.path, entity);
+  }
+  return recomputeOntologyDerivedState(index);
+}
+
 export async function buildOntologyIndex(app: App, settings: BuildIndexSettings): Promise<OntologyIndex> {
-  const issues: OntologyIssue[] = [];
-  const types = new Map<string, OntologyType>();
-  const entities = new Map<string, OntologyEntity>();
-  const entitiesByName = new Map<string, OntologyEntity>();
+  const index = createEmptyOntologyIndex(settings);
 
   for (const file of app.vault.getMarkdownFiles()) {
-    if (isTypeFile(file, settings.typeFolder)) {
+    if (isOntologyTypeFile(file, settings.typeFolder)) {
       const type = parseOntologyType(file.path, await app.vault.read(file));
-      types.set(type.name, type);
+      index.types.set(type.name, type);
       continue;
     }
 
     const frontmatter = app.metadataCache.getFileCache(file)?.frontmatter;
     const entity = parseOntologyEntity(file.path, frontmatter ?? {});
     if (entity) {
-      entities.set(entity.path, entity);
-      entitiesByName.set(entity.name, entity);
+      index.entities.set(entity.path, entity);
     }
   }
 
-  const ancestorsByType = computeAncestors(types, issues);
-  const effectiveTypeLocks = new Map<string, EffectiveLockState>();
-  for (const name of types.keys()) {
-    effectiveTypeLocks.set(name, computeTypeLock(name, types, ancestorsByType));
-  }
-
-  const effectiveEntityLocks = new Map<string, EffectiveLockState>();
-  for (const entity of entities.values()) {
-    effectiveEntityLocks.set(entity.path, computeEntityLock(entity, effectiveTypeLocks));
-  }
-
-  const index: OntologyIndex = {
-    ancestorsByType,
-    cacheVersion: 1,
-    effectiveEntityLocks,
-    effectiveTypeLocks,
-    entities,
-    entitiesByName,
-    generatedAt: new Date().toISOString(),
-    issues,
-    settings: { typeFolder: settings.typeFolder },
-    types,
-  };
-  validateIndex(index);
-  return index;
+  return recomputeOntologyDerivedState(index);
 }
 
 export function getInheritedMustHave(index: OntologyIndex, entity: OntologyEntity): Map<string, PropertyDefinition> {

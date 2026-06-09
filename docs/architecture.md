@@ -8,6 +8,7 @@ The product contract remains [`spec.md`](spec.md); this document explains how th
 - Keep Markdown and YAML frontmatter as the source of truth.
 - Keep ontology logic independent from Obsidian UI surfaces where practical.
 - Treat indexing as a graph problem over vault files, not a tag expansion problem.
+- Keep the in-memory graph hot by applying file-level updates as Obsidian reports changes.
 - Keep automatic relation writes opt-in at both the plugin setting and relation definition levels.
 - Cache derived graph state for startup and debugging.
 
@@ -17,7 +18,7 @@ The product contract remains [`spec.md`](spec.md); this document explains how th
   It registers commands, settings, vault-change listeners, and the `ontology-query` code block processor.
 - `src/PluginSettings.ts` and `src/PluginSettingsTab.ts` define user-configurable plugin settings.
 - `src/ontology/parser.ts` reads type files and entity frontmatter into typed records.
-- `src/ontology/indexer.ts` builds the ontology graph, computes inherited type chains, computes effective lock states, and validates consistency.
+- `src/ontology/indexer.ts` builds and incrementally updates the ontology graph, computes inherited type chains, computes effective lock states, and validates consistency.
 - `src/ontology/query.ts` evaluates the V1 query subset against the built index.
 - `src/ontology/mutations.ts` performs frontmatter writes for scaffolding and missing inverse relation fixes.
 - `src/ontology/cache.ts` hydrates and serializes the derived index at the configured vault cache path.
@@ -27,8 +28,8 @@ The product contract remains [`spec.md`](spec.md); this document explains how th
 ## Data Flow
 
 1. On plugin load, `readOntologyCache()` attempts to hydrate the previous graph from the configured cache path.
-2. On layout ready, `Plugin.rebuildIndex()` calls `buildOntologyIndex()`.
-3. The indexer scans all Markdown files.
+2. On layout ready, `Plugin.rebuildIndex()` performs the cold full-vault build with `buildOntologyIndex()`.
+3. The indexer scans all Markdown files once.
 4. Files under the configured type folder, `_types` by default, are parsed as ontology types.
 5. Other Markdown files with `instance_of` or `type` frontmatter are parsed as ontology entities.
 6. The indexer computes ancestor sets for each type.
@@ -36,9 +37,33 @@ The product contract remains [`spec.md`](spec.md); this document explains how th
 8. Validation issues are collected into `OntologyIndex.issues`.
 9. If automatic inverse updates are enabled, missing inverse entries are repaired only for relations declaring `auto-update: true`.
 10. The cache writer saves the derived index to `.obsidian/ontology-cache.json` by default.
-11. Query blocks and commands use the in-memory index, rebuilding if needed.
+11. Query blocks and commands use the in-memory index, rebuilding only if the index is missing or the user runs the rebuild command.
 
-Vault create, modify, and delete events schedule a debounced rebuild.
+After the cold build, file events update the hot graph incrementally.
+Cache writes are debounced; in-memory graph updates are not.
+
+## Incremental Graph Backend
+
+The backend keeps parsed source records and derived state in the same `OntologyIndex`.
+This mirrors the useful part of Breadcrumbs' architecture: the graph stays resident and reacts to Obsidian events instead of treating every edit as a reason to reread the vault.
+
+Event handling:
+
+- `metadataCache.changed` updates an entity from current frontmatter.
+- `vault.modify` updates type files, because type definitions can live in Markdown body YAML rather than frontmatter.
+- `vault.create` indexes new type files immediately; new entity files enter through metadata cache updates.
+- `vault.delete` removes matching entity/type nodes, including descendants when a folder path is deleted.
+- `vault.rename` removes the old path and indexes the new path when it is a Markdown file.
+
+Each event applies one raw source change:
+
+- `upsertOntologyFile()` removes stale records for that path and parses the changed file.
+- `removeOntologyFile()` removes stale records for that file or folder path.
+- `recomputeOntologyDerivedState()` refreshes ancestor sets, name indexes, lock states, and validation from already parsed records.
+
+For entity edits, this avoids rereading unrelated files.
+For type edits, the derived pass still revalidates the graph because inheritance and schema changes can affect every downstream entity.
+This keeps schema validity current without forcing full vault I/O on every ordinary note edit.
 
 ## Type Parsing
 
