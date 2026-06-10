@@ -110,6 +110,14 @@ describe('runOntologyQuery', () => {
     expect(widenedResults.map((entity) => entity.name)).toEqual(['Draft', 'Spinoza']);
   });
 
+  it('treats configured entity membership fields as inheritance-aware type predicates', () => {
+    const index = makeIndex();
+    index.settings.entityTypeFields = ['is'];
+
+    const results = runOntologyQuery(index, 'is: Person');
+    expect(results.map((entity) => entity.name)).toEqual(['Ada', 'Spinoza']);
+  });
+
   it('honors the configured default include mode while explicit include still wins', () => {
     const allByDefault = runOntologyQuery(makeIndex(), 'type: Philosopher', { defaultInclude: 'all' });
     expect(allByDefault.map((entity) => entity.name)).toEqual(['Draft', 'Spinoza']);

@@ -7,6 +7,7 @@ import type { ScaffoldFieldPlan } from './ontology/mutations.ts';
 interface OntologyScaffoldReviewModalOptions {
   file: TFile;
   onApply: (plans: ScaffoldFieldPlan[]) => Promise<number>;
+  onClosed?: () => void;
   onDone: () => Promise<void>;
   plans: ScaffoldFieldPlan[];
 }
@@ -23,6 +24,10 @@ export class OntologyScaffoldReviewModal extends Modal {
 
   public override onOpen(): void {
     this.render();
+  }
+
+  public override onClose(): void {
+    this.options.onClosed?.();
   }
 
   private render(): void {

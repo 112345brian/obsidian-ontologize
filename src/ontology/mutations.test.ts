@@ -7,7 +7,7 @@ vi.mock('obsidian', () => ({
   Notice: vi.fn(),
 }));
 
-import { planMissingInverses, planScaffoldEntity, scaffoldEntity } from './mutations.ts';
+import { applyScaffoldPlan, planMissingInverses, planScaffoldEntity } from './mutations.ts';
 
 function makeType(): OntologyType {
   return {
@@ -249,7 +249,7 @@ describe('ontology frontmatter mutations', () => {
       },
     } as unknown as App;
 
-    const added = await scaffoldEntity(app, index, { path: 'Spinoza.md' } as TFile, { showNotice: false });
+    const added = await applyScaffoldPlan(app, { path: 'Spinoza.md' } as TFile, planScaffoldEntity(index, 'Spinoza.md'));
 
     expect(added).toBe(2);
     expect(frontmatter).toEqual({

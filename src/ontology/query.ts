@@ -1,5 +1,6 @@
 import type { OntologyEntity, OntologyIndex } from './types.ts';
 
+import { entityCompositionChain } from './compose.ts';
 import { extractAssertedLinkTargets, hasNegatedTarget, normalizeLinkTarget } from './links.ts';
 
 interface AndNode {
@@ -42,29 +43,6 @@ interface TrueNode {
 type QueryNode = AndNode | NotNode | OrNode | PredicateNode | TrueNode;
 
 const TRUE_NODE: TrueNode = { type: 'true' };
-
-function entityTypeChain(index: OntologyIndex, entity: OntologyEntity): Set<string> {
-  const chain = new Set<string>();
-  const addTypeAndInterfaces = (typeName: string, seen = new Set<string>()): void => {
-    if (seen.has(typeName)) {
-      return;
-    }
-    seen.add(typeName);
-    chain.add(typeName);
-    const type = index.types.get(typeName);
-    for (const interfaceName of type?.implements ?? []) {
-      addTypeAndInterfaces(interfaceName, seen);
-    }
-  };
-
-  for (const typeName of entity.instanceOf) {
-    addTypeAndInterfaces(typeName);
-    for (const ancestor of index.ancestorsByType.get(typeName) ?? []) {
-      addTypeAndInterfaces(ancestor);
-    }
-  }
-  return chain;
-}
 
 function extractOptions(source: string, defaultInclude: QueryIncludeMode): { options: QueryOptions; sourceWithoutOptions: string } {
   const options: QueryOptions = { include: defaultInclude };
@@ -164,9 +142,11 @@ function scalarValues(value: unknown): string[] {
 }
 
 function matchesPredicate(index: OntologyIndex, entity: OntologyEntity, predicate: PredicateNode): boolean {
-  const typeKeys = new Set(['type', 'instance_of']);
+  // Configured entity membership fields act as type predicates alongside the
+  // built-in keys, so custom fields query the inheritance chain too.
+  const typeKeys = new Set(['type', 'instance_of', ...index.settings.entityTypeFields]);
   if (typeKeys.has(predicate.key)) {
-    return entityTypeChain(index, entity).has(normalizeLinkTarget(predicate.value));
+    return entityCompositionChain(entity, index).has(normalizeLinkTarget(predicate.value));
   }
 
   const value = entity.frontmatter[predicate.key];

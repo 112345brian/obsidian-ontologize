@@ -1,5 +1,37 @@
 # CHANGELOG
 
+## 0.2.0
+
+Audit-driven correctness, performance, and infrastructure release. Also rolls up the unreleased post-0.1.0 features: schema diagnostics modal, review-first scaffolding, schema composition conflict detection, global field definitions with `frontmatter-key` aliases, `possible-values` constraints, configurable entity type fields, and the demo vault.
+
+### Bug fixes
+
+- **Auto-scaffold now fires only on membership transitions and respects dismissal.** Previously the review modal reopened on every metadata change while a note had missing fields — cancelling it and continuing to edit reopened it immediately. It now opens only when a note's resolved direct types change, and closing it dismisses that note until the membership changes again.
+- **Validation reports each entity problem exactly once.** Entities with multiple direct types sharing an ancestor previously produced duplicate "missing required property" and relation issues, inflating issue counts. Contracts are now merged across all declared types before validating, and every issue push is deduplicated.
+- **`cannot-have` honors `frontmatter-key` aliases.** A type forbidding a global field's semantic name now catches the aliased frontmatter key, in both entity validation and schema composition conflict detection.
+- **Folder renames trigger a full rebuild.** Obsidian does not reliably emit per-child rename events, so renaming a folder of entities previously dropped them from the index until the next manual rebuild.
+- **Custom entity type fields work as query predicates.** A configured membership field (for example `is`) now queries the inheritance chain like `type:` and `instance_of:` instead of degrading to a plain property match.
+
+### Performance
+
+- Incremental upserts recompute derived state once per event instead of twice (once for the removal, once for the insert).
+- Issue deduplication is O(1) via a keyed seen-set instead of a linear scan per push (previously O(n²) across a recompute).
+- Query evaluation and mutation planning no longer mutate the issue list as a side effect; interface declaration problems are reported once per type during recompute.
+
+### Architecture
+
+- New `src/ontology/compose.ts` is the single home for composition-chain resolution, definition merging, and registry collection — the indexer, validator, query engine, and mutation planner all resolve through it, eliminating the three divergent chain implementations.
+- Validation moved to `src/ontology/validate.ts`; `indexer.ts` now only builds and derives.
+- The scaffold review modal exposes an `onClosed` callback instead of having its `onClose` monkey-patched by the plugin.
+- Removed the dead `validationThreshold` setting (it was exposed in the UI but wired to nothing) and the superseded `scaffoldEntity` helper.
+
+### Infrastructure
+
+- GitHub Actions CI: lint, type check, tests, and build run on every push and pull request.
+- GitHub Actions release workflow: pushing a `v*` tag builds and attaches `main.js`, `styles.css`, and `manifest.json` to a release.
+- New test suites: cache write/read round trip, and plugin orchestration (serialized index queue, auto-write gating before first rebuild, stale-settings cache discard, auto-scaffold transitions and dismissal). 48 tests total.
+- Bumped the `dompurify` override to 3.2.4 and cleared all `npm audit` advisories.
+
 ## 0.1.0
 
 First functional release.

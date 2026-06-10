@@ -2,8 +2,15 @@ import type { App, TFile } from 'obsidian';
 
 import type { EffectiveLockState, FrontmatterIgnoreRule, OntologyEntity, OntologyIndex, OntologyIssue, OntologyType, PropertyDefinition, RelationDefinition } from './types.ts';
 
-import { extractAssertedLinkTargets, extractLinkTargets, extractNegatedLinkTargets, hasNegatedTarget, normalizeLinkTarget } from './links.ts';
+import {
+  collectGlobalFieldDefinitions,
+  collectGlobalRelationDefinitions,
+  pushIssueOnce,
+  typeCompositionChain
+} from './compose.ts';
+import { normalizeLinkTarget } from './links.ts';
 import { parseOntologyEntity, parseOntologySchema, parseOntologyType } from './parser.ts';
+import { validateIndex, validateSchemaCompositionConflicts } from './validate.ts';
 
 export interface BuildIndexSettings {
   entityTypeFields?: string[];
@@ -106,197 +113,6 @@ function createEmptyOntologyIndex(settings: BuildIndexSettings): OntologyIndex {
   };
 }
 
-function isRelationDefinitionRegistry(type: OntologyType): boolean {
-  return ['relation-definitions', 'relation-registry', 'relations'].includes(type.typeKind ?? '');
-}
-
-function isFieldDefinitionRegistry(type: OntologyType): boolean {
-  return ['field-definitions', 'field-registry', 'fields'].includes(type.typeKind ?? '');
-}
-
-function typeCompositionChain(
-  typeName: string,
-  index: Pick<OntologyIndex, 'ancestorsByType' | 'issues' | 'types'>,
-  seen = new Set<string>()
-): Set<string> {
-  const names = new Set<string>();
-  const addTypeAndInterfaces = (name: string): void => {
-    if (seen.has(name)) {
-      return;
-    }
-    seen.add(name);
-    names.add(name);
-    const type = index.types.get(name);
-    if (!type) {
-      return;
-    }
-    for (const interfaceName of type.implements) {
-      const interfaceType = index.types.get(interfaceName);
-      if (!interfaceType) {
-        pushIssueOnce(index.issues, {
-          file: type.path,
-          message: `Unknown interface ${interfaceName}`,
-          severity: 'error',
-        });
-        continue;
-      }
-      if (!interfaceType.isInterface) {
-        pushIssueOnce(index.issues, {
-          file: type.path,
-          message: `${interfaceName} is implemented but is not marked interface: true`,
-          severity: 'warning',
-        });
-      }
-      addTypeAndInterfaces(interfaceName);
-    }
-  };
-
-  for (const ancestor of index.ancestorsByType.get(typeName) ?? []) {
-    addTypeAndInterfaces(ancestor);
-  }
-  addTypeAndInterfaces(typeName);
-  return names;
-}
-
-function collectInheritedPropertyMap(
-  typeName: string,
-  index: OntologyIndex,
-  selector: (type: OntologyType) => Map<string, PropertyDefinition>
-): Map<string, PropertyDefinition> {
-  const result = new Map<string, PropertyDefinition>();
-  const names = typeCompositionChain(typeName, {
-    ancestorsByType: index.ancestorsByType,
-    issues: [],
-    types: index.types,
-  });
-  for (const name of names) {
-    const type = index.types.get(name);
-    if (!type || isFieldDefinitionRegistry(type)) {
-      continue;
-    }
-    for (const [property, definition] of selector(type)) {
-      const resolved = resolvePropertyDefinition(index, property, definition);
-      result.set(frontmatterPropertyKey(property, resolved), resolved);
-    }
-  }
-  return result;
-}
-
-function collectGlobalRelationDefinitions(types: Map<string, OntologyType>): Map<string, RelationDefinition> {
-  const definitions = new Map<string, RelationDefinition>();
-  for (const type of types.values()) {
-    if (!isRelationDefinitionRegistry(type)) {
-      continue;
-    }
-    for (const [property, definition] of type.relations) {
-      definitions.set(property, {
-        ...definition,
-        uses: definition.uses === property ? undefined : definition.uses,
-      });
-    }
-  }
-  return definitions;
-}
-
-function collectGlobalFieldDefinitions(types: Map<string, OntologyType>): Map<string, PropertyDefinition> {
-  const definitions = new Map<string, PropertyDefinition>();
-  for (const type of types.values()) {
-    if (!isFieldDefinitionRegistry(type)) {
-      continue;
-    }
-    for (const [property, definition] of type.fields) {
-      definitions.set(property, {
-        ...definition,
-        uses: definition.uses === property ? undefined : definition.uses,
-      });
-    }
-  }
-  return definitions;
-}
-
-function issueKey(issue: OntologyIssue): string {
-  return [
-    issue.file,
-    issue.severity,
-    issue.message,
-    issue.property ?? '',
-    issue.target ?? '',
-  ].join('\u0000');
-}
-
-function pushIssueOnce(issues: OntologyIssue[], issue: OntologyIssue): void {
-  const key = issueKey(issue);
-  if (!issues.some((existing) => issueKey(existing) === key)) {
-    issues.push(issue);
-  }
-}
-
-function resolveRelationDefinition(index: OntologyIndex, property: string, definition: RelationDefinition): RelationDefinition {
-  const referenced = definition.uses ? index.relationDefinitions.get(definition.uses) : index.relationDefinitions.get(property);
-  if (!referenced) {
-    return definition;
-  }
-  return {
-    ...referenced,
-    ...definition,
-    uses: definition.uses,
-  };
-}
-
-function resolvePropertyDefinition(index: OntologyIndex, property: string, definition: PropertyDefinition): PropertyDefinition {
-  const referenced = definition.uses ? index.fieldDefinitions.get(definition.uses) : index.fieldDefinitions.get(property);
-  if (!referenced) {
-    return definition;
-  }
-  return {
-    ...referenced,
-    ...definition,
-    uses: definition.uses,
-  };
-}
-
-function frontmatterPropertyKey(property: string, definition: PropertyDefinition): string {
-  return definition.frontmatterKey ?? property;
-}
-
-function collectRelations(typeName: string, index: OntologyIndex): Map<string, RelationDefinition> {
-  const result = new Map<string, RelationDefinition>();
-  // Composition issues are reported by entityCompositionChain during validation;
-  // pass a scratch issue list so relation resolution stays side-effect free.
-  const chain = typeCompositionChain(typeName, {
-    ancestorsByType: index.ancestorsByType,
-    issues: [],
-    types: index.types,
-  });
-  for (const name of chain) {
-    const type = index.types.get(name);
-    if (!type || isRelationDefinitionRegistry(type)) {
-      continue;
-    }
-    for (const [property, definition] of type.relations) {
-      result.set(property, resolveRelationDefinition(index, property, definition));
-    }
-  }
-  return result;
-}
-
-/**
- * Resolves the effective relation definitions for an entity by merging the
- * composition chain of every declared type. Later types in `instanceOf` and
- * more-derived types within a chain win, matching how `validateIndex` raises
- * relation issues. Mutations resolve inverses through this same function so the
- * fix that gets written always matches the issue that was reported.
- */
-export function resolveEntityRelations(index: OntologyIndex, instanceOf: string[]): Map<string, RelationDefinition> {
-  const result = new Map<string, RelationDefinition>();
-  for (const typeName of instanceOf) {
-    for (const [property, definition] of collectRelations(typeName, index)) {
-      result.set(property, definition);
-    }
-  }
-  return result;
-}
-
 export function computeAncestors(
   types: Map<string, OntologyType>,
   issues: OntologyIssue[],
@@ -354,142 +170,6 @@ export function computeAncestors(
   return ancestorsByType;
 }
 
-function sameStringArray(left: string[] | undefined, right: string[] | undefined): boolean {
-  const normalizedLeft = [...left ?? []].sort();
-  const normalizedRight = [...right ?? []].sort();
-  return normalizedLeft.length === normalizedRight.length && normalizedLeft.every((value, index) => value === normalizedRight[index]);
-}
-
-function samePropertyDefinition(left: PropertyDefinition, right: PropertyDefinition): boolean {
-  return left.cardinality === right.cardinality
-    && left.frontmatterKey === right.frontmatterKey
-    && left.type === right.type
-    && sameStringArray(left.values, right.values);
-}
-
-function describePropertyDefinition(definition: PropertyDefinition): string {
-  const parts = [
-    definition.type ? `type ${definition.type}` : '',
-    definition.cardinality ? `cardinality ${definition.cardinality}` : '',
-    definition.frontmatterKey ? `frontmatter-key ${definition.frontmatterKey}` : '',
-    definition.values?.length ? `possible-values ${definition.values.join(', ')}` : '',
-  ].filter(Boolean);
-  return parts.length > 0 ? parts.join('; ') : 'untyped';
-}
-
-function semanticFieldId(source: OntologyType, property: string, definition: PropertyDefinition): string {
-  return definition.uses ?? `${source.name}.${property}`;
-}
-
-function compositionChainWithoutIssues(typeName: string, index: Pick<OntologyIndex, 'ancestorsByType' | 'types'>, seen = new Set<string>()): Set<string> {
-  const names = new Set<string>();
-  const addTypeAndInterfaces = (name: string): void => {
-    if (seen.has(name)) {
-      return;
-    }
-    seen.add(name);
-    names.add(name);
-    const type = index.types.get(name);
-    if (!type) {
-      return;
-    }
-    for (const interfaceName of type.implements) {
-      addTypeAndInterfaces(interfaceName);
-    }
-  };
-
-  for (const ancestor of index.ancestorsByType.get(typeName) ?? []) {
-    addTypeAndInterfaces(ancestor);
-  }
-  addTypeAndInterfaces(typeName);
-  return names;
-}
-
-interface FieldSource {
-  bucket: 'can-have' | 'must-have';
-  definition: PropertyDefinition;
-  semanticId: string;
-  source: OntologyType;
-}
-
-function validateSchemaCompositionConflicts(index: OntologyIndex): void {
-  for (const type of index.types.values()) {
-    if (isRelationDefinitionRegistry(type) || isFieldDefinitionRegistry(type)) {
-      continue;
-    }
-
-    const fields = new Map<string, FieldSource>();
-    const forbidden = new Map<string, OntologyType>();
-
-    for (const typeName of compositionChainWithoutIssues(type.name, index)) {
-      const source = index.types.get(typeName);
-      if (!source) {
-        continue;
-      }
-
-      for (const property of source.cannotHave) {
-        const existing = fields.get(property);
-        if (existing) {
-          pushIssueOnce(index.issues, {
-            file: type.path,
-            message: `Schema conflict on ${type.name}.${property}: ${source.name} declares cannot-have but ${existing.source.name} declares ${existing.bucket}`,
-            property,
-            severity: 'error',
-          });
-        }
-        forbidden.set(property, source);
-      }
-
-      for (const [bucket, definitions] of [['must-have', source.mustHave], ['can-have', source.canHave]] as const) {
-        for (const [property, definition] of definitions) {
-          const resolved = resolvePropertyDefinition(index, property, definition);
-          const frontmatterKey = frontmatterPropertyKey(property, resolved);
-          const semanticId = semanticFieldId(source, property, definition);
-          const forbiddenSource = forbidden.get(frontmatterKey);
-          if (forbiddenSource) {
-            pushIssueOnce(index.issues, {
-              file: type.path,
-              message: `Schema conflict on ${type.name}.${frontmatterKey}: ${source.name} declares ${bucket} but ${forbiddenSource.name} declares cannot-have`,
-              property: frontmatterKey,
-              severity: 'error',
-            });
-          }
-
-          const existing = fields.get(frontmatterKey);
-          if (!existing) {
-            fields.set(frontmatterKey, { bucket, definition: resolved, semanticId, source });
-            continue;
-          }
-
-          if (existing.semanticId !== semanticId) {
-            pushIssueOnce(index.issues, {
-              file: type.path,
-              message: `Schema conflict on ${type.name}.${frontmatterKey}: ${existing.source.name} uses semantic field ${existing.semanticId} but ${source.name} uses semantic field ${semanticId}`,
-              property: frontmatterKey,
-              severity: 'error',
-            });
-            continue;
-          }
-
-          if (!samePropertyDefinition(existing.definition, resolved)) {
-            pushIssueOnce(index.issues, {
-              file: type.path,
-              message: `Schema conflict on ${type.name}.${frontmatterKey}: ${existing.source.name} declares ${existing.bucket} (${describePropertyDefinition(existing.definition)}) but ${source.name} declares ${bucket} (${describePropertyDefinition(resolved)})`,
-              property: frontmatterKey,
-              severity: 'error',
-            });
-            continue;
-          }
-
-          if (existing.bucket === 'can-have' && bucket === 'must-have') {
-            fields.set(frontmatterKey, { bucket, definition: resolved, semanticId, source });
-          }
-        }
-      }
-    }
-  }
-}
-
 function computeTypeLock(
   name: string,
   types: Map<string, OntologyType>,
@@ -519,16 +199,6 @@ function computeTypeLock(
   return { state: 'locked' };
 }
 
-function entityCompositionChain(entity: OntologyEntity, index: OntologyIndex): Set<string> {
-  const chain = new Set<string>();
-  for (const typeName of entity.instanceOf) {
-    for (const name of typeCompositionChain(typeName, index)) {
-      chain.add(name);
-    }
-  }
-  return chain;
-}
-
 function computeEntityLock(entity: OntologyEntity, effectiveTypeLocks: Map<string, EffectiveLockState>): EffectiveLockState {
   if (!entity.lockIntent) {
     return { state: 'unlocked', reason: 'lock is not true' };
@@ -542,279 +212,8 @@ function computeEntityLock(entity: OntologyEntity, effectiveTypeLocks: Map<strin
   return { state: 'locked' };
 }
 
-function hasValue(frontmatter: Record<string, unknown>, key: string): boolean {
-  const value = frontmatter[key];
-  if (value === undefined || value === null || value === '') {
-    return false;
-  }
-  return !(Array.isArray(value) && value.length === 0);
-}
-
-function validateCardinality(
-  file: string,
-  property: string,
-  definition: PropertyDefinition | RelationDefinition,
-  value: unknown,
-  issues: OntologyIssue[]
-): void {
-  if ((definition.cardinality === 'one' || definition.cardinality === 'one-to-one') && Array.isArray(value) && value.length > 1) {
-    issues.push({
-      file,
-      message: `${property} allows one value but has ${value.length}`,
-      property,
-      severity: 'error',
-    });
-  }
-}
-
-function valuesForValidation(value: unknown): string[] {
-  if (Array.isArray(value)) {
-    return value.flatMap((item) => valuesForValidation(item));
-  }
-  if (typeof value === 'string') {
-    return [normalizeLinkTarget(value)];
-  }
-  if (typeof value === 'number' || typeof value === 'boolean') {
-    return [String(value)];
-  }
-  if (value && typeof value === 'object' && 'target' in value) {
-    return valuesForValidation(value.target);
-  }
-  return [];
-}
-
-function validateValueType(file: string, property: string, expectedType: string | undefined, value: unknown, issues: OntologyIssue[]): void {
-  if (!expectedType || value === undefined || value === null || value === '') {
-    return;
-  }
-
-  const normalizedType = normalizeLinkTarget(expectedType).toLowerCase();
-  const values = Array.isArray(value) ? value : [value];
-  for (const item of values) {
-    const valid = (() => {
-      switch (normalizedType) {
-        case 'boolean':
-          return typeof item === 'boolean';
-        case 'date':
-          return typeof item === 'string' && !Number.isNaN(Date.parse(item));
-        case 'link':
-        case 'wikilink':
-          return extractAssertedLinkTargets(item).length > 0;
-        case 'number':
-          return typeof item === 'number';
-        case 'string':
-        case 'text':
-          return typeof item === 'string';
-        default:
-          return true;
-      }
-    })();
-
-    if (!valid) {
-      issues.push({
-        file,
-        message: `${property} must be ${expectedType}`,
-        property,
-        severity: 'error',
-      });
-    }
-  }
-}
-
-function allowedPropertyValues(index: OntologyIndex, definition: PropertyDefinition): string[] {
-  if (definition.values && definition.values.length > 0) {
-    return definition.values;
-  }
-  const referencedType = definition.type ? index.types.get(definition.type) : undefined;
-  if (referencedType?.typeKind === 'nominal') {
-    return referencedType.values;
-  }
-  return [];
-}
-
-function validatePropertyDefinition(
-  index: OntologyIndex,
-  entity: OntologyEntity,
-  property: string,
-  definition: PropertyDefinition
-): void {
-  const value = entity.frontmatter[property];
-  validateCardinality(entity.path, property, definition, value, index.issues);
-  validateValueType(entity.path, property, definition.type, value, index.issues);
-
-  const allowedValues = allowedPropertyValues(index, definition);
-  if (allowedValues.length === 0) {
-    return;
-  }
-
-  const allowed = new Set(allowedValues);
-  for (const candidate of valuesForValidation(value)) {
-    if (!allowed.has(candidate)) {
-      index.issues.push({
-        file: entity.path,
-        message: `${property} value ${candidate} is outside allowed values: ${allowedValues.join(', ')}`,
-        property,
-        severity: 'error',
-      });
-    }
-  }
-}
-
-export function validateIndex(index: OntologyIndex): void {
-  for (const entity of index.entities.values()) {
-    const chain = entityCompositionChain(entity, index);
-
-    for (const typeName of entity.instanceOf) {
-      const type = index.types.get(typeName);
-      if (!type) {
-        index.issues.push({ file: entity.path, message: `Unknown type ${typeName}`, severity: 'error' });
-        continue;
-      }
-      if (type.abstract) {
-        index.issues.push({ file: entity.path, message: `Cannot instantiate abstract type ${typeName}`, severity: 'error' });
-      }
-      if (type.isInterface) {
-        index.issues.push({ file: entity.path, message: `Cannot instantiate interface ${typeName}`, severity: 'error' });
-      }
-    }
-
-    for (const typeName of chain) {
-      const type = index.types.get(typeName);
-      if (!type) {
-        continue;
-      }
-      for (const disjoint of type.disjoint) {
-        if (chain.has(disjoint)) {
-          index.issues.push({
-            file: entity.path,
-            message: `Entity is both ${typeName} and disjoint type ${disjoint}`,
-            severity: 'error',
-          });
-        }
-      }
-    }
-
-    for (const typeName of entity.instanceOf) {
-      for (const [property, definition] of collectInheritedPropertyMap(typeName, index, (type) => type.mustHave)) {
-        if (!hasValue(entity.frontmatter, property)) {
-          index.issues.push({
-            file: entity.path,
-            message: `Missing required property ${property}`,
-            property,
-            severity: 'error',
-          });
-        } else {
-          validatePropertyDefinition(index, entity, property, definition);
-        }
-      }
-
-      for (const [property, definition] of collectInheritedPropertyMap(typeName, index, (type) => type.canHave)) {
-        if (hasValue(entity.frontmatter, property)) {
-          validatePropertyDefinition(index, entity, property, definition);
-        }
-      }
-
-      const cannotHave = new Set<string>();
-      for (const ancestor of typeCompositionChain(typeName, index)) {
-        const type = index.types.get(ancestor);
-        for (const property of type?.cannotHave ?? []) {
-          cannotHave.add(property);
-        }
-      }
-      for (const property of cannotHave) {
-        if (hasValue(entity.frontmatter, property)) {
-          index.issues.push({ file: entity.path, message: `Forbidden property ${property} is present`, property, severity: 'error' });
-        }
-      }
-
-      for (const [property, relation] of collectRelations(typeName, index)) {
-        validateRelation(index, entity, property, relation);
-      }
-    }
-  }
-}
-
-function validateRelation(index: OntologyIndex, entity: OntologyEntity, property: string, relation: RelationDefinition): void {
-  const value = entity.frontmatter[property];
-  if (!hasValue(entity.frontmatter, property)) {
-    return;
-  }
-
-  validateCardinality(entity.path, property, relation, value, index.issues);
-  validateValueType(entity.path, property, relation.valueType, value, index.issues);
-
-  const assertedTargets = new Set(extractAssertedLinkTargets(value));
-  const negatedTargets = new Set(extractNegatedLinkTargets(value));
-  for (const targetName of assertedTargets) {
-    if (negatedTargets.has(targetName)) {
-      index.issues.push({
-        file: entity.path,
-        message: `${property} both asserts and negates ${targetName}`,
-        property,
-        severity: 'error',
-        target: targetName,
-      });
-    }
-  }
-
-  for (const targetName of assertedTargets) {
-    if (hasNegatedTarget(value, targetName)) {
-      continue;
-    }
-    if (index.ambiguousEntityNames?.has(targetName)) {
-      index.issues.push({
-        file: entity.path,
-        message: `${property} target ${targetName} is ambiguous: multiple notes are named ${targetName}`,
-        property,
-        severity: 'warning',
-        target: targetName,
-      });
-      continue;
-    }
-    const target = index.entitiesByName.get(targetName);
-    if (!target) {
-      index.issues.push({ file: entity.path, message: `${property} points to unknown entity ${targetName}`, property, severity: 'warning', target: targetName });
-      continue;
-    }
-
-    if (relation.range) {
-      const targetChain = entityCompositionChain(target, index);
-      if (!targetChain.has(relation.range)) {
-        index.issues.push({
-          file: entity.path,
-          message: `${property} target ${targetName} is not a ${relation.range}`,
-          property,
-          severity: 'error',
-          target: targetName,
-        });
-      }
-    }
-
-    const inverseProperty = relation.symmetric ? property : relation.inverse;
-    if (inverseProperty && !extractLinkTargets(target.frontmatter[inverseProperty]).includes(entity.name)) {
-      index.issues.push({
-        autofixable: true,
-        autoUpdate: relation.autoUpdate === true,
-        file: entity.path,
-        message: `${property} -> ${targetName} is missing inverse ${inverseProperty} on ${targetName}`,
-        property,
-        severity: 'warning',
-        target: targetName,
-      });
-    }
-  }
-}
-
 function matchesPathOrChild(candidatePath: string, path: string): boolean {
   return candidatePath === path || candidatePath.startsWith(`${path}/`);
-}
-
-function deleteTypesByPath(index: OntologyIndex, path: string): void {
-  for (const [name, type] of index.types.entries()) {
-    if (matchesPathOrChild(type.path, path)) {
-      index.types.delete(name);
-    }
-  }
 }
 
 function rebuildEntityNameIndex(index: OntologyIndex): void {
@@ -833,7 +232,7 @@ export function recomputeOntologyDerivedState(index: OntologyIndex): OntologyInd
   rebuildEntityNameIndex(index);
   for (const name of index.ambiguousEntityNames ?? []) {
     const paths = [...index.entities.values()].filter((entity) => entity.name === name).map((entity) => entity.path).sort();
-    index.issues.push({
+    pushIssueOnce(index.issues, {
       file: paths[0] ?? '',
       message: `Duplicate entity name ${name}: ${paths.join(', ')}. Wiki links to ${name} cannot be resolved unambiguously.`,
       severity: 'warning',
@@ -844,6 +243,12 @@ export function recomputeOntologyDerivedState(index: OntologyIndex): OntologyInd
   index.circularTypes = circularTypes;
   index.fieldDefinitions = collectGlobalFieldDefinitions(index.types);
   index.relationDefinitions = collectGlobalRelationDefinitions(index.types);
+
+  // Surface unknown/mis-marked interface issues once per type; every other
+  // chain traversal (validation, queries, mutations) stays side-effect free.
+  for (const name of index.types.keys()) {
+    typeCompositionChain(name, index, index.issues);
+  }
   validateSchemaCompositionConflicts(index);
 
   index.effectiveTypeLocks = new Map<string, EffectiveLockState>();
@@ -861,13 +266,21 @@ export function recomputeOntologyDerivedState(index: OntologyIndex): OntologyInd
   return index;
 }
 
-export function removeOntologyFile(index: OntologyIndex, path: string): OntologyIndex {
+function removeOntologyRecords(index: OntologyIndex, path: string): void {
   for (const [entityPath] of index.entities.entries()) {
     if (matchesPathOrChild(entityPath, path)) {
       index.entities.delete(entityPath);
     }
   }
-  deleteTypesByPath(index, path);
+  for (const [name, type] of index.types.entries()) {
+    if (matchesPathOrChild(type.path, path)) {
+      index.types.delete(name);
+    }
+  }
+}
+
+export function removeOntologyFile(index: OntologyIndex, path: string): OntologyIndex {
+  removeOntologyRecords(index, path);
   return recomputeOntologyDerivedState(index);
 }
 
@@ -887,7 +300,7 @@ export async function upsertOntologyFile(app: App, index: OntologyIndex, file: T
     return buildOntologyIndex(app, settings);
   }
 
-  removeOntologyFile(index, file.path);
+  removeOntologyRecords(index, file.path);
   if (isIgnoredOntologyPath(file.path, settings)) {
     return recomputeOntologyDerivedState(index);
   }
@@ -938,24 +351,4 @@ export async function buildOntologyIndex(app: App, settings: BuildIndexSettings)
   }
 
   return recomputeOntologyDerivedState(index);
-}
-
-export function getInheritedMustHave(index: OntologyIndex, entity: OntologyEntity): Map<string, PropertyDefinition> {
-  const result = new Map<string, PropertyDefinition>();
-  for (const typeName of entity.instanceOf) {
-    for (const [property, definition] of collectInheritedPropertyMap(typeName, index, (type) => type.mustHave)) {
-      result.set(property, definition);
-    }
-  }
-  return result;
-}
-
-export function getInheritedCanHave(index: OntologyIndex, entity: OntologyEntity): Map<string, PropertyDefinition> {
-  const result = new Map<string, PropertyDefinition>();
-  for (const typeName of entity.instanceOf) {
-    for (const [property, definition] of collectInheritedPropertyMap(typeName, index, (type) => type.canHave)) {
-      result.set(property, definition);
-    }
-  }
-  return result;
 }

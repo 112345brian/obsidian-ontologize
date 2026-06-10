@@ -79,6 +79,45 @@ function makeIndex(): OntologyIndex {
 }
 
 describe('incremental ontology index state', () => {
+  it('reports each entity problem once even when declared types share ancestors', () => {
+    const index = makeIndex();
+    const animal = makeType('Animal', '_types/Animal.md', true);
+    animal.mustHave.set('species', { type: 'string' });
+    animal.relations.set('parent-of', { inverse: 'child-of', range: 'Animal' });
+    index.types.set('Animal', animal);
+    index.types.set('Dog', makeType('Dog', '_types/Dog.md', true, ['Animal']));
+    index.types.set('Pet', makeType('Pet', '_types/Pet.md', true, ['Animal']));
+    index.entities.set('Rex.md', {
+      frontmatter: {
+        instance_of: ['[[Dog]]', '[[Pet]]'],
+        'parent-of': '[[Missing]]',
+      },
+      instanceOf: ['Dog', 'Pet'],
+      lockIntent: false,
+      name: 'Rex',
+      path: 'Rex.md',
+    });
+
+    recomputeOntologyDerivedState(index);
+
+    const missingSpecies = index.issues.filter((issue) => issue.file === 'Rex.md' && issue.message === 'Missing required property species');
+    expect(missingSpecies).toHaveLength(1);
+    const unknownTarget = index.issues.filter((issue) => issue.file === 'Rex.md' && issue.target === 'Missing');
+    expect(unknownTarget).toHaveLength(1);
+  });
+
+  it('forbids the aliased frontmatter key when cannot-have names a global field', () => {
+    const index = makeIndex();
+    index.types.set('_fields', makeType('_fields', '_types/_fields.md', false, [], { typeKind: 'field-definitions' }));
+    index.types.get('_fields')!.fields.set('birth-year', { frontmatterKey: 'birth_year', type: 'number' });
+    index.types.get('Philosopher')!.cannotHave.add('birth-year');
+    index.entities.get('Ada.md')!.frontmatter['birth_year'] = 1815;
+
+    recomputeOntologyDerivedState(index);
+
+    expect(index.issues.some((issue) => issue.file === 'Ada.md' && issue.message === 'Forbidden property birth_year is present')).toBe(true);
+  });
+
   it('recomputes derived lock validity from already parsed type state', () => {
     const index = recomputeOntologyDerivedState(makeIndex());
     expect(index.effectiveEntityLocks.get('Ada.md')?.state).toBe('locked');

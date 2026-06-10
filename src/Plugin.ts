@@ -34,6 +34,9 @@ export class Plugin extends ObsidianPlugin {
   private indexReady = false;
   private indexTask: Promise<unknown> = Promise.resolve();
   private isAutoFixingInverses = false;
+  // Paths whose scaffold review was closed without the membership changing
+  // since; auto-scaffold stays quiet for them until the entity's types change.
+  private scaffoldDismissedPaths = new Set<string>();
   private scaffoldReviewOpenPaths = new Set<string>();
 
   public override async onload(): Promise<void> {
@@ -229,18 +232,25 @@ export class Plugin extends ObsidianPlugin {
     return true;
   }
 
-  private async applyAutoScaffold(file: TFile): Promise<number> {
+  /**
+   * Fires only when an entity's ontology membership transitions (the caller
+   * checks that), never on ordinary edits, and respects a prior dismissal so a
+   * cancelled review does not reopen on the next keystroke.
+   */
+  private applyAutoScaffold(file: TFile): void {
     if (!this.index || !this.pluginSettings.autoScaffoldEntities || !this.indexReady || !this.canAutoScaffold(file)) {
-      return 0;
+      return;
+    }
+    if (this.scaffoldDismissedPaths.has(file.path) || this.scaffoldReviewOpenPaths.has(file.path)) {
+      return;
     }
 
     const plans = planScaffoldEntity(this.index, file.path);
-    if (plans.length === 0 || this.scaffoldReviewOpenPaths.has(file.path)) {
-      return 0;
+    if (plans.length === 0) {
+      return;
     }
     new Notice(`Ontology scaffold available: ${plans.length} fields.`);
     this.openScaffoldReviewModal(file, plans);
-    return 0;
   }
 
   private async runAutoInverseFix(): Promise<number> {
@@ -331,13 +341,15 @@ export class Plugin extends ObsidianPlugin {
         await this.buildAndStore(false);
         return;
       }
-      const index = await this.ensureIndexCore();
-      this.index = removeOntologyFile(index, oldPath);
       if (file instanceof TFile) {
+        const index = await this.ensureIndexCore();
+        this.index = removeOntologyFile(index, oldPath);
         await this.upsertFileCore(file);
         return;
       }
-      this.scheduleCacheWrite();
+      // Folder rename: Obsidian does not reliably emit per-child events, so the
+      // children's new paths are only discoverable with a full rebuild.
+      await this.buildAndStore(false);
     });
   }
 
@@ -358,8 +370,19 @@ export class Plugin extends ObsidianPlugin {
 
   private async upsertFileCore(file: TFile): Promise<void> {
     const index = await this.ensureIndexCore();
+    const membershipBefore = index.entities.get(file.path)?.instanceOf ?? [];
     this.index = await upsertOntologyFile(this.app, index, file, this.indexSettings());
-    await this.applyAutoScaffold(file);
+    const membershipAfter = this.index.entities.get(file.path)?.instanceOf ?? [];
+
+    const membershipChanged = membershipBefore.length !== membershipAfter.length
+      || membershipBefore.some((typeName, position) => typeName !== membershipAfter[position]);
+    if (membershipChanged) {
+      this.scaffoldDismissedPaths.delete(file.path);
+      if (membershipAfter.length > 0) {
+        this.applyAutoScaffold(file);
+      }
+    }
+
     await this.applyAutoInverseUpdates();
     this.scheduleCacheWrite();
   }
@@ -461,20 +484,18 @@ export class Plugin extends ObsidianPlugin {
       return;
     }
     this.scaffoldReviewOpenPaths.add(file.path);
-    const modal = new OntologyScaffoldReviewModal(this.app, {
+    new OntologyScaffoldReviewModal(this.app, {
       file,
       onApply: async (selectedPlans) => applyScaffoldPlan(this.app, file, selectedPlans),
+      onClosed: () => {
+        this.scaffoldReviewOpenPaths.delete(file.path);
+        this.scaffoldDismissedPaths.add(file.path);
+      },
       onDone: async () => {
         await this.rebuildIndex(false);
       },
       plans,
-    });
-    const originalClose = modal.onClose.bind(modal);
-    modal.onClose = () => {
-      this.scaffoldReviewOpenPaths.delete(file.path);
-      originalClose();
-    };
-    modal.open();
+    }).open();
   }
 
 }

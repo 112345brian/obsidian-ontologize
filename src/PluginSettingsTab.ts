@@ -135,25 +135,12 @@ export class PluginSettingsTab extends PluginSettingTab {
 
     new Setting(containerEl)
       .setName('Auto-scaffold entities')
-      .setDesc('When a note has complete ontology membership frontmatter, open a review modal for inherited property and relation fields.')
+      .setDesc('When a note first gains ontology membership (or its types change), open a review modal for inherited property and relation fields. Closing the modal dismisses it until the membership changes again.')
       .addToggle((toggle) =>
         toggle
           .setValue(this.plugin.pluginSettings.autoScaffoldEntities)
           .onChange(async (value) => {
             this.plugin.pluginSettings.autoScaffoldEntities = value;
-            await this.plugin.savePluginSettings();
-          })
-      );
-
-    new Setting(containerEl)
-      .setName('Validation threshold')
-      .setDesc('Entity count where validation should be treated as urgent.')
-      .addText((text) =>
-        text
-          .setValue(String(this.plugin.pluginSettings.validationThreshold))
-          .onChange(async (value) => {
-            const parsed = Number.parseInt(value, 10);
-            this.plugin.pluginSettings.validationThreshold = Number.isFinite(parsed) && parsed > 0 ? parsed : 100;
             await this.plugin.savePluginSettings();
           })
       );

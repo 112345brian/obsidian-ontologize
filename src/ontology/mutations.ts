@@ -1,10 +1,8 @@
 import type { App, TFile } from 'obsidian';
 
-import { Notice } from 'obsidian';
-
 import type { OntologyIndex, OntologyIssue } from './types.ts';
 
-import { getInheritedCanHave, getInheritedMustHave, resolveEntityRelations } from './indexer.ts';
+import { getInheritedCanHave, getInheritedMustHave, resolveEntityRelations } from './compose.ts';
 import { extractAssertedLinkTargets, toWikiLink } from './links.ts';
 
 export interface FixMissingInversesOptions {
@@ -21,10 +19,6 @@ export interface MissingInverseFixPlan {
   targetName: string;
   targetPath: string;
   value: string;
-}
-
-export interface ScaffoldEntityOptions {
-  showNotice?: boolean;
 }
 
 export interface ScaffoldFieldPlan {
@@ -75,18 +69,6 @@ export async function applyScaffoldPlan(app: App, file: TFile, plans: ScaffoldFi
     }
   });
   return added;
-}
-
-export async function scaffoldEntity(app: App, index: OntologyIndex, file: TFile, options: ScaffoldEntityOptions = {}): Promise<number> {
-  const entity = index.entities.get(file.path);
-  if (!entity) {
-    if (options.showNotice !== false) {
-      new Notice('This note has no ontology type frontmatter.');
-    }
-    return 0;
-  }
-
-  return applyScaffoldPlan(app, file, planScaffoldEntity(index, file.path));
 }
 
 function inverseIssueKey(issue: OntologyIssue): string {

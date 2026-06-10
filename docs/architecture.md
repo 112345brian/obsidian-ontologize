@@ -20,7 +20,9 @@ The product contract remains [`spec.md`](spec.md); this document explains how th
   It registers commands, settings, vault-change listeners, and the `ontology-query` code block processor.
 - `src/PluginSettings.ts` and `src/PluginSettingsTab.ts` define user-configurable plugin settings.
 - `src/ontology/parser.ts` reads type files, the optional single schema file, and entity frontmatter into typed records.
-- `src/ontology/indexer.ts` builds and incrementally updates the ontology graph, computes inherited type chains, computes effective lock states, and validates consistency.
+- `src/ontology/compose.ts` is the single home for composition-chain resolution: inheritance plus interface flattening, global field/relation registries, definition merging, frontmatter-key aliasing, and issue deduplication. The indexer, validator, query engine, and mutation planner all resolve through it so a rule cannot diverge between the surface that reports a problem and the surface that acts on it.
+- `src/ontology/validate.ts` contains entity validation and schema composition conflict detection.
+- `src/ontology/indexer.ts` builds and incrementally updates the ontology graph, computes ancestor sets and effective lock states, and orchestrates derived-state recomputation.
 - `src/ontology/query.ts` evaluates the V1 query subset against the built index.
 - `src/ontology/mutations.ts` performs frontmatter writes for scaffolding and missing inverse relation fixes.
 - `src/ontology/cache.ts` hydrates and serializes the derived index at the configured vault cache path.
@@ -65,6 +67,7 @@ Event handling:
 - `vault.create` indexes new type files immediately; new entity files enter through metadata cache updates.
 - `vault.delete` removes matching entity/type nodes, including descendants when a folder path is deleted.
 - `vault.rename` removes the old path and indexes the new path when it is a Markdown file.
+  Folder renames trigger a full rebuild instead, because Obsidian does not reliably emit per-child events and the children's new paths are only discoverable by rescanning.
 
 Each event applies one raw source change:
 
@@ -285,6 +288,10 @@ Query blocks default to locked results unless the query includes `include: incom
 
 ## Validation
 
+Entity contracts are merged across every declared type before validating, so an entity with two types sharing an ancestor reports each problem exactly once.
+All issue pushes are deduplicated in O(1) through a keyed seen-set, and incremental upserts recompute derived state once per event rather than once for the removal and once for the insert.
+`cannot-have` names resolve through the same `frontmatter-key` alias mapping as `must-have` and `can-have`.
+
 The current checker reports:
 
 - Unknown parent types
@@ -344,9 +351,10 @@ The plugin mutates frontmatter through explicit commands and one guarded automat
 Scaffolding adds missing inherited `must-have`, `can-have`, and relation fields with `null` values.
 Manual scaffolding runs through `Scaffold active ontology note`, which opens a review modal before writing.
 
-When `autoScaffoldEntities` is enabled, metadata changes on entity notes can trigger the same scaffold review automatically.
-The automatic path only runs after the first full cold-vault rebuild and only when the note has completed ontology membership: the configured entity type field parses to at least one direct type, and every direct type exists, is not abstract, is not an interface, and is not part of a circular inheritance chain.
-This lets setting `instance_of`, `type`, or another configured membership field prompt for the expanded note shape without silently writing frontmatter.
+When `autoScaffoldEntities` is enabled, the scaffold review opens automatically only on a membership *transition*: the note's resolved direct types changed in this edit (typically because a membership field was just added).
+Ordinary edits to a note that still has missing fields never reopen the review, and closing the review without applying dismisses that note until its membership changes again.
+The automatic path additionally requires that the first full cold-vault rebuild has run and that every direct type exists, is not abstract, is not an interface, and is not part of a circular inheritance chain.
+This lets setting `instance_of`, `type`, or another configured membership field prompt for the expanded note shape without silently writing frontmatter and without nagging on every keystroke.
 
 Inverse fixing reads validation issues, finds missing inverse or symmetric relation entries, and appends wiki links to the target note's frontmatter.
 

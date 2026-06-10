@@ -1,6 +1,6 @@
 {
   "name": "obsidian-ontology",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Local-first ontology, inheritance-aware querying, validation, and relation maintenance for Obsidian Markdown vaults.",
   "keywords": [
     "obsidian",
@@ -42,7 +42,7 @@
   },
   "overrides": {
     "boolean": "npm:dry-uninstall",
-    "dompurify": "3.0.1",
+    "dompurify": "3.2.4",
     "type-fest": "latest"
   },
   "engines": {

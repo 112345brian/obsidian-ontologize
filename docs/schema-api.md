@@ -17,7 +17,7 @@ The relevant settings are:
 | Type folder | `_types` | Vault-relative folder containing modular Markdown type/interface files. |
 | Schema file | `_types/ontology.schema.yaml` | Optional vault-relative JSON/YAML schema file. Leave empty to use only modular files. |
 | Entity type fields | `instance_of`, `type` | Ordered frontmatter fields used to read ontology membership from entity notes. |
-| Auto-scaffold entities | off | Open a review modal for missing inherited property and relation fields when a note has completed ontology membership. |
+| Auto-scaffold entities | off | Open a review modal for missing inherited property and relation fields when a note's ontology membership changes. |
 
 The type folder is configurable.
 Any Markdown file inside that folder is treated as a schema constructor file instead of an entity note.
@@ -350,8 +350,9 @@ It does not overwrite existing frontmatter values.
 Both manual and automatic scaffolding open a review modal first.
 The modal lists the missing fields, labels them as required, optional, or relation fields, and writes only the selected fields.
 
-Automatic scaffolding runs only after the initial full-vault index rebuild.
-For an automatic scaffold to run, the note must have completed ontology membership:
+Automatic scaffolding runs only after the initial full-vault index rebuild, and only on a membership transition: the note's resolved direct types changed in that edit.
+Ordinary edits to a note with missing fields never reopen the review, and closing the review without applying dismisses that note until its membership changes again.
+For an automatic scaffold to run, the note must also have valid ontology membership:
 
 - The configured entity type field has at least one value.
 - Every direct type exists.
