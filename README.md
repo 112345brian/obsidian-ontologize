@@ -1,6 +1,6 @@
 # Ontologize
 
-Obsidian Ontology is a local-first Obsidian plugin for ontology-aware Markdown notes.
+Ontologize is a local-first Obsidian plugin for ontology-aware Markdown notes.
 It keeps ontology data in ordinary Markdown and YAML frontmatter, then adds inheritance-aware indexing, validation, inverse relation maintenance, and inline query rendering.
 
 ## Features
