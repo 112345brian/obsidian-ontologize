@@ -124,6 +124,7 @@ Schema lint findings are stored in `OntologyIndex.schemaIssues` as source-derive
 Cold builds lint every type source and the configured schema file; incremental type updates replace findings for the changed path.
 Lint errors block the affected source from being parsed into constructors, while warnings preserve the constructor and remain visible in diagnostics.
 The `Lint ontology schema` command forces a rebuild and opens Schema Diagnostics.
+The source linter requires YAML wiki links to be quoted strings; bare `[[Type]]` parses as nested arrays and is rejected by shape validation.
 
 ## Type Parsing
 

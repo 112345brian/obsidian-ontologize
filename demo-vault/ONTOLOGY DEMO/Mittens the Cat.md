@@ -1,5 +1,5 @@
 ---
-instance_of: [[cat]]
+instance_of: "[[cat]]"
 lock: true
 common_name: cat
 habitat: home
@@ -11,7 +11,7 @@ fur: true
 nickname: Mittens
 indoor: true
 companion_of:
-  - [[Charles Darwin]]
+  - "[[Charles Darwin]]"
 ---
 
 # Mittens the Cat

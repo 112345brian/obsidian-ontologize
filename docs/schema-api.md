@@ -24,10 +24,14 @@ The linter currently reports:
 - A non-string strict `type`.
 - Non-string entries in `included-types`, `excluded-types`, or `possible-values`.
 - Unknown function-like `insert` templates.
+- Nested arrays caused by unquoted wiki links in YAML.
 
 Errors prevent the malformed constructor or single schema file from entering the ontology graph.
 Warnings, such as unknown keys, remain visible but do not block otherwise valid constructors.
 Lint findings appear in Schema Diagnostics and the general ontology issue report.
+
+Always quote wiki links in YAML: use `"[[Person]]"`, not bare `[[Person]]`.
+Bare wiki-link syntax is interpreted by YAML as a nested sequence rather than a string.
 
 ## Settings
 
@@ -68,7 +72,7 @@ fields:
 relations:
   influenced_by:
     value-type: wikilink
-    range: [[Person]]
+    range: "[[Person]]"
     inverse: influenced
 
 interfaces:
@@ -81,9 +85,9 @@ types:
     lock: true
   Philosopher:
     extends:
-      - [[Person]]
+      - "[[Person]]"
     implements:
-      - [[Influenceable]]
+      - "[[Influenceable]]"
     lock: true
 ```
 
@@ -105,9 +109,9 @@ Frontmatter form:
 ```markdown
 ---
 extends:
-  - [[Person]]
+  - "[[Person]]"
 implements:
-  - [[Influenceable]]
+  - "[[Influenceable]]"
 lock: true
 ---
 ```
@@ -116,9 +120,9 @@ Body form:
 
 ```markdown
 extends:
-  - [[Person]]
+  - "[[Person]]"
 implements:
-  - [[Influenceable]]
+  - "[[Influenceable]]"
 lock: true
 ```
 
@@ -140,10 +144,10 @@ Values can be a string, wikilink, or array.
 ```yaml
 ---
 instance_of:
-  - [[Philosopher]]
+  - "[[Philosopher]]"
 lock: true
 influenced_by:
-  - [[Descartes]]
+  - "[[Descartes]]"
 ---
 ```
 
@@ -152,7 +156,7 @@ Custom field example:
 ```yaml
 ---
 ontology:
-  - [[Philosopher]]
+  - "[[Philosopher]]"
 lock: true
 ---
 ```
@@ -206,7 +210,7 @@ Minimum useful subtype:
 
 ```yaml
 extends:
-  - [[Person]]
+  - "[[Person]]"
 lock: true
 ```
 
@@ -228,7 +232,7 @@ Shorthand:
 ```yaml
 must-have:
   birth-date: date
-  school: [[SchoolOfThought]]
+  school: "[[SchoolOfThought]]"
 ```
 
 Expanded form:
@@ -239,7 +243,7 @@ must-have:
     type: date
     cardinality: one
   school:
-    type: [[SchoolOfThought]]
+    type: "[[SchoolOfThought]]"
 ```
 
 Possible values:
@@ -356,7 +360,7 @@ Global relation:
 relations:
   influenced_by:
     value-type: wikilink
-    range: [[Person]]
+    range: "[[Person]]"
     inverse: influenced
     auto-update: true
 ```
@@ -374,7 +378,7 @@ Explicit usage with override:
 relations:
   influenced_by:
     uses: influenced_by
-    range: [[Philosopher]]
+    range: "[[Philosopher]]"
 ```
 
 Recognized relation fields:

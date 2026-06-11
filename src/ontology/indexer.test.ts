@@ -495,6 +495,27 @@ describe('incremental ontology index state', () => {
     }));
   });
 
+  it('does not erase global field constraints with undefined uses overrides', () => {
+    const index = makeIndex();
+    index.types.set('_fields', makeType('_fields', '_types/_fields.md', false, [], {
+      typeKind: 'field-definitions',
+    }));
+    index.types.get('_fields')!.fields.set('common-name', {
+      frontmatterKey: 'common_name',
+      type: 'string',
+    });
+    index.types.get('Philosopher')!.mustHave.set('common-name', {
+      frontmatterKey: undefined,
+      type: undefined,
+      uses: 'common-name',
+    });
+    index.entities.get('Ada.md')!.frontmatter['common_name'] = 'Ada';
+
+    recomputeOntologyDerivedState(index);
+
+    expect(index.issues.some((issue) => issue.property === 'common-name' || issue.property === 'common_name')).toBe(false);
+  });
+
   it('flags cannot-have collisions in composed schemas', () => {
     const index = makeIndex();
     index.types.set('Named', makeType('Named', '_types/Named.md', true, [], {

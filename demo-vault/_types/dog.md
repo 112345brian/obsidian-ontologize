@@ -1,11 +1,11 @@
 ---
 extends:
-  - [[mammal]]
+  - "[[mammal]]"
 implements:
-  - [[pet]]
+  - "[[pet]]"
 lock: true
 disjoint:
-  - [[cat]]
+  - "[[cat]]"
 must-have:
   breed: string
 can-have:

@@ -1,7 +1,7 @@
 ---
 lock: true
 implements:
-  - [[observable]]
+  - "[[observable]]"
 must-have:
   common-name:
     uses: common-name
@@ -12,5 +12,5 @@ can-have:
   paws:
     type: number
     cardinality: one
-  conservation_status: [[conservation-status]]
+  conservation_status: "[[conservation-status]]"
 ---

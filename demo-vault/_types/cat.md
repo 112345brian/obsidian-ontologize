@@ -1,11 +1,11 @@
 ---
 extends:
-  - [[mammal]]
+  - "[[mammal]]"
 implements:
-  - [[pet]]
+  - "[[pet]]"
 lock: true
 disjoint:
-  - [[dog]]
+  - "[[dog]]"
 can-have:
   indoor: boolean
 ---

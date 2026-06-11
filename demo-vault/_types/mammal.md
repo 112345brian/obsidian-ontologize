@@ -1,6 +1,6 @@
 ---
 extends:
-  - [[animal]]
+  - "[[animal]]"
 lock: true
 must-have:
   gestation_days:

@@ -1,5 +1,5 @@
 ---
-instance_of: [[dog]]
+instance_of: "[[dog]]"
 lock: true
 common_name: dog
 habitat: home
@@ -12,9 +12,9 @@ breed: mixed
 trained: true
 nickname: Ada
 observed_by:
-  - [[Charles Darwin]]
+  - "[[Charles Darwin]]"
 companion_of:
-  - [[Charles Darwin]]
+  - "[[Charles Darwin]]"
 ---
 
 # Ada the Dog

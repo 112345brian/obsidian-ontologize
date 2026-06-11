@@ -140,11 +140,7 @@ export function resolveRelationDefinition(index: OntologyIndex, property: string
   if (!referenced) {
     return definition;
   }
-  return {
-    ...referenced,
-    ...definition,
-    uses: definition.uses,
-  };
+  return mergeDefined(referenced, definition);
 }
 
 export function resolvePropertyDefinition(index: OntologyIndex, property: string, definition: PropertyDefinition): PropertyDefinition {
@@ -152,11 +148,14 @@ export function resolvePropertyDefinition(index: OntologyIndex, property: string
   if (!referenced) {
     return definition;
   }
-  return {
-    ...referenced,
-    ...definition,
-    uses: definition.uses,
-  };
+  return mergeDefined(referenced, definition);
+}
+
+function mergeDefined<T extends object>(base: T, override: T): T {
+  const definedOverride = Object.fromEntries(
+    Object.entries(override).filter(([, value]) => value !== undefined)
+  ) as Partial<T>;
+  return { ...base, ...definedOverride };
 }
 
 export function frontmatterPropertyKey(property: string, definition: PropertyDefinition): string {

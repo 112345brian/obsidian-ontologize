@@ -31,6 +31,7 @@ Audit-driven correctness, performance, and infrastructure release. Also rolls up
 - Added `included-types` and `excluded-types` property constraints. Missing all included types is a warning; matching any excluded type is an error. Scalar `type` remains strict.
 - Added safe insert templates. `date.now()` initializes an empty field with the current local `YYYY-MM-DD` date when a scaffold is applied, without evaluating arbitrary JavaScript or overwriting existing values.
 - Added an internal schema linter for modular type files and single JSON/YAML schemas, including syntax, shape, unknown-key, constraint-list, and template checks. Errors block malformed constructors; warnings remain visible in Schema Diagnostics.
+- Corrected and integration-tested the repo and active-vault examples; YAML wiki links are now quoted, malformed nested arrays are lint errors, and global field overrides retain inherited aliases and constraints.
 
 ### Infrastructure
 

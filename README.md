@@ -60,12 +60,12 @@ Example:
 ```markdown
 ---
 extends:
-  - [[Person]]
+  - "[[Person]]"
 implements:
-  - [[Influenceable]]
+  - "[[Influenceable]]"
 lock: true
 must-have:
-  school-of-thought: [[SchoolOfThought]]
+  school-of-thought: "[[SchoolOfThought]]"
   up:
     insert: "[[Person]]"
     included-types: [wikilink, string]
@@ -74,12 +74,12 @@ must-have:
     insert: date.now()
     type: date
 can-have:
-  magnum-opus: [[Work]]
+  magnum-opus: "[[Work]]"
   reference:
     included-types: [wikilink, string]
 relations:
   influenced:
-    range: [[Person]]
+    range: "[[Person]]"
     inverse: influenced_by
     auto-update: true
 ---
@@ -91,7 +91,7 @@ Or declare everything in one schema file (`_types/ontology.schema.yaml`):
 relations:
   influenced_by:
     value-type: wikilink
-    range: [[Person]]
+    range: "[[Person]]"
     inverse: influenced
     auto-update: true
 

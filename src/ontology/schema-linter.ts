@@ -97,6 +97,21 @@ function lintStringArray(file: string, context: string, value: unknown, issues: 
   }
 }
 
+function lintStringOrStringArray(file: string, context: string, value: unknown, issues: OntologyIssue[]): void {
+  if (value === undefined || typeof value === 'string') {
+    return;
+  }
+  if (!Array.isArray(value) || value.some((item) => typeof item !== 'string')) {
+    issues.push(issue(file, `${context} must be a string or flat array of strings`));
+  }
+}
+
+function lintBoolean(file: string, context: string, value: unknown, issues: OntologyIssue[]): void {
+  if (value !== undefined && typeof value !== 'boolean') {
+    issues.push(issue(file, `${context} must be boolean`));
+  }
+}
+
 function lintPropertyDefinition(file: string, property: string, value: unknown, issues: OntologyIssue[]): void {
   if (typeof value === 'string') {
     return;
@@ -152,6 +167,14 @@ function lintRelationMap(file: string, value: unknown, issues: OntologyIssue[]):
       continue;
     }
     lintUnknownKeys(file, `relation ${name}`, relation, RELATION_KEYS, issues);
+    for (const key of ['inverse', 'range', 'type', 'uses', 'value', 'value-type']) {
+      if (relation[key] !== undefined && typeof relation[key] !== 'string') {
+        issues.push(issue(file, `Relation ${name}.${key} must be a string`));
+      }
+    }
+    for (const key of ['auto-update', 'symmetric', 'transitive']) {
+      lintBoolean(file, `Relation ${name}.${key}`, relation[key], issues);
+    }
   }
 }
 
@@ -162,6 +185,12 @@ function lintTypeRecord(file: string, value: unknown, issues: OntologyIssue[]): 
     return;
   }
   lintUnknownKeys(file, 'type', record, TYPE_KEYS, issues);
+  lintStringOrStringArray(file, 'extends', record['extends'], issues);
+  lintStringOrStringArray(file, 'implements', record['implements'], issues);
+  lintStringOrStringArray(file, 'disjoint', record['disjoint'], issues);
+  lintBoolean(file, 'abstract', record['abstract'], issues);
+  lintBoolean(file, 'interface', record['interface'], issues);
+  lintBoolean(file, 'lock', record['lock'], issues);
   lintPropertyMap(file, 'must-have', record['must-have'], issues);
   lintPropertyMap(file, 'can-have', record['can-have'], issues);
   lintPropertyMap(file, 'fields', record['fields'], issues);

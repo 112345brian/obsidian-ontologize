@@ -1,10 +1,10 @@
 ---
-instance_of: [[person]]
+instance_of: "[[person]]"
 lock: true
 full_name: Charles Darwin
 birth_year: 1809
 observed:
-  - [[Ada the Dog]]
+  - "[[Ada the Dog]]"
 ---
 
 # Charles Darwin

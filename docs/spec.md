@@ -349,6 +349,7 @@ All modular constructor files and configured JSON/YAML schema files are linted b
 Syntax errors, malformed definition shapes, invalid property constraints, and unknown template expressions are errors and block the affected source.
 Unknown authoring keys are warnings so likely misspellings are visible without discarding an otherwise parseable constructor.
 Lint findings update with schema file changes and are shown in Schema Diagnostics.
+Wiki links in YAML schema/frontmatter examples must be quoted strings (`"[[Person]]"`), because bare `[[Person]]` is parsed as a nested YAML sequence.
 
 ---
 
