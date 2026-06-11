@@ -14,7 +14,7 @@ It keeps ontology data in ordinary Markdown and YAML frontmatter, then adds inhe
 - Supports Linter-style ignored folders, ignored file path patterns, and ignored frontmatter rules
 - Renders inheritance-aware queries in `ontology-query` code blocks with a result count footer
 - Writes `.obsidian/ontology-cache.json` after rebuilds; discards cached graphs whose settings differ from current plugin settings
-- Validates schema consistency: inheritance, circular types (never locked), unknown types, abstract/interface instantiation, disjoint conflicts, must-have/cannot-have properties, required inserted members, union types, cardinality, relation ranges, possible values, nominal values, negation conflicts, and missing inverse/symmetric entries
+- Validates schema consistency: inheritance, circular types (never locked), unknown types, abstract/interface instantiation, disjoint conflicts, must-have/cannot-have properties, required inserted members, included/excluded types, cardinality, relation ranges, possible values, nominal values, negation conflicts, and missing inverse/symmetric entries
 - Flags duplicate entity basenames and ambiguous relation targets instead of silently resolving to an arbitrary file
 - Inverse relation fixing uses the same composition-chain resolution as validation, so the fix always writes the property that the issue reported
 - Can automatically offer a scaffold review when a note's ontology membership changes; closing the review keeps it dismissed until the membership changes again
@@ -67,11 +67,12 @@ must-have:
   school-of-thought: [[SchoolOfThought]]
   up:
     insert: "[[Person]]"
-    type: [wikilink, string]
+    included-types: [wikilink, string]
+    excluded-types: [number]
 can-have:
   magnum-opus: [[Work]]
   reference:
-    type: [wikilink, string]
+    included-types: [wikilink, string]
 relations:
   influenced:
     range: [[Person]]

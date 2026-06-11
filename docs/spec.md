@@ -309,17 +309,21 @@ A required property can declare a value that must be present:
 must-have:
   up:
     insert: "[[Person]]"
-    type:
+    included-types:
       - wikilink
       - string
+    excluded-types:
+      - number
 ```
 
 `insert` is non-destructive.
 Scaffolding creates a missing field, appends to an existing list, or converts an existing scalar to a list while preserving it.
 Validation fails if the inserted value is absent.
-A `type` array accepts a value when any listed type matches.
+`included-types` accepts a value without issue when any listed type matches and warns when none match.
+`excluded-types` rejects a value with an error when any listed type matches.
+Scalar `type` remains a strict type constraint whose mismatch is an error.
 Inserted constraints participate in inheritance, interface composition, and global field `uses` resolution.
-Two definitions of the same semantic field conflict when they specify different inserted values or different accepted type sets.
+Two definitions of the same semantic field conflict when they specify different inserted values, included type sets, or excluded type sets.
 
 ### Constraint Inheritance
 

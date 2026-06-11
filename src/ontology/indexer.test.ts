@@ -326,10 +326,10 @@ describe('incremental ontology index state', () => {
     }));
   });
 
-  it('validates required inserted members and union property types', () => {
+  it('validates required inserted members and included property types', () => {
     const index = makeIndex();
     index.types.get('Philosopher')!.mustHave.set('up', {
-      acceptedTypes: ['wikilink', 'string'],
+      includedTypes: ['wikilink', 'string'],
       insert: '[[Person]]',
     });
     index.entities.get('Ada.md')!.frontmatter['up'] = '[[Thinker]]';
@@ -349,22 +349,38 @@ describe('incremental ontology index state', () => {
     expect(index.issues.some((issue) => issue.property === 'up')).toBe(false);
   });
 
-  it('treats union property types as OR constraints', () => {
+  it('warns when values do not match included types', () => {
     const index = makeIndex();
     index.types.get('Philosopher')!.canHave.set('reference', {
-      acceptedTypes: ['wikilink', 'string'],
+      includedTypes: ['wikilink', 'string'],
     });
     index.entities.get('Ada.md')!.frontmatter['reference'] = 42;
 
     recomputeOntologyDerivedState(index);
     expect(index.issues).toContainEqual(expect.objectContaining({
-      message: 'reference must be wikilink or string',
+      message: 'reference does not match included types: wikilink, string',
       property: 'reference',
+      severity: 'warning',
     }));
 
     index.entities.get('Ada.md')!.frontmatter['reference'] = 'plain text';
     recomputeOntologyDerivedState(index);
     expect(index.issues.some((issue) => issue.property === 'reference')).toBe(false);
+  });
+
+  it('errors when values match excluded types', () => {
+    const index = makeIndex();
+    index.types.get('Philosopher')!.canHave.set('reference', {
+      excludedTypes: ['number', 'boolean'],
+    });
+    index.entities.get('Ada.md')!.frontmatter['reference'] = 42;
+
+    recomputeOntologyDerivedState(index);
+    expect(index.issues).toContainEqual(expect.objectContaining({
+      message: 'reference matches excluded types: number',
+      property: 'reference',
+      severity: 'error',
+    }));
   });
 
   it('allows shared global fields and lets required beat optional', () => {

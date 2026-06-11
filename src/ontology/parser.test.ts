@@ -6,8 +6,9 @@ vi.mock('obsidian', () => ({
       return {
         'must-have': {
           up: {
+            'excluded-types': ['number'],
+            'included-types': ['wikilink', 'string'],
             insert: '[[Person]]',
-            type: ['wikilink', 'string'],
           },
         },
       };
@@ -113,9 +114,10 @@ can-have:
 ---`);
 
     expect(type.canHave.get('descriptor')).toEqual({
-      acceptedTypes: undefined,
       cardinality: undefined,
+      excludedTypes: undefined,
       frontmatterKey: undefined,
+      includedTypes: undefined,
       insert: undefined,
       type: 'string',
       uses: undefined,
@@ -135,9 +137,10 @@ can-have:
 ---`);
 
     expect(type.canHave.get('descriptor')).toEqual({
-      acceptedTypes: undefined,
       cardinality: undefined,
+      excludedTypes: undefined,
       frontmatterKey: undefined,
+      includedTypes: undefined,
       insert: undefined,
       type: 'string',
       uses: undefined,
@@ -159,18 +162,20 @@ must-have:
 ---`);
 
     expect(type.fields.get('birth-year')).toEqual({
-      acceptedTypes: undefined,
       cardinality: 'one',
+      excludedTypes: undefined,
       frontmatterKey: 'birth_year',
+      includedTypes: undefined,
       insert: undefined,
       type: 'number',
       uses: undefined,
       values: undefined,
     });
     expect(type.mustHave.get('born')).toEqual({
-      acceptedTypes: undefined,
       cardinality: undefined,
+      excludedTypes: undefined,
       frontmatterKey: undefined,
+      includedTypes: undefined,
       insert: undefined,
       type: undefined,
       uses: 'birth-year',
@@ -178,20 +183,23 @@ must-have:
     });
   });
 
-  it('parses inserted values and union property types', () => {
+  it('parses inserted values and included/excluded property types', () => {
     const type = parseOntologyType('_types/Philosopher.md', `---
 must-have:
   up:
     insert: "[[Person]]"
-    type:
+    included-types:
       - wikilink
       - string
+    excluded-types:
+      - number
 ---`);
 
     expect(type.mustHave.get('up')).toEqual({
-      acceptedTypes: ['wikilink', 'string'],
       cardinality: undefined,
+      excludedTypes: ['number'],
       frontmatterKey: undefined,
+      includedTypes: ['wikilink', 'string'],
       insert: '[[Person]]',
       type: undefined,
       uses: undefined,

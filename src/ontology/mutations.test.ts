@@ -279,7 +279,7 @@ describe('ontology frontmatter mutations', () => {
   it('inserts required values without overwriting existing frontmatter', async () => {
     const index = makeIndex();
     index.types.get('Philosopher')!.mustHave.set('up', {
-      acceptedTypes: ['wikilink', 'string'],
+      includedTypes: ['wikilink', 'string'],
       insert: '[[Person]]',
     });
     index.entities.get('Spinoza.md')!.frontmatter = {

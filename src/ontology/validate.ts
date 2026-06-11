@@ -76,17 +76,50 @@ function valueMatchesType(expectedType: string, value: unknown): boolean {
   }
 }
 
-function validateValueType(file: string, property: string, expectedTypes: string[], value: unknown, issues: OntologyIssue[]): void {
-  if (expectedTypes.length === 0 || value === undefined || value === null || value === '') {
+function validateStrictType(file: string, property: string, expectedType: string | undefined, value: unknown, issues: OntologyIssue[]): void {
+  if (!expectedType || value === undefined || value === null || value === '') {
     return;
   }
 
   const values = Array.isArray(value) ? value : [value];
   for (const item of values) {
-    if (!expectedTypes.some((expectedType) => valueMatchesType(expectedType, item))) {
+    if (!valueMatchesType(expectedType, item)) {
       pushIssueOnce(issues, {
         file,
-        message: `${property} must be ${expectedTypes.join(' or ')}`,
+        message: `${property} must be ${expectedType}`,
+        property,
+        severity: 'error',
+      });
+    }
+  }
+}
+
+function validateIncludedTypes(file: string, property: string, includedTypes: string[], value: unknown, issues: OntologyIssue[]): void {
+  if (includedTypes.length === 0 || value === undefined || value === null || value === '') {
+    return;
+  }
+  for (const item of Array.isArray(value) ? value : [value]) {
+    if (!includedTypes.some((includedType) => valueMatchesType(includedType, item))) {
+      pushIssueOnce(issues, {
+        file,
+        message: `${property} does not match included types: ${includedTypes.join(', ')}`,
+        property,
+        severity: 'warning',
+      });
+    }
+  }
+}
+
+function validateExcludedTypes(file: string, property: string, excludedTypes: string[], value: unknown, issues: OntologyIssue[]): void {
+  if (excludedTypes.length === 0 || value === undefined || value === null || value === '') {
+    return;
+  }
+  for (const item of Array.isArray(value) ? value : [value]) {
+    const matched = excludedTypes.filter((excludedType) => valueMatchesType(excludedType, item));
+    if (matched.length > 0) {
+      pushIssueOnce(issues, {
+        file,
+        message: `${property} matches excluded types: ${matched.join(', ')}`,
         property,
         severity: 'error',
       });
@@ -117,7 +150,9 @@ function validatePropertyDefinition(
 ): void {
   const value = entity.frontmatter[property];
   validateCardinality(entity.path, property, definition, value, index.issues);
-  validateValueType(entity.path, property, definition.acceptedTypes ?? (definition.type ? [definition.type] : []), value, index.issues);
+  validateStrictType(entity.path, property, definition.type, value, index.issues);
+  validateIncludedTypes(entity.path, property, definition.includedTypes ?? [], value, index.issues);
+  validateExcludedTypes(entity.path, property, definition.excludedTypes ?? [], value, index.issues);
 
   if (definition.insert !== undefined && !containsFrontmatterValue(value, definition.insert)) {
     pushIssueOnce(index.issues, {
@@ -228,7 +263,7 @@ function validateRelation(index: OntologyIndex, entity: OntologyEntity, property
   }
 
   validateCardinality(entity.path, property, relation, value, index.issues);
-  validateValueType(entity.path, property, relation.valueType ? [relation.valueType] : [], value, index.issues);
+  validateStrictType(entity.path, property, relation.valueType, value, index.issues);
 
   const assertedTargets = new Set(extractAssertedLinkTargets(value));
   const negatedTargets = new Set(extractNegatedLinkTargets(value));
@@ -299,9 +334,10 @@ function sameStringArray(left: string[] | undefined, right: string[] | undefined
 }
 
 function samePropertyDefinition(left: PropertyDefinition, right: PropertyDefinition): boolean {
-  return sameStringArray(left.acceptedTypes, right.acceptedTypes)
-    && left.cardinality === right.cardinality
+  return left.cardinality === right.cardinality
+    && sameStringArray(left.excludedTypes, right.excludedTypes)
     && left.frontmatterKey === right.frontmatterKey
+    && sameStringArray(left.includedTypes, right.includedTypes)
     && JSON.stringify(left.insert) === JSON.stringify(right.insert)
     && left.type === right.type
     && sameStringArray(left.values, right.values);
@@ -309,9 +345,10 @@ function samePropertyDefinition(left: PropertyDefinition, right: PropertyDefinit
 
 function describePropertyDefinition(definition: PropertyDefinition): string {
   const parts = [
-    definition.acceptedTypes?.length ? `type ${definition.acceptedTypes.join(' or ')}` : '',
     definition.type ? `type ${definition.type}` : '',
     definition.cardinality ? `cardinality ${definition.cardinality}` : '',
+    definition.includedTypes?.length ? `included-types ${definition.includedTypes.join(', ')}` : '',
+    definition.excludedTypes?.length ? `excluded-types ${definition.excludedTypes.join(', ')}` : '',
     definition.frontmatterKey ? `frontmatter-key ${definition.frontmatterKey}` : '',
     definition.insert !== undefined ? `insert ${displayInsertedValue(definition.insert)}` : '',
     definition.values?.length ? `possible-values ${definition.values.join(', ')}` : '',

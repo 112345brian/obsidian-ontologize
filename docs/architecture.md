@@ -351,9 +351,11 @@ The plugin mutates frontmatter through explicit commands and one guarded automat
 Scaffolding adds missing inherited `must-have`, `can-have`, and relation fields with `null` values.
 Property definitions with `insert` instead plan a required-member mutation: create the field with that value, append it to an existing list, or preserve an existing scalar by converting the field to a list.
 Validation uses the same resolved property definition and reports when the inserted member is absent.
-Property `type` arrays are OR constraints; each stored value must match at least one accepted type.
+Scalar property `type` remains a strict error-producing constraint.
+`included-types` is an OR constraint that emits a warning when a stored value matches none of its entries.
+`excluded-types` is an OR constraint that emits an error when a stored value matches any entry.
 Wiki-link membership and mutation idempotence share `containsFrontmatterValue()` from `src/ontology/links.ts`, preventing validation and scaffolding from disagreeing about whether an inserted link is already present.
-Because `insert` and accepted type arrays are part of `PropertyDefinition`, global field resolution, interface composition conflict detection, cache persistence, validation, and scaffold planning all carry them through the existing property pipeline.
+Because `insert`, `included-types`, and `excluded-types` are part of `PropertyDefinition`, global field resolution, interface composition conflict detection, cache persistence, validation, and scaffold planning all carry them through the existing property pipeline.
 Manual scaffolding runs through `Scaffold active ontology note`, which opens a review modal before writing.
 
 When `autoScaffoldEntities` is enabled, the scaffold review opens automatically only on a membership *transition*: the note's resolved direct types changed in this edit (typically because a membership field was just added).

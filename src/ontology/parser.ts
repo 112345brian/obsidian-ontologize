@@ -46,13 +46,14 @@ function parsePropertyDefinition(value: unknown): PropertyDefinition {
   }
   const record = asRecord(value);
   const type = typeof record['type'] === 'string' ? normalizeLinkTarget(record['type']) : undefined;
-  const acceptedTypes = Array.isArray(record['type']) ? record['type'].map((item) => normalizeLinkTarget(String(item))) : undefined;
   const cardinality = typeof record['cardinality'] === 'string' ? record['cardinality'] : undefined;
+  const excludedTypes = Array.isArray(record['excluded-types']) ? record['excluded-types'].map((item) => normalizeLinkTarget(String(item))) : undefined;
   const frontmatterKey = typeof record['frontmatter-key'] === 'string' ? record['frontmatter-key'] : undefined;
+  const includedTypes = Array.isArray(record['included-types']) ? record['included-types'].map((item) => normalizeLinkTarget(String(item))) : undefined;
   const insert = record['insert'] as PropertyDefinition['insert'];
   const uses = typeof record['uses'] === 'string' ? normalizeLinkTarget(record['uses']) : undefined;
   const values = Array.isArray(record['possible-values']) ? record['possible-values'].map(String) : undefined;
-  return { acceptedTypes, cardinality, frontmatterKey, insert, type, uses, values };
+  return { cardinality, excludedTypes, frontmatterKey, includedTypes, insert, type, uses, values };
 }
 
 function parsePropertyMap(value: unknown): Map<string, PropertyDefinition> {

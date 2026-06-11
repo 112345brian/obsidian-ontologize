@@ -172,7 +172,7 @@ When a type composes multiple parents or interfaces, duplicate frontmatter keys 
 Use global `fields` plus property `uses` when a key means the same thing everywhere.
 Local fields from different interfaces are treated as different semantic fields even if their definitions look identical, so composing them under the same frontmatter key is a schema error.
 Different `type`, `cardinality`, `frontmatter-key`, or `possible-values` constraints for the same global field are schema errors.
-Different union-type sets or `insert` values for the same global field are also schema errors.
+Different `included-types`, `excluded-types`, or `insert` values for the same global field are also schema errors.
 Combining `cannot-have` with `must-have` or `can-have` for the same key is also a schema error.
 
 Minimum concrete type:
@@ -259,7 +259,9 @@ Recognized property definition fields:
 
 | Field | Meaning |
 |---|---|
-| `type` | One accepted type, or an array of accepted types. Arrays use OR semantics. |
+| `type` | One strict type. A mismatch is an error. |
+| `included-types` | Preferred types. A value matching none of them produces a warning. |
+| `excluded-types` | Forbidden types. A value matching any of them produces an error. |
 | `cardinality` | Currently validates `one` and `one-to-one` as single-value constraints. |
 | `insert` | Required value that validation expects and scaffolding inserts without overwriting existing values. |
 | `possible-values` | Inline allowed values for this property. |
@@ -270,14 +272,19 @@ Required inserted member:
 must-have:
   up:
     insert: "[[Person]]"
-    type:
+    included-types:
       - wikilink
       - string
+    excluded-types:
+      - number
 ```
 
 If `up` is absent, scaffolding creates it with `[[Person]]`.
 If `up` already contains another scalar or list value, scaffolding preserves that value and appends `[[Person]]`.
 Validation requires the inserted value to remain present.
+`included-types` uses OR semantics: matching any listed type is accepted without an issue.
+If none match, validation reports a warning.
+`excluded-types` also uses OR semantics, but matching any listed type reports an error.
 `insert` is inherited and composed like the rest of the property definition, including when it comes from a global field referenced with `uses`.
 When an inserted value is a wiki link, membership compares normalized link targets, so aliases and paths resolving to the same note are treated as the same required member.
 
@@ -353,7 +360,8 @@ The plugin validates:
 - Present `cannot-have` properties.
 - Cardinality violations for `one` and `one-to-one`.
 - Scalar value type mismatches.
-- Union type mismatches when a value matches none of the listed types.
+- Included type warnings when a value matches none of the listed types.
+- Excluded type errors when a value matches any listed type.
 - Nominal value mismatches.
 - Unknown relation targets.
 - Ambiguous relation targets when multiple entity notes share a basename.

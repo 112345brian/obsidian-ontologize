@@ -7,9 +7,10 @@ export type FrontmatterValue =
   | { [key: string]: FrontmatterValue };
 
 export interface PropertyDefinition {
-  acceptedTypes?: string[] | undefined;
   cardinality?: string | undefined;
+  excludedTypes?: string[] | undefined;
   frontmatterKey?: string | undefined;
+  includedTypes?: string[] | undefined;
   insert?: FrontmatterValue | undefined;
   type?: string | undefined;
   uses?: string | undefined;
