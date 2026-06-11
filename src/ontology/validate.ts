@@ -16,6 +16,7 @@ import {
 } from './compose.ts';
 import { containsFrontmatterValue, extractAssertedLinkTargets, extractAssertedWikiLinkTargets, extractLinkTargets, extractNegatedLinkTargets, hasNegatedTarget, normalizeLinkTarget } from './links.ts';
 import { isInsertTemplate } from './templates.ts';
+import { parseTypeExpression } from './type-expression.ts';
 
 export function hasValue(frontmatter: Record<string, unknown>, key: string): boolean {
   const value = frontmatter[key];
@@ -84,7 +85,7 @@ function validateStrictType(file: string, property: string, expectedType: string
 
   const values = Array.isArray(value) ? value : [value];
   for (const item of values) {
-    if (!valueMatchesType(expectedType, item)) {
+    if (!parseTypeExpression(expectedType).some((type) => valueMatchesType(type, item))) {
       pushIssueOnce(issues, {
         file,
         message: `${property} must be ${expectedType}`,
@@ -136,11 +137,13 @@ function allowedPropertyValues(index: OntologyIndex, definition: PropertyDefinit
   if (definition.values && definition.values.length > 0) {
     return definition.values;
   }
-  const referencedType = definition.type ? index.types.get(definition.type) : undefined;
-  if (referencedType?.typeKind === 'nominal') {
-    return referencedType.values;
+  if (!definition.type) {
+    return [];
   }
-  return [];
+  const referencedTypes = parseTypeExpression(definition.type).map((type) => index.types.get(type));
+  return referencedTypes.length > 0 && referencedTypes.every((type) => type?.typeKind === 'nominal')
+    ? referencedTypes.flatMap((type) => type?.values ?? [])
+    : [];
 }
 
 function validatePropertyDefinition(
@@ -302,7 +305,7 @@ function validateRelation(index: OntologyIndex, entity: OntologyEntity, property
 
     if (relation.range) {
       const targetChain = entityCompositionChain(target, index);
-      if (!targetChain.has(relation.range)) {
+      if (!parseTypeExpression(relation.range).some((range) => targetChain.has(range))) {
         pushIssueOnce(index.issues, {
           file: entity.path,
           message: `${property} target ${targetName} is not a ${relation.range}`,

@@ -31,6 +31,15 @@ vi.mock('obsidian', () => ({
         },
       };
     }
+    if (source.includes('bad-union')) {
+      return {
+        'must-have': {
+          up: {
+            type: 'wikilink |',
+          },
+        },
+      };
+    }
     return {
       'must-have': {
         started: {
@@ -90,5 +99,12 @@ describe('schema linter', () => {
       'Relation name influenced_by should use kebab-case',
       'Relation influenced_by.inverse influences_person should use kebab-case',
     ]));
+  });
+
+  it('rejects malformed type unions', () => {
+    expect(lintOntologyTypeSource('_types/BadUnion.md', '---\nbad-union\n---')).toContainEqual(expect.objectContaining({
+      message: 'Property up.type has an invalid union expression',
+      severity: 'error',
+    }));
   });
 });

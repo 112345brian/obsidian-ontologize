@@ -2,6 +2,15 @@ import { describe, expect, it, vi } from 'vitest';
 
 vi.mock('obsidian', () => ({
   parseYaml: (source: string) => {
+    if (source.includes('wikilink|string')) {
+      return {
+        'must-have': {
+          up: {
+            type: 'wikilink|string',
+          },
+        },
+      };
+    }
     if (source.includes('insert:') && source.includes('up:')) {
       return {
         'must-have': {
@@ -205,6 +214,16 @@ must-have:
       uses: undefined,
       values: undefined,
     });
+  });
+
+  it('normalizes property type unions', () => {
+    const type = parseOntologyType('_types/Linked.md', `---
+must-have:
+  up:
+    type: wikilink|string
+---`);
+
+    expect(type.mustHave.get('up')?.type).toBe('wikilink | string');
   });
 
   it('parses top-level schema fields as a field registry', () => {

@@ -3,6 +3,7 @@ import { parseYaml } from 'obsidian';
 import type { OntologyIssue } from './types.ts';
 
 import { isInsertTemplate } from './templates.ts';
+import { isValidTypeExpression } from './type-expression.ts';
 
 const TYPE_KEYS = new Set([
   'abstract',
@@ -121,6 +122,9 @@ function lintKebabCase(file: string, context: string, value: unknown, issues: On
 function lintPropertyDefinition(file: string, property: string, value: unknown, issues: OntologyIssue[]): void {
   lintKebabCase(file, 'Property name', property, issues);
   if (typeof value === 'string') {
+    if (!isValidTypeExpression(value)) {
+      issues.push(issue(file, `Property ${property}.type has an invalid union expression`));
+    }
     return;
   }
   const record = asRecord(value);
@@ -131,6 +135,8 @@ function lintPropertyDefinition(file: string, property: string, value: unknown, 
   lintUnknownKeys(file, `property ${property}`, record, PROPERTY_KEYS, issues);
   if (record['type'] !== undefined && typeof record['type'] !== 'string') {
     issues.push(issue(file, `Property ${property}.type must be one string`));
+  } else if (typeof record['type'] === 'string' && !isValidTypeExpression(record['type'])) {
+    issues.push(issue(file, `Property ${property}.type has an invalid union expression`));
   }
   lintStringArray(file, `Property ${property}.included-types`, record['included-types'], issues);
   lintStringArray(file, `Property ${property}.excluded-types`, record['excluded-types'], issues);
@@ -179,6 +185,11 @@ function lintRelationMap(file: string, value: unknown, issues: OntologyIssue[]):
     for (const key of ['inverse', 'range', 'type', 'uses', 'value', 'value-type']) {
       if (relation[key] !== undefined && typeof relation[key] !== 'string') {
         issues.push(issue(file, `Relation ${name}.${key} must be a string`));
+      }
+    }
+    for (const key of ['range', 'type', 'value', 'value-type']) {
+      if (typeof relation[key] === 'string' && !isValidTypeExpression(relation[key])) {
+        issues.push(issue(file, `Relation ${name}.${key} has an invalid union expression`));
       }
     }
     lintKebabCase(file, `Relation ${name}.inverse`, relation['inverse'], issues);

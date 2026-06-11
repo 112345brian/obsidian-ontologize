@@ -361,7 +361,8 @@ The plugin mutates frontmatter through explicit commands and one guarded automat
 Scaffolding adds missing inherited `must-have`, `can-have`, and relation fields with `null` values.
 Property definitions with `insert` instead plan a required-member mutation: create the field with that value, append it to an existing list, or preserve an existing scalar by converting the field to a list.
 Validation uses the same resolved property definition and reports when the inserted member is absent.
-Scalar property `type` remains a strict error-producing constraint.
+Property `type`, relation `value-type`, and relation `range` accept normalized `|` unions and remain strict error-producing constraints.
+Validation succeeds when any union branch matches; nominal-only unions combine their allowed values.
 `included-types` is an OR constraint that emits a warning when a stored value matches none of its entries.
 `excluded-types` is an OR constraint that emits an error when a stored value matches any entry.
 Wiki-link membership and mutation idempotence share `containsFrontmatterValue()` from `src/ontology/links.ts`, preventing validation and scaffolding from disagreeing about whether an inserted link is already present.

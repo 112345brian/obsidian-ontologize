@@ -286,7 +286,7 @@ Recognized property definition fields:
 
 | Field | Meaning |
 |---|---|
-| `type` | One strict type. A mismatch is an error. |
+| `type` | One strict type or a `|` union. A mismatch against every branch is an error. |
 | `included-types` | Preferred types. A value matching none of them produces a warning. |
 | `excluded-types` | Forbidden types. A value matching any of them produces an error. |
 | `cardinality` | Currently validates `one` and `one-to-one` as single-value constraints. |
@@ -299,9 +299,7 @@ Required inserted member:
 must-have:
   up:
     insert: "[[Person]]"
-    included-types:
-      - wikilink
-      - string
+    type: wikilink | string
     excluded-types:
       - number
 ```
@@ -309,6 +307,7 @@ must-have:
 If `up` is absent, scaffolding creates it with `[[Person]]`.
 If `up` already contains another scalar or list value, scaffolding preserves that value and appends `[[Person]]`.
 Validation requires the inserted value to remain present.
+`type: wikilink | string` is a strict union: each value must match at least one branch.
 `included-types` uses OR semantics: matching any listed type is accepted without an issue.
 If none match, validation reports a warning.
 `excluded-types` also uses OR semantics, but matching any listed type reports an error.
@@ -388,8 +387,8 @@ Recognized relation fields:
 | Field | Meaning |
 |---|---|
 | `uses` | Name of a global relation definition to merge with. |
-| `value-type`, `type`, or `value` | Scalar value type. `value-type` is preferred for relations. |
-| `range` | Required target type/interface for linked entity targets. |
+| `value-type`, `type`, or `value` | Scalar value type or `|` union. `value-type` is preferred for relations. |
+| `range` | Required target type/interface or `|` union for linked entity targets. |
 | `inverse` | Property that should point back from the target note. |
 | `symmetric` | When `true`, the relation is its own inverse. |
 | `transitive` | Stored in the model for future traversal behavior. |

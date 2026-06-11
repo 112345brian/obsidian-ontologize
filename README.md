@@ -69,7 +69,7 @@ must-have:
   school-of-thought: "[[SchoolOfThought]]"
   up:
     insert: "[[Person]]"
-    included-types: [wikilink, string]
+    type: wikilink | string
     excluded-types: [number]
   date-start:
     insert: date.now()
@@ -77,7 +77,7 @@ must-have:
 can-have:
   magnum-opus: "[[Work]]"
   reference:
-    included-types: [wikilink, string]
+    type: wikilink | string
 relations:
   influenced:
     range: "[[Person]]"

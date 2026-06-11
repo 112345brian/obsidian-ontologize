@@ -3,6 +3,7 @@ import { parseYaml } from 'obsidian';
 import type { OntologyEntity, OntologyType, PropertyDefinition, RelationDefinition } from './types.ts';
 
 import { basenameWithoutExtension, extractLinkTargets, normalizeLinkTarget } from './links.ts';
+import { normalizeTypeExpression } from './type-expression.ts';
 
 function asRecord(value: unknown): Record<string, unknown> {
   return value && typeof value === 'object' && !Array.isArray(value) ? value as Record<string, unknown> : {};
@@ -42,10 +43,10 @@ function readYamlObject(markdown: string): Record<string, unknown> {
 
 function parsePropertyDefinition(value: unknown): PropertyDefinition {
   if (typeof value === 'string') {
-    return { type: normalizeLinkTarget(value) };
+    return { type: normalizeTypeExpression(value, normalizeLinkTarget) };
   }
   const record = asRecord(value);
-  const type = typeof record['type'] === 'string' ? normalizeLinkTarget(record['type']) : undefined;
+  const type = typeof record['type'] === 'string' ? normalizeTypeExpression(record['type'], normalizeLinkTarget) : undefined;
   const cardinality = typeof record['cardinality'] === 'string' ? record['cardinality'] : undefined;
   const excludedTypes = Array.isArray(record['excluded-types']) ? record['excluded-types'].map((item) => normalizeLinkTarget(String(item))) : undefined;
   const frontmatterKey = typeof record['frontmatter-key'] === 'string' ? record['frontmatter-key'] : undefined;
@@ -81,16 +82,16 @@ function parseRelationDefinition(value: unknown): RelationDefinition {
     autoUpdate: record['auto-update'] === true,
     cardinality: typeof record['cardinality'] === 'string' ? record['cardinality'] : undefined,
     inverse: typeof record['inverse'] === 'string' ? record['inverse'] : undefined,
-    range: typeof record['range'] === 'string' ? normalizeLinkTarget(record['range']) : undefined,
+    range: typeof record['range'] === 'string' ? normalizeTypeExpression(record['range'], normalizeLinkTarget) : undefined,
     symmetric: record['symmetric'] === true,
     transitive: record['transitive'] === true,
     uses: typeof record['uses'] === 'string' ? normalizeLinkTarget(record['uses']) : undefined,
     valueType: typeof record['value-type'] === 'string'
-      ? normalizeLinkTarget(record['value-type'])
+      ? normalizeTypeExpression(record['value-type'], normalizeLinkTarget)
       : typeof record['type'] === 'string'
-        ? normalizeLinkTarget(record['type'])
+        ? normalizeTypeExpression(record['type'], normalizeLinkTarget)
         : typeof record['value'] === 'string'
-          ? normalizeLinkTarget(record['value'])
+          ? normalizeTypeExpression(record['value'], normalizeLinkTarget)
           : undefined,
   };
 }

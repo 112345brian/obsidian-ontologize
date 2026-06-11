@@ -381,6 +381,45 @@ describe('incremental ontology index state', () => {
     expect(index.issues.some((issue) => issue.property === 'reference')).toBe(false);
   });
 
+  it('accepts strict property type unions when any branch matches', () => {
+    const index = makeIndex();
+    index.types.get('Philosopher')!.canHave.set('reference', {
+      type: 'number | string',
+    });
+
+    index.entities.get('Ada.md')!.frontmatter['reference'] = 42;
+    recomputeOntologyDerivedState(index);
+    expect(index.issues.some((issue) => issue.property === 'reference')).toBe(false);
+
+    index.entities.get('Ada.md')!.frontmatter['reference'] = true;
+    recomputeOntologyDerivedState(index);
+    expect(index.issues).toContainEqual(expect.objectContaining({
+      message: 'reference must be number | string',
+      property: 'reference',
+      severity: 'error',
+    }));
+  });
+
+  it('accepts relation range unions when the target matches any branch', () => {
+    const index = makeIndex();
+    index.types.set('Organization', makeType('Organization', '_types/Organization.md', true));
+    index.types.get('Philosopher')!.relations.set('member-of', {
+      range: 'Person | Organization',
+      valueType: 'wikilink',
+    });
+    index.entities.set('Academy.md', {
+      frontmatter: { instance_of: '[[Organization]]' },
+      instanceOf: ['Organization'],
+      lockIntent: false,
+      name: 'Academy',
+      path: 'Academy.md',
+    });
+    index.entities.get('Ada.md')!.frontmatter['member-of'] = '[[Academy]]';
+
+    recomputeOntologyDerivedState(index);
+    expect(index.issues.some((issue) => issue.property === 'member-of')).toBe(false);
+  });
+
   it('errors when values match excluded types', () => {
     const index = makeIndex();
     index.types.get('Philosopher')!.canHave.set('reference', {
