@@ -585,6 +585,40 @@ describe('incremental ontology index state', () => {
     }));
   });
 
+  it('persists schema lint errors and blocks malformed schema constructors', async () => {
+    const app = {
+      vault: {
+        adapter: {
+          exists: () => Promise.resolve(true),
+          read: () => Promise.resolve(JSON.stringify({
+            types: [],
+          })),
+        },
+        getMarkdownFiles: () => [],
+      },
+    } as unknown as App;
+
+    const index = await buildOntologyIndex(app, {
+      schemaPath: '_types/ontology.schema.json',
+      typeFolder: '_types',
+    });
+
+    expect(index.types.size).toBe(0);
+    expect(index.schemaIssues).toContainEqual(expect.objectContaining({
+      file: '_types/ontology.schema.json',
+      message: 'types must be a map of named definitions',
+      severity: 'error',
+    }));
+    expect(index.issues).toContainEqual(expect.objectContaining({
+      message: 'types must be a map of named definitions',
+    }));
+
+    recomputeOntologyDerivedState(index);
+    expect(index.issues).toContainEqual(expect.objectContaining({
+      message: 'types must be a map of named definitions',
+    }));
+  });
+
   it('uses configured entity type frontmatter fields', async () => {
     const file = {
       extension: 'md',

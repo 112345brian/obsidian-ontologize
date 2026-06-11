@@ -57,6 +57,9 @@ function makeIndex(): OntologyIndex {
     relationDefinitions: new Map([
       ['influenced_by', { autoUpdate: true, inverse: 'influenced', range: 'Person', valueType: 'wikilink' }],
     ]),
+    schemaIssues: [
+      { file: '_types/Broken.md', message: 'Unknown type field typo', severity: 'warning' as const },
+    ],
     settings: {
       entityTypeFields: ['instance_of', 'type'],
       filesToIgnore: ['\\.canvas\\.md$'],
@@ -107,6 +110,7 @@ describe('ontology cache round trip', () => {
     expect(hydrated!.generatedAt).toBe(original.generatedAt);
     expect(hydrated!.issues).toEqual(original.issues);
     expect(hydrated!.relationDefinitions).toEqual(original.relationDefinitions);
+    expect(hydrated!.schemaIssues).toEqual(original.schemaIssues);
     expect(hydrated!.settings).toEqual(original.settings);
     expect(hydrated!.types).toEqual(original.types);
     expect(hydrated!.entitiesByName.get('Ada')?.path).toBe('Ada.md');

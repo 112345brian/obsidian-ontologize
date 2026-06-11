@@ -86,6 +86,7 @@ export interface OntologyIndex {
   fieldDefinitions: Map<string, PropertyDefinition>;
   issues: OntologyIssue[];
   relationDefinitions: Map<string, RelationDefinition>;
+  schemaIssues?: OntologyIssue[] | undefined;
   generatedAt: string;
   settings: {
     entityTypeFields: string[];

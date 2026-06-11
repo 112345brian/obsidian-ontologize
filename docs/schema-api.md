@@ -8,6 +8,27 @@ The schema can be authored in either source style:
 
 Both styles compile to the same internal ontology graph.
 
+## Schema Linting
+
+The plugin internally lints every modular type file and the configured single schema file.
+Linting runs during full index builds and whenever a schema file changes.
+Use `Obsidian Ontology: Lint ontology schema` to rebuild and open the current report, or open `Schema diagnostics` from plugin settings.
+
+The linter currently reports:
+
+- Malformed YAML or JSON.
+- Missing closing YAML frontmatter delimiters.
+- Non-map schema/type roots.
+- Unknown schema, type, property, and relation fields.
+- Invalid `must-have`, `can-have`, `fields`, and `relations` shapes.
+- A non-string strict `type`.
+- Non-string entries in `included-types`, `excluded-types`, or `possible-values`.
+- Unknown function-like `insert` templates.
+
+Errors prevent the malformed constructor or single schema file from entering the ontology graph.
+Warnings, such as unknown keys, remain visible but do not block otherwise valid constructors.
+Lint findings appear in Schema Diagnostics and the general ontology issue report.
+
 ## Settings
 
 The relevant settings are:
@@ -310,6 +331,7 @@ A template initializes only a missing, null, empty-string, or empty-list field.
 It never overwrites or appends to an already populated field.
 Validation treats the generated result as an ordinary property value: `must-have`, `type`, included/excluded types, and possible values still apply, but the stored value is not compared to the template expression itself.
 Template expressions come from a fixed registry and are never executed as arbitrary JavaScript.
+An unknown function-like expression such as `clock.unknown()` is a lint error rather than a literal value.
 
 Use `values` only on `type: nominal` constructors, not on ordinary property definitions.
 

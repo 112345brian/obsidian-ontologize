@@ -89,6 +89,14 @@ export class Plugin extends ObsidianPlugin {
     });
 
     this.addCommand({
+      callback: () => {
+        void this.rebuildIndex(false).then(() => this.openSchemaDiagnosticsModal());
+      },
+      id: 'lint-schema',
+      name: 'Lint ontology schema',
+    });
+
+    this.addCommand({
       checkCallback: (checking) => {
         const file = this.app.workspace.getActiveFile();
         if (!file) {

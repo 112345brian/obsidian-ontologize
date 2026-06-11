@@ -97,6 +97,7 @@ export async function readOntologyCache(app: App, cachePath: string): Promise<On
       generatedAt: stringValue(payload['generatedAt']),
       issues: Array.isArray(payload['issues']) ? payload['issues'] as OntologyIssue[] : [],
       relationDefinitions: hydrateMap<RelationDefinition>(payload['relationDefinitions'], (item) => item as RelationDefinition),
+      schemaIssues: Array.isArray(payload['schemaIssues']) ? payload['schemaIssues'] as OntologyIssue[] : [],
       settings: {
         entityTypeFields: stringArrayValue(settings['entityTypeFields']).length > 0 ? stringArrayValue(settings['entityTypeFields']) : ['instance_of', 'type'],
         filesToIgnore: stringArrayValue(settings['filesToIgnore']),
@@ -125,6 +126,7 @@ export async function writeOntologyCache(app: App, cachePath: string, index: Ont
     generatedAt: index.generatedAt,
     issues: index.issues,
     relationDefinitions: mapToObject(index.relationDefinitions, (value) => value),
+    schemaIssues: index.schemaIssues ?? [],
     settings: index.settings,
     types: mapToObject(index.types, (value) => ({
       ...value,

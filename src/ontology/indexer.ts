@@ -10,6 +10,7 @@ import {
 } from './compose.ts';
 import { normalizeLinkTarget } from './links.ts';
 import { parseOntologyEntity, parseOntologySchema, parseOntologyType } from './parser.ts';
+import { lintOntologySchemaSource, lintOntologyTypeSource } from './schema-linter.ts';
 import { validateIndex, validateSchemaCompositionConflicts } from './validate.ts';
 
 export interface BuildIndexSettings {
@@ -101,6 +102,7 @@ function createEmptyOntologyIndex(settings: BuildIndexSettings): OntologyIndex {
     generatedAt: new Date().toISOString(),
     issues: [],
     relationDefinitions: new Map<string, RelationDefinition>(),
+    schemaIssues: [],
     settings: {
       entityTypeFields: normalizedEntityTypeFields(settings.entityTypeFields),
       filesToIgnore: settings.filesToIgnore ?? [],
@@ -228,7 +230,7 @@ function rebuildEntityNameIndex(index: OntologyIndex): void {
 }
 
 export function recomputeOntologyDerivedState(index: OntologyIndex): OntologyIndex {
-  index.issues = [];
+  index.issues = [...index.schemaIssues ?? []];
   rebuildEntityNameIndex(index);
   for (const name of index.ambiguousEntityNames ?? []) {
     const paths = [...index.entities.values()].filter((entity) => entity.name === name).map((entity) => entity.path).sort();
@@ -277,6 +279,7 @@ function removeOntologyRecords(index: OntologyIndex, path: string): void {
       index.types.delete(name);
     }
   }
+  index.schemaIssues = (index.schemaIssues ?? []).filter((item) => item.file !== path && !item.file.startsWith(`${path}#`));
 }
 
 export function removeOntologyFile(index: OntologyIndex, path: string): OntologyIndex {
@@ -290,7 +293,13 @@ async function loadSchemaTypes(app: App, index: OntologyIndex, settings: BuildIn
     return;
   }
 
-  for (const type of parseOntologySchema(schemaPath, await app.vault.adapter.read(schemaPath))) {
+  const source = await app.vault.adapter.read(schemaPath);
+  const lintIssues = lintOntologySchemaSource(schemaPath, source);
+  index.schemaIssues?.push(...lintIssues);
+  if (lintIssues.some((item) => item.severity === 'error')) {
+    return;
+  }
+  for (const type of parseOntologySchema(schemaPath, source)) {
     index.types.set(type.name, type);
   }
 }
@@ -306,7 +315,13 @@ export async function upsertOntologyFile(app: App, index: OntologyIndex, file: T
   }
 
   if (isOntologyTypeFile(file, settings.typeFolder)) {
-    const type = parseOntologyType(file.path, await app.vault.read(file));
+    const source = await app.vault.read(file);
+    const lintIssues = lintOntologyTypeSource(file.path, source);
+    index.schemaIssues?.push(...lintIssues);
+    if (lintIssues.some((item) => item.severity === 'error')) {
+      return recomputeOntologyDerivedState(index);
+    }
+    const type = parseOntologyType(file.path, source);
     index.types.set(type.name, type);
     return recomputeOntologyDerivedState(index);
   }
@@ -335,7 +350,13 @@ export async function buildOntologyIndex(app: App, settings: BuildIndexSettings)
     }
 
     if (isOntologyTypeFile(file, settings.typeFolder)) {
-      const type = parseOntologyType(file.path, await app.vault.read(file));
+      const source = await app.vault.read(file);
+      const lintIssues = lintOntologyTypeSource(file.path, source);
+      index.schemaIssues?.push(...lintIssues);
+      if (lintIssues.some((item) => item.severity === 'error')) {
+        continue;
+      }
+      const type = parseOntologyType(file.path, source);
       index.types.set(type.name, type);
       continue;
     }

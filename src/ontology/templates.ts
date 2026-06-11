@@ -10,7 +10,7 @@ const INSERT_TEMPLATES = new Map<string, InsertTemplate>([
   ['date.now()', (context) => localDate(context.now)],
 ]);
 
-export function isInsertTemplate(value: unknown): value is string {
+export function isInsertTemplate(value: unknown): boolean {
   return typeof value === 'string' && INSERT_TEMPLATES.has(value);
 }
 

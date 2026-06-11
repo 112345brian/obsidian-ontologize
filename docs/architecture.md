@@ -21,6 +21,7 @@ The product contract remains [`spec.md`](spec.md); this document explains how th
 - `src/PluginSettings.ts` and `src/PluginSettingsTab.ts` define user-configurable plugin settings.
 - `src/ontology/parser.ts` reads type files, the optional single schema file, and entity frontmatter into typed records.
 - `src/ontology/compose.ts` is the single home for composition-chain resolution: inheritance plus interface flattening, global field/relation registries, definition merging, frontmatter-key aliasing, and issue deduplication. The indexer, validator, query engine, and mutation planner all resolve through it so a rule cannot diverge between the surface that reports a problem and the surface that acts on it.
+- `src/ontology/schema-linter.ts` validates source syntax and authoring shapes before constructors enter the graph.
 - `src/ontology/validate.ts` contains entity validation and schema composition conflict detection.
 - `src/ontology/indexer.ts` builds and incrementally updates the ontology graph, computes ancestor sets and effective lock states, and orchestrates derived-state recomputation.
 - `src/ontology/query.ts` evaluates the V1 query subset against the built index.
@@ -117,6 +118,12 @@ This keeps validation review in Obsidian UI instead of requiring users to embed 
 
 The schema diagnostics modal is a narrower authoring surface for type/interface/relation problems.
 It summarizes the current schema shape, lists circular types, and filters issues down to schema files and schema-composition failures such as unknown parents or invalid interface usage.
+
+Schema lint findings are stored in `OntologyIndex.schemaIssues` as source-derived input to recomputation.
+`recomputeOntologyDerivedState()` begins with those findings before adding graph and entity validation issues, so hot graph updates do not erase source diagnostics.
+Cold builds lint every type source and the configured schema file; incremental type updates replace findings for the changed path.
+Lint errors block the affected source from being parsed into constructors, while warnings preserve the constructor and remain visible in diagnostics.
+The `Lint ontology schema` command forces a rebuild and opens Schema Diagnostics.
 
 ## Type Parsing
 

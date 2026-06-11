@@ -20,6 +20,7 @@ It keeps ontology data in ordinary Markdown and YAML frontmatter, then adds inhe
 - Can automatically offer a scaffold review when a note's ontology membership changes; closing the review keeps it dismissed until the membership changes again
 - Can automatically repair inverse relations that declare `auto-update: true`
 - Provides an issue report modal with severity/autofix filters and file navigation
+- Internally lints modular type files and single-file schemas on cold builds and hot updates; malformed constructors are excluded from the graph and reported in Schema Diagnostics
 - Provides commands to rebuild, check, scaffold the active note, and fix missing inverses
 
 ## Query Blocks
@@ -114,6 +115,8 @@ types:
 - `Obsidian Ontology: Check ontology consistency`
 - `Obsidian Ontology: Check active ontology note`
 - `Obsidian Ontology: Open ontology issues`
+- `Obsidian Ontology: Open ontology schema diagnostics`
+- `Obsidian Ontology: Lint ontology schema`
 - `Obsidian Ontology: Scaffold active ontology note`
 - `Obsidian Ontology: Fix missing inverse relations`
 
