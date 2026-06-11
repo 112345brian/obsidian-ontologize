@@ -12,7 +12,7 @@ Both styles compile to the same internal ontology graph.
 
 The plugin internally lints every modular type file and the configured single schema file.
 Linting runs during full index builds and whenever a schema file changes.
-Use `Obsidian Ontology: Lint ontology schema` to rebuild and open the current report, or open `Schema diagnostics` from plugin settings.
+Use `Ontologize: Lint ontology schema` to rebuild and open the current report, or open `Schema diagnostics` from plugin settings.
 
 The linter currently reports:
 
@@ -198,6 +198,62 @@ These fields are recognized in type, interface, and single-schema type definitio
 | `lock` | boolean | Type/interface lock intent. |
 | `type` | string | Constructor kind, such as `nominal`, `interface`, `field-definitions`, or `relation-definitions`. |
 | `values` | array | Allowed values for `type: nominal`. |
+| `requires` | link or array of links | Types that must also appear in an entity's resolved membership for this type to be valid. |
+| `excludes` | link or array of links | Types that must not appear in an entity's resolved membership alongside this type. |
+| `replaces` | link, array of links, or array of `{value, field}` objects | When this type is applied to an entity, the listed membership values are removed from entity type fields. |
+| `template` | link | A Markdown note to use as a body template when this type is first applied to an entity with an empty body. Templater is invoked if available; otherwise the body text is copied verbatim. |
+
+### Requires and Excludes
+
+`requires` declares that this type is only meaningful when another type is also present in the entity's resolved membership.
+`excludes` declares that this type cannot coexist with another type.
+
+```yaml
+# WorkColleague.md
+requires:
+  - "[[Person]]"
+excludes:
+  - "[[Enemy]]"
+```
+
+Validation warns when a `requires` type is absent and errors when an `excludes` type is present.
+
+### Replaces
+
+When a type is added to an entity, `replaces` removes listed values from the entity's type membership fields.
+This is useful for hygiene — for example, if `Enemy` replaces `Friend`, applying `Enemy` to a note automatically removes `Friend` from its type list.
+
+Simple form (removes from all configured entity type fields):
+
+```yaml
+# Enemy.md
+replaces:
+  - "[[Friend]]"
+```
+
+Field-scoped form (removes only from a specific frontmatter field):
+
+```yaml
+# Enemy.md
+replaces:
+  - value: "[[Friend]]"
+    field: relationship
+```
+
+### Template
+
+`template` links a Markdown note whose body is injected into a new entity when this type is first applied and the entity body is empty.
+
+```yaml
+# Person.md
+template: "[[_templates/Person]]"
+```
+
+If the Templater plugin is installed, Templater processes the template against the entity file.
+Otherwise the raw body text is copied.
+The template is only applied once — if the entity already has body text, it is left untouched.
+
+### Composition Constraints
 
 When a type composes multiple parents or interfaces, duplicate frontmatter keys must refer to the same semantic field.
 Use global `fields` plus property `uses` when a key means the same thing everywhere.

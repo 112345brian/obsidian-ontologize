@@ -1,4 +1,4 @@
-# Obsidian Ontology Demo Vault
+# Ontologize Demo Vault
 
 This is a small example vault for testing the plugin.
 It demonstrates:
@@ -12,4 +12,4 @@ It demonstrates:
 - Entity notes that use `is-instance`, `lock`, properties, and relations.
 - One intentionally missing inverse relation for the issue modal.
 
-To try it, open `demo-vault` as an Obsidian vault, install or copy the plugin into `.obsidian/plugins/obsidian-ontology`, then run `Obsidian Ontology: Open ontology issues`.
+To try it, open `demo-vault` as an Obsidian vault, install or copy the plugin into `.obsidian/plugins/obsidian-ontologize`, then run `Ontologize: Open ontology issues`.

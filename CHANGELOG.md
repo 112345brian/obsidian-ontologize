@@ -1,14 +1,26 @@
 # CHANGELOG
 
+## Unreleased
+
+### Features
+
+- **Bulk scaffold modal.** `Scaffold all entities` opens a three-phase modal: select types (with affected entity/field counts), preview per-entity changes, then apply. Running it once enables auto-scaffold going forward; until then the plugin watches for membership changes but does not open per-note review modals automatically.
+- **`replaces` field on types.** When a type is applied to an entity, listed values are removed from entity type fields. Supports simple wikilink form (`- "[[Friend]]"`) and field-scoped form (`{value: "[[Friend]]", field: relationship}`) to target a specific frontmatter key instead of all entity type fields.
+- **`requires` and `excludes` fields on types.** `requires` warns when a co-required type is absent; `excludes` errors when a forbidden type is present in the same resolved membership.
+- **`template` field on types.** Links a Markdown note whose body is injected into a new entity with an empty body when the type is first applied. Templater is used if available; otherwise body text is copied verbatim.
+- **Type editor covers all new fields.** The structured type editor now exposes `requires`, `excludes`, `replaces`, and `template` inputs alongside the existing inheritance and field sections.
+
+### Bug fixes
+
+- **`replaces` now executes.** A `.size` check on an array (which has no `.size` property) silently prevented `removeTypeMemberships` from ever being called. Fixed to `.length`.
+- **Template application no longer drops `replaces` entries from subsequent types.** An early `break` after finding the first template caused the loop to exit before collecting `replaces` entries from any additional added types.
+
 ## 0.2.0
 
 Audit-driven correctness, performance, and infrastructure release. Also rolls up the unreleased post-0.1.0 features: schema diagnostics modal, review-first scaffolding, schema composition conflict detection, global field definitions with `frontmatter-key` aliases, `possible-values` constraints, configurable entity type fields, and the demo vault.
 
 ### Bug fixes
 
-- **Types can be created and modified through a structured modal.** Command-palette actions now edit inheritance, interfaces, fields, inserts, type unions, value constraints, and relations without requiring users to manipulate YAML directly.
-- **Property and relation types support `|` unions.** Expressions such as `type: wikilink | string`, `value-type: wikilink | string`, and `range: Person | Organization` now normalize and validate as strict alternatives, while malformed unions are reported by the schema linter.
-- **Frontmatter schema identifiers now follow kebab-case.** The default membership field is `is-instance`, bundled examples use hyphenated property and relation names, and the internal schema linter warns about non-kebab property names, relation names, inverse names, and aliases.
 - **Auto-scaffold now fires only on membership transitions and respects dismissal.** Previously the review modal reopened on every metadata change while a note had missing fields — cancelling it and continuing to edit reopened it immediately. It now opens only when a note's resolved direct types change, and closing it dismisses that note until the membership changes again.
 - **Validation reports each entity problem exactly once.** Entities with multiple direct types sharing an ancestor previously produced duplicate "missing required property" and relation issues, inflating issue counts. Contracts are now merged across all declared types before validating, and every issue push is deduplicated.
 - **`cannot-have` honors `frontmatter-key` aliases.** A type forbidding a global field's semantic name now catches the aliased frontmatter key, in both entity validation and schema composition conflict detection.
@@ -30,6 +42,9 @@ Audit-driven correctness, performance, and infrastructure release. Also rolls up
 
 ### Features
 
+- **Types can be created and modified through a structured modal.** Command-palette actions now edit inheritance, interfaces, fields, inserts, type unions, value constraints, and relations without requiring users to manipulate YAML directly.
+- **Property and relation types support `|` unions.** Expressions such as `type: wikilink | string`, `value-type: wikilink | string`, and `range: Person | Organization` now normalize and validate as strict alternatives, while malformed unions are reported by the schema linter.
+- **Frontmatter schema identifiers now follow kebab-case.** The default membership field is `is-instance`, bundled examples use hyphenated property and relation names, and the internal schema linter warns about non-kebab property names, relation names, inverse names, and aliases.
 - Property definitions support non-destructive `insert` constraints. Validation requires the configured member, and scaffolding can create, append, or preserve-and-convert existing frontmatter values.
 - Added `included-types` and `excluded-types` property constraints. Missing all included types is a warning; matching any excluded type is an error. Scalar `type` remains strict.
 - Added safe insert templates. `date.now()` initializes an empty field with the current local `YYYY-MM-DD` date when a scaffold is applied, without evaluating arbitrary JavaScript or overwriting existing values.

@@ -113,14 +113,17 @@ types:
 
 ## Commands
 
-- `Obsidian Ontology: Rebuild ontology index`
-- `Obsidian Ontology: Check ontology consistency`
-- `Obsidian Ontology: Check active ontology note`
-- `Obsidian Ontology: Open ontology issues`
-- `Obsidian Ontology: Open ontology schema diagnostics`
-- `Obsidian Ontology: Lint ontology schema`
-- `Obsidian Ontology: Scaffold active ontology note`
-- `Obsidian Ontology: Fix missing inverse relations`
+- `Ontologize: Rebuild ontology index`
+- `Ontologize: Check ontology consistency`
+- `Ontologize: Check active ontology note`
+- `Ontologize: Open ontology issues`
+- `Ontologize: Open ontology schema diagnostics`
+- `Ontologize: Lint ontology schema`
+- `Ontologize: Scaffold all entities` — bulk scaffold with select → preview → apply modal; required once before auto-scaffold activates
+- `Ontologize: Scaffold active ontology note`
+- `Ontologize: Fix missing inverse relations`
+- `Ontologize: Create ontology type`
+- `Ontologize: Edit active ontology type`
 
 ## Settings
 

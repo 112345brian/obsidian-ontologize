@@ -137,7 +137,7 @@ This is an either/or contract per file: if frontmatter exists, it is the schema 
 
 ```markdown
 extends:
-  - [[Person]]
+  - "[[Person]]"
 lock: true
 ```
 
@@ -171,7 +171,7 @@ The single schema file supports three top-level maps:
 relations:
   influenced-by:
     value-type: wikilink
-    range: [[Person]]
+    range: "[[Person]]"
     inverse: influenced
 
 interfaces:
@@ -184,9 +184,9 @@ types:
   Philosopher:
     lock: true
     extends:
-      - [[Person]]
+      - "[[Person]]"
     implements:
-      - [[Influenceable]]
+      - "[[Influenceable]]"
 ```
 
 The parser creates synthetic type records from this file:
@@ -216,9 +216,9 @@ relations:
 ```yaml
 # _types/Philosopher.md
 extends:
-  - [[Person]]
+  - "[[Person]]"
 implements:
-  - [[Influenceable]]
+  - "[[Influenceable]]"
 ```
 
 Validation flattens both inherited types and implemented interfaces.
@@ -243,7 +243,7 @@ type: relation-definitions
 relations:
   influenced-by:
     value-type: wikilink
-    range: [[Person]]
+    range: "[[Person]]"
     inverse: influenced
     auto-update: true
 ```

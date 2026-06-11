@@ -68,9 +68,9 @@ Frontmatter style:
 ```markdown
 ---
 extends:
-  - [[Person]]
+  - "[[Person]]"
 implements:
-  - [[Influenceable]]
+  - "[[Influenceable]]"
 lock: true
 ---
 ```
@@ -79,9 +79,9 @@ Body style:
 
 ```markdown
 extends:
-  - [[Person]]
+  - "[[Person]]"
 implements:
-  - [[Influenceable]]
+  - "[[Influenceable]]"
 lock: true
 ```
 
@@ -94,7 +94,7 @@ It compiles into the same internal graph as modular `_types/*.md` constructor fi
 relations:
   influenced-by:
     value-type: wikilink
-    range: [[Person]]
+    range: "[[Person]]"
     inverse: influenced
     auto-update: true
 
@@ -111,9 +111,9 @@ types:
   Philosopher:
     lock: true
     extends:
-      - [[Person]]
+      - "[[Person]]"
     implements:
-      - [[Influenceable]]
+      - "[[Influenceable]]"
 ```
 
 The modular equivalent is:
@@ -145,9 +145,9 @@ Concrete types opt into those contracts:
 ```markdown
 # Philosopher
 extends:
-  - [[Person]]
+  - "[[Person]]"
 implements:
-  - [[Influenceable]]
+  - "[[Influenceable]]"
 ```
 
 An instance of `Philosopher` is treated as a `Person` through inheritance and as `Influenceable` through composition.
@@ -182,7 +182,7 @@ must-have:
 ```markdown
 # Philosopher
 extends:
-  - [[Person]]
+  - "[[Person]]"
 ```
 
 Multiple inheritance is supported:
@@ -190,8 +190,8 @@ Multiple inheritance is supported:
 ```markdown
 # Singer-Songwriter
 extends:
-  - [[Singer]]
-  - [[Composer]]
+  - "[[Singer]]"
+  - "[[Composer]]"
 ```
 
 ### Abstract Types
@@ -210,8 +210,57 @@ Declaring that two types are mutually exclusive — no entity can be both:
 ```markdown
 # Philosopher
 disjoint:
-  - [[Musician]]
+  - "[[Musician]]"
 ```
+
+### Requires and Excludes
+
+`requires` constrains a type to only be meaningful when another type is also present in the entity's resolved membership.
+`excludes` declares that this type cannot coexist with another type.
+
+```markdown
+# WorkColleague
+requires:
+  - "[[Person]]"
+excludes:
+  - "[[Enemy]]"
+```
+
+These are validation constraints — they do not prevent an entity from having conflicting membership, but report the inconsistency as a validation error or warning.
+
+### Replaces
+
+When a type is applied to an entity, `replaces` automatically removes listed membership values.
+This keeps type lists consistent without manual cleanup.
+
+```markdown
+# Enemy
+replaces:
+  - "[[Friend]]"
+```
+
+With a field scope (removes from a specific frontmatter field rather than all entity type fields):
+
+```markdown
+# Enemy
+replaces:
+  - value: "[[Friend]]"
+    field: relationship
+```
+
+### Type Templates
+
+A type can declare a `template` wikilink pointing to a Markdown note.
+When the type is first applied to an entity whose body is empty, the template body is injected.
+
+```markdown
+# Person
+template: "[[_templates/Person]]"
+```
+
+If the Templater plugin is installed, the template is processed with Templater against the entity file.
+Otherwise the raw body text is copied verbatim.
+The injection is skipped if the entity already has body content.
 
 ---
 
@@ -245,14 +294,14 @@ Type files define property constraints for their entities.
 ```markdown
 # Philosopher
 extends:
-  - [[Person]]
+  - "[[Person]]"
 
 must-have:
   time-period: string
-  school-of-thought: [[SchoolOfThought]]
+  school-of-thought: "[[SchoolOfThought]]"
 
 can-have:
-  magnum-opus: [[Work]]
+  magnum-opus: "[[Work]]"
   nationality: string
 
 cannot-have:
@@ -282,7 +331,7 @@ must-have:
     type: date
     cardinality: one
   wrote:
-    type: [[Work]]
+    type: "[[Work]]"
     cardinality: many
 ```
 
@@ -403,13 +452,13 @@ type: relation-definitions
 relations:
   influenced-by:
     value-type: wikilink
-    range: [[Person]]
+    range: "[[Person]]"
     inverse: influenced
     auto-update: true
 
   influenced:
     value-type: wikilink
-    range: [[Person]]
+    range: "[[Person]]"
     inverse: influenced-by
     auto-update: true
 ```
@@ -429,25 +478,25 @@ The explicit form can override part of the global definition:
 relations:
   influenced-by:
     uses: influenced-by
-    range: [[Philosopher]]
+    range: "[[Philosopher]]"
 ```
 
 ```markdown
 # Philosopher
 relations:
   wrote:
-    range: [[Work]]
+    range: "[[Work]]"
     cardinality: one-to-many
     inverse: written-by
     auto-update: true
 
   influenced:
-    range: [[Person]]
+    range: "[[Person]]"
     inverse: influenced-by
     auto-update: true
 
   married-to:
-    range: [[Person]]
+    range: "[[Person]]"
     cardinality: one-to-one
     symmetric: true
 ```
@@ -469,8 +518,8 @@ Relations can carry source and confidence metadata:
 
 ```markdown
 influenced-by:
-  - target: [[Descartes]]
-    source: [[Letter-to-Mersenne-1641]]
+  - target: "[[Descartes]]"
+    source: "[[Letter-to-Mersenne-1641]]"
     confidence: high
 ```
 
@@ -482,7 +531,7 @@ Facts that are true during a period rather than universally:
 
 ```markdown
 member-of:
-  - target: [[RoyalAcademy]]
+  - target: "[[RoyalAcademy]]"
     from: 1672
     to: 1676
 ```
@@ -583,7 +632,7 @@ Queries are files in `_queries/` and are first-class entities in the system. Oth
 
 ```markdown
 # _queries/living-rationalists.md
-is-instance: [[Query]]
+is-instance: "[[Query]]"
 
 query: |
   type: Rationalist
@@ -758,7 +807,19 @@ The indexer, type graph, inheritance resolver, query engine, constraint checker,
 
 ### Scaffolding
 
-The system watches metadata changes on entity notes.
+#### Bulk Scaffold
+
+The `Scaffold all entities` command opens a three-phase bulk scaffold modal:
+
+1. **Select** — all types are listed with how many entities and fields would be affected. Types are pre-selected when they have at least one actionable change. A master checkbox toggles all.
+2. **Preview** — per-entity cards showing exactly which fields would be added and their values. Required, optional, and relation-backed fields are labeled.
+3. **Apply** — writes only the reviewed fields.
+
+Running this command once is required before auto-scaffold activates. After the first run, the plugin begins watching for membership changes and offering scaffolds automatically.
+
+#### Auto-Scaffold
+
+Once bulk scaffold has run at least once, the plugin watches metadata changes on entity notes.
 When `Auto-scaffold entities` is enabled and a note has completed ontology membership frontmatter, the plugin resolves the full type/interface chain and opens a review modal for missing inherited fields.
 
 Completed membership means the configured entity type field has at least one value and every direct type exists, is instantiable, and is not part of a circular inheritance chain.
@@ -766,6 +827,8 @@ Completed membership means the configured entity type field has at least one val
 Scaffolding can add missing inherited `must-have`, `can-have`, and relation fields with empty values.
 For properties declaring `insert`, it previews and applies the required value without overwriting existing values.
 The review modal labels each field as required, optional, or relation-backed and writes only the selected fields.
+
+Types with `auto-apply: true` are scaffolded silently without the review modal.
 
 Manual scaffolding is also available through the `Scaffold active ontology note` command.
 
