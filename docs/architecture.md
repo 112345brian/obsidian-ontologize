@@ -16,59 +16,73 @@ The product contract remains [`spec.md`](spec.md); this document explains how th
 
 ## Module Layout
 
-- `src/Plugin.ts` is the Obsidian wrapper.
-  It registers commands, settings, vault-change listeners, and the `ontology-query` code block processor.
-- `src/PluginSettings.ts` and `src/PluginSettingsTab.ts` define user-configurable plugin settings.
-- `src/ontology/parser.ts` reads type files, the optional single schema file, and entity frontmatter into typed records.
-- `src/ontology/compose.ts` is the single home for composition-chain resolution: inheritance plus interface flattening, global field/relation registries, definition merging, frontmatter-key aliasing, and issue deduplication. The indexer, validator, query engine, and mutation planner all resolve through it so a rule cannot diverge between the surface that reports a problem and the surface that acts on it.
-- `src/ontology/schema-linter.ts` validates source syntax and authoring shapes before constructors enter the graph.
-- `src/ontology/validate.ts` contains entity validation and schema composition conflict detection.
-- `src/ontology/indexer.ts` builds and incrementally updates the ontology graph, computes ancestor sets and effective lock states, and orchestrates derived-state recomputation.
-- `src/ontology/query.ts` evaluates the V1 query subset against the built index.
-- `src/ontology/mutations.ts` performs frontmatter writes for scaffolding and missing inverse relation fixes.
-- `src/ontology/cache.ts` hydrates and serializes the derived index at the configured vault cache path.
-- `src/ontology/links.ts` normalizes Obsidian wiki links and extracts relation targets.
-- `src/ontology/types.ts` contains the core TypeScript data model.
+### Plugin shell (`src/`)
+
+- `src/Plugin.ts` — Obsidian wrapper. Registers commands, settings, vault-change listeners, and the `ontology-query` code block processor. Owns the serialized task queue that prevents index assignments from racing. Handles all membership-transition side effects: auto-scaffold gating, type replacement, and template injection.
+- `src/PluginSettings.ts` — user-configurable settings shape. Includes `initialScaffoldComplete` flag that gates auto-scaffold until the user runs bulk scaffold once.
+- `src/PluginSettingsTab.ts` — settings UI.
+- `src/main.ts` — plugin entry point.
+- `src/templater.ts` — Templater integration. `applyTypeTemplate(app, templateName, entityFile)` resolves the template note, invokes Templater if available (via `create_running_config` + `read_and_parse_template`), and falls back to raw body copy. Only runs when the entity body is empty.
+
+### Modals (`src/`)
+
+- `src/OntologyBulkScaffoldModal.ts` — three-phase bulk scaffold modal: select (per-type entity/field counts + master checkbox) → preview (per-entity field cards) → apply. Exported `BulkScaffoldEntityDiff { name, path, plans }` is the payload passed to `onApply`. Running this modal once sets `initialScaffoldComplete`.
+- `src/OntologyScaffoldReviewModal.ts` — per-note scaffold review modal for auto-scaffold and `Scaffold active ontology note`.
+- `src/OntologyTypeEditorModal.ts` — structured editor for creating and modifying type constructor files. Manages `extends`, `implements`, `interface`/`abstract`/`lock` flags, `requires`, `excludes`, `replaces`, `template`, `must-have`/`can-have` fields, and relations. Preserves schema keys outside its ownership on save.
+- `src/OntologyTypeLibraryModal.ts` — browse and select from existing types.
+- `src/OntologyTypeWizardModal.ts` — guided type creation flow.
+- `src/OntologyIssuesModal.ts` — entity validation issue list with severity filter, file open, rebuild, and inverse-fix actions.
+- `src/OntologySchemaDiagnosticsModal.ts` — schema authoring diagnostics with circular type visibility and schema summary counts.
+- `src/OntologyRelationFixModal.ts` — review and apply missing inverse relation fixes.
+
+### Ontology core (`src/ontology/`)
+
+- `src/ontology/types.ts` — core TypeScript data model. Key interfaces: `OntologyType`, `OntologyEntity`, `OntologyIndex`, `PropertyDefinition`, `RelationDefinition`, `TypeReplacement`, `OntologyIssue`, `ScaffoldFieldPlan`, `EffectiveLockState`.
+- `src/ontology/parser.ts` — reads type files, the optional single schema file, and entity frontmatter into typed records. Accepts YAML frontmatter or heading-plus-body YAML. Handles all type fields including `replaces` (string or `{value, field}` objects), `template`, `requires`, `excludes`. Exports `DEFAULT_BLOCK_PREFIX`.
+- `src/ontology/compose.ts` — single home for composition-chain resolution: inheritance plus interface flattening, global field/relation registries, definition merging, frontmatter-key aliasing, and issue deduplication. The indexer, validator, query engine, and mutation planner all resolve through it.
+- `src/ontology/schema-linter.ts` — validates source syntax and authoring shapes before constructors enter the graph. Errors block parsing; warnings surface in diagnostics. Validates all type constructor fields including `replaces`, `requires`, `excludes`, `template`. Reports non-kebab identifiers as warnings.
+- `src/ontology/indexer.ts` — builds and incrementally updates the ontology graph. Computes ancestor sets, effective lock states, name indexes, and orchestrates derived-state recomputation after any source change.
+- `src/ontology/validate.ts` — entity validation and schema composition conflict detection. Merges contracts across all declared types before checking so each issue is reported exactly once.
+- `src/ontology/mutations.ts` — frontmatter writes for scaffolding and missing inverse relation fixes. `planScaffoldEntity` builds `ScaffoldFieldPlan[]`. `applyScaffoldPlan` executes selected plans. `shouldAutoApplyScaffold` returns true when any of an entity's types declares `auto-apply: true`.
+- `src/ontology/query.ts` — V1 query subset: `AND`, `OR`, `NOT`, type filters, property filters, existence checks, include-mode widening.
+- `src/ontology/cache.ts` — hydrates and serializes the derived index at the configured vault cache path. Cache version 1. Discarded when recorded settings differ from current plugin settings.
+- `src/ontology/diagnostics.ts` — `buildSchemaDiagnostics` summarizes schema shape and extracts schema-scoped issues.
+- `src/ontology/links.ts` — normalizes Obsidian wiki links, extracts relation targets, `containsFrontmatterValue` for idempotent membership checks.
+- `src/ontology/templates.ts` — safe insert-template registry. Currently supports `date.now()` → current local `YYYY-MM-DD`.
+- `src/ontology/type-editor.ts` — `TypeEditorModel` shape and serialization. `typeEditorModelFromType` converts a parsed `OntologyType` to the editor model. `typeEditorFrontmatter` serializes the model back to YAML-ready frontmatter. `TYPE_EDITOR_KEYS` lists all keys owned by the editor (used to preserve unrelated keys on save).
+- `src/ontology/type-expression.ts` — parse and validate `|` union type expressions used in `type`, `value-type`, and `range` fields.
+- `src/ontology/issues.ts` — shared issue construction helpers.
 
 ## Data Flow
 
-1. On plugin load, `readOntologyCache()` attempts to hydrate the previous graph from the configured cache path.
-   A hydrated cache is discarded when its recorded index settings (type folder, schema path, ignore rules) differ from the current plugin settings, because it describes a different graph.
-2. On layout ready, `Plugin.rebuildIndex()` performs the cold full-vault build with `buildOntologyIndex()`.
-   Until this first cold build completes, automatic inverse writes are suppressed: the hydrated cache may be stale relative to the vault, and frontmatter writes based on stale state are not recoverable.
+1. On plugin load, `readOntologyCache()` attempts to hydrate the previous graph from the configured cache path. A hydrated cache is discarded when its recorded index settings (type folder, schema path, ignore rules) differ from the current plugin settings.
+2. On layout ready, `Plugin.rebuildIndex()` performs the cold full-vault build with `buildOntologyIndex()`. Until this first cold build completes, automatic inverse writes are suppressed.
 3. The indexer scans all Markdown files once.
 4. If the configured schema file exists, it is parsed first.
-5. Files under the configured type folder, `_types` by default, are parsed as modular ontology types.
+5. Files under the configured type folder (`_types` by default) are parsed as modular ontology types.
 6. Other Markdown files with one of the configured entity type frontmatter fields are parsed as ontology entities.
 7. The indexer computes ancestor sets for each type.
-8. The indexer collects global relation definitions from relation-registry type files.
+8. The indexer collects global field and relation definitions from registry type files.
 9. The indexer resolves type composition from `extends` and `implements`.
 10. The indexer computes effective lock states for types and entities.
 11. Validation issues are collected into `OntologyIndex.issues`.
-12. If automatic inverse updates are enabled, missing inverse entries are repaired only for relations declaring `auto-update: true`.
+12. If automatic inverse updates are enabled, missing inverse entries are repaired for relations with `auto-update: true`.
 13. The cache writer saves the derived index to `.obsidian/ontology-cache.json` by default.
-14. Query blocks and commands use the in-memory index, rebuilding only if the index is missing or the user runs the rebuild command.
+14. Query blocks and commands use the in-memory index.
 
-After the cold build, file events update the hot graph incrementally.
-Cache writes are debounced; in-memory graph updates are not.
+After the cold build, file events update the hot graph incrementally. Cache writes are debounced; in-memory graph updates are not.
 
 ## Incremental Graph Backend
 
-The backend keeps parsed source records and derived state in the same `OntologyIndex`.
-This mirrors the useful part of Breadcrumbs' architecture: the graph stays resident and reacts to Obsidian events instead of treating every edit as a reason to reread the vault.
-
-All operations that replace the in-memory index — full rebuilds, incremental upserts, deletes, and renames — run through a single serialized task queue inside `Plugin`.
-Obsidian events can interleave (an entity edit immediately followed by a schema save, for example), and without ordering, a slow incremental update could resolve after a newer full rebuild and overwrite it with a stale graph.
-The queue guarantees that index assignments land in submission order.
+All operations that replace the in-memory index — full rebuilds, incremental upserts, deletes, renames — run through a single serialized task queue inside `Plugin`. This prevents a slow incremental upsert from resolving after a newer full rebuild and overwriting it with a stale graph.
 
 Event handling:
 
-- `metadataCache.changed` updates an entity from current frontmatter.
-- `vault.modify` updates type files, because type definitions can live in Markdown body YAML rather than frontmatter.
-- `vault.create` indexes new type files immediately; new entity files enter through metadata cache updates.
-- `vault.delete` removes matching entity/type nodes, including descendants when a folder path is deleted.
-- `vault.rename` removes the old path and indexes the new path when it is a Markdown file.
-  Folder renames trigger a full rebuild instead, because Obsidian does not reliably emit per-child events and the children's new paths are only discoverable by rescanning.
+- `metadataCache.changed` → update entity from current frontmatter, then run membership-transition side effects (see below).
+- `vault.modify` → update type files (definitions live in body YAML, not frontmatter).
+- `vault.create` → index new type files immediately; entity files enter through metadata cache events.
+- `vault.delete` → remove matching entity/type nodes, including descendants when a folder path is deleted.
+- `vault.rename` → remove old path, index new path. Folder renames trigger full rebuild (Obsidian does not emit per-child events).
 
 Each event applies one raw source change:
 
@@ -76,98 +90,91 @@ Each event applies one raw source change:
 - `removeOntologyFile()` removes stale records for that file or folder path.
 - `recomputeOntologyDerivedState()` refreshes ancestor sets, name indexes, lock states, and validation from already parsed records.
 
-For entity edits, this avoids rereading unrelated files.
-For type edits, the derived pass still revalidates the graph because inheritance and schema changes can affect every downstream entity.
-For single schema file edits, the plugin performs a full rebuild because that file can introduce, remove, or rename many constructors at once.
-This keeps schema validity current without forcing full vault I/O on every ordinary note edit.
+## Membership-Transition Side Effects
+
+When an entity's resolved direct types change (the set before and after a `metadataCache.changed` event differs), `upsertFileCore` triggers three side effects in order:
+
+1. **Auto-scaffold** — calls `applyAutoScaffold(file)`. Gated by: `initialScaffoldComplete` must be true (the user must have run bulk scaffold at least once), the entity's types must all be concrete and non-circular, and the file must not be in the dismissed set. Types with `auto-apply: true` are scaffolded silently without a review modal. Other types open `OntologyScaffoldReviewModal` if `autoScaffoldEntities` is enabled.
+
+2. **Type replacement** — collects `TypeReplacement[]` from all newly-added types' `replaces` fields. Calls `removeTypeMemberships(file, replacements)` which uses `processFrontMatter` to remove each listed membership value from the appropriate frontmatter field (default: all configured entity type fields; field-scoped: only the specified key).
+
+3. **Template injection** — for the first newly-added type that declares a `template`, calls `applyTypeTemplate(app, templateName, file)`. Only runs if the entity body is empty. Templater is used if available; otherwise raw body text is copied.
+
+## Scaffolding
+
+### Bulk scaffold gate
+
+`PluginSettings.initialScaffoldComplete` (default: `false`) controls whether auto-scaffold runs. The `Scaffold all entities` command opens `OntologyBulkScaffoldModal` and sets this flag to `true` on apply (even if zero fields were written). Until it is set, `applyAutoScaffold` returns immediately without checking membership.
+
+### Bulk scaffold modal phases
+
+1. **Select** — `precompute()` builds `entityDiffs: Map<string, BulkScaffoldEntityDiff>` filtering to plans with `insert !== undefined`. Per-type rows show entity and field counts. Master checkbox has indeterminate state. Types with at least one actionable entity are pre-selected.
+2. **Preview** — scrollable entity cards. Each field shows key, value (colored), and kind label (required/optional/relation).
+3. **Apply** — `onApply(diffs)` callback in Plugin calls `applyBulkScaffoldDiffs`, which iterates diffs, calls `applyScaffoldPlan` for each, rebuilds the index, and shows a notice.
 
 ## Linter-Inspired Operational Model
-
-The Obsidian Linter plugin is a useful model for operational control.
-For ontology, the equivalent is not formatting text; it is deciding where schema enforcement applies and how checks/fixes are scoped.
 
 Borrowed patterns:
 
 - Ignored folders, ignored file patterns, and ignored frontmatter rules are settings, not ontology facts.
 - Commands can target a scope, starting with the active note and the whole vault.
-- Issue review uses commands/settings and an Obsidian modal rather than note code blocks.
+- Issue review uses commands/settings and Obsidian modals rather than note code blocks.
 - Bulk writes remain explicit commands unless both plugin settings and schema relation definitions opt in.
 - Settings and cache writes are debounced; validation state stays in memory.
 
-Ignored folders are vault-relative path prefixes.
-Ignored file patterns are JavaScript regular expressions matched against vault-relative paths.
-Ignored files are skipped during cold indexing and removed from the hot index on incremental updates.
-
-Ignored frontmatter rules apply to entity notes, not type files.
-Each rule is either a key presence check or a `key: value` match, for example `up: Philosopher`.
-For value rules, scalar values and array entries are compared as strings and as normalized wiki-link targets.
+Ignored frontmatter rules apply to entity notes, not type files. Each rule is either a key presence check or a `key: value` match. For value rules, scalar values and array entries are compared as strings and as normalized wiki-link targets.
 
 ## Issue Review
 
-Validation issues are exposed through:
+- `Check ontology consistency` / `Open ontology issues` — entity validation issues with severity/autofixable filters.
+- `Check active ontology note` — narrows to the active file.
+- `Open ontology schema diagnostics` / `Lint ontology schema` — schema authoring issues with circular type list and summary counts.
+- `Issue report` and `Schema diagnostics` buttons in plugin settings.
 
-- `Check ontology consistency`
-- `Check active ontology note`
-- `Open ontology issues`
-- `Open ontology schema diagnostics`
-- the `Issue report` button in plugin settings
-- the `Schema diagnostics` button in plugin settings
-
-The issue modal shows current in-memory validation results, supports severity and autofixable filters, opens affected files, rebuilds the index, and runs inverse-relation fixes.
-This keeps validation review in Obsidian UI instead of requiring users to embed operational code blocks in notes.
-
-The schema diagnostics modal is a narrower authoring surface for type/interface/relation problems.
-It summarizes the current schema shape, lists circular types, and filters issues down to schema files and schema-composition failures such as unknown parents or invalid interface usage.
-
-Schema lint findings are stored in `OntologyIndex.schemaIssues` as source-derived input to recomputation.
-`recomputeOntologyDerivedState()` begins with those findings before adding graph and entity validation issues, so hot graph updates do not erase source diagnostics.
-Cold builds lint every type source and the configured schema file; incremental type updates replace findings for the changed path.
-Lint errors block the affected source from being parsed into constructors, while warnings preserve the constructor and remain visible in diagnostics.
-The `Lint ontology schema` command forces a rebuild and opens Schema Diagnostics.
-The source linter requires YAML wiki links to be quoted strings; bare `[[Type]]` parses as nested arrays and is rejected by shape validation.
+Schema lint findings are stored in `OntologyIndex.schemaIssues`. `recomputeOntologyDerivedState()` starts with those findings before adding graph and entity validation issues, so incremental updates do not erase source diagnostics. Lint errors block the affected source; warnings preserve the constructor.
 
 ## Type Parsing
 
-Type files are regular Markdown files in the configured type folder, `_types` by default.
-`OntologyTypeEditorModal` provides structured creation and modification of these modular constructor files.
-Creation writes a frontmatter-only Markdown file into the configured type folder; modification uses Obsidian's `processFrontMatter()` and replaces only editor-owned constructor keys, preserving unrelated metadata and future schema keys.
-Both save paths rebuild the ontology index immediately.
-The parser accepts either YAML frontmatter or the spec's heading-plus-YAML body style.
-This is an either/or contract per file: if frontmatter exists, it is the schema definition and body YAML is ignored; otherwise the body is parsed after an optional `# Heading`.
+Type files are regular Markdown files in the configured type folder. The parser accepts YAML frontmatter or the heading-plus-body style — one style per file. If frontmatter exists, body YAML is ignored.
 
-```markdown
-extends:
-  - "[[Person]]"
-lock: true
-```
+Implemented type constructor fields:
 
-Implemented fields:
-
-- `extends`
-- `implements`
-- `interface`
-- `abstract`
-- `disjoint`
-- `must-have`
-- `can-have`
-- `cannot-have`
-- `relations`
-- `lock`
-- `type`
-- `values`
+- `extends` — identity inheritance (link or array)
+- `implements` — composition contracts (link or array)
+- `interface` — marks as interface (cannot be directly instantiated)
+- `abstract` — marks as non-instantiable but inheritable
+- `disjoint` — mutual exclusion constraints
+- `must-have` — required property map
+- `can-have` — optional property map
+- `cannot-have` — forbidden keys/values
+- `fields` — global field definitions when `type: field-definitions`
+- `relations` — relation contracts (array shorthand or definition map)
+- `lock` — lock intent
+- `type` — constructor kind (`nominal`, `interface`, `field-definitions`, `relation-definitions`)
+- `values` — allowed values for `type: nominal`
+- `auto-apply` — if `true`, scaffold runs silently without review modal
+- `requires` — co-required types (validation constraint)
+- `excludes` — mutually exclusive types (validation constraint)
+- `replaces` — membership values to remove when this type is applied (string or `{value, field}` objects)
+- `template` — wikilink to a Markdown note whose body is injected into new entities with empty bodies
 
 The complete authoring reference lives in [`schema-api.md`](schema-api.md).
 
 ## Schema Sources
 
-The ontology supports two schema authoring styles that compile to the same internal records:
+Two authoring styles compile to the same internal records:
 
-- A single configured JSON/YAML schema file, `_types/ontology.schema.yaml` by default.
+- A single configured JSON/YAML schema file (`_types/ontology.schema.yaml` by default).
 - Modular constructor files in the configured type folder.
 
-The single schema file supports three top-level maps:
+The single schema file supports four top-level maps:
 
 ```yaml
+fields:
+  birth-year:
+    type: number
+    cardinality: one
+
 relations:
   influenced-by:
     value-type: wikilink
@@ -189,225 +196,99 @@ types:
       - "[[Influenceable]]"
 ```
 
-The parser creates synthetic type records from this file:
-
-- `relations` becomes a relation registry type.
-- `interfaces` become `interface: true` type records.
-- `types` become ordinary type records.
-
-The schema file is loaded before modular constructor files.
-If both sources define the same type name, the later modular file wins.
-Changing the schema file triggers a full index rebuild.
+The parser creates synthetic type records: `relations` becomes a relation registry type, `interfaces` become `interface: true` records, `types` become ordinary type records. The schema file is loaded before modular constructor files; if names collide, the later modular file wins. Changing the schema file triggers a full index rebuild.
 
 ## Composition And Global Relations
 
-The backend now treats interfaces as first-class schema nodes.
-Inheritance still models identity, but reusable capabilities should be represented with `interface: true` and consumed through `implements`.
+`compose.ts` is the single resolver. Inheritance models identity (`extends`); reusable capabilities use `interface: true` + `implements`. Validation flattens both.
 
-Example:
+Global field registries (`type: field-definitions`) are parsed into `OntologyIndex.fieldDefinitions`. Property definitions reference them with `uses`. The resolved definition carries a `frontmatter-key` alias. Compatible optional/required uses of the same global field collapse to the stricter contract; incompatible duplicates are schema issues. Local fields from different interfaces are different semantic fields — composing them to the same frontmatter key is a schema issue.
 
-```yaml
-# _types/Influenceable.md
-interface: true
-relations:
-  - influenced-by
-```
-
-```yaml
-# _types/Philosopher.md
-extends:
-  - "[[Person]]"
-implements:
-  - "[[Influenceable]]"
-```
-
-Validation flattens both inherited types and implemented interfaces.
-Interfaces can contribute `must-have`, `can-have`, `cannot-have`, and `relations` contracts.
-Entities cannot directly instantiate interface types.
-
-Schema composition validates overlapping frontmatter contracts during derived-state recompute.
-Global field registries are declared with `type: field-definitions`, `type: field-registry`, or `type: fields` and are parsed into `OntologyIndex.fieldDefinitions`.
-Property definitions can reference those universal fields with `uses`.
-The resolved definition can also carry a `frontmatter-key` alias, so a global field such as `birth-year` can validate and scaffold `birth-year` in entity notes.
-Compatible optional/required uses of the same global field collapse to the stricter required contract, and incompatible duplicate definitions become schema issues.
-Local fields from different interfaces are considered different semantic fields; if they compose to the same frontmatter key, that is also a schema issue.
-Any `cannot-have` collision with a `must-have` or `can-have` contract is a schema issue.
-
-Reusable relation definitions are declared in type files with `type: relation-definitions`, `type: relation-registry`, or `type: relations`.
-Those files are parsed into `OntologyIndex.relationDefinitions`.
-Interface and class relation declarations can reference them with shorthand list syntax or with `uses`.
-
-```yaml
-# _types/_relations.md
-type: relation-definitions
-relations:
-  influenced-by:
-    value-type: wikilink
-    range: "[[Person]]"
-    inverse: influenced
-    auto-update: true
-```
-
-```yaml
-relations:
-  - influenced-by
-```
-
-The resolver merges the global relation definition with local overrides.
-Local declarations win, so an interface can narrow `range` or cardinality without redefining inverse behavior everywhere.
-The query engine uses the same composition chain, so `type: Influenceable` matches entities whose direct type implements that interface.
+Global relation definitions (`type: relation-definitions`) are parsed into `OntologyIndex.relationDefinitions`. Interface and class relation declarations reference them by name. Local declarations win over global defaults.
 
 ## Entity Parsing
 
-Entities are regular Markdown notes outside the type folder.
-An entity participates in the ontology only when its frontmatter contains one of the configured entity type fields.
-The defaults are `is-instance` and `type`.
-The first configured field with a non-empty value wins.
-External YAML identifiers use kebab-case, while TypeScript model properties remain idiomatic camelCase internally.
-The schema linter warns on non-kebab property names, relation names, inverse names, and `frontmatter-key` aliases.
-
-```yaml
----
-is-instance: "[[Rationalist]]"
-lock: true
-influenced-by:
-  - "[[Descartes]]"
----
-```
-
-Notes without a configured ontology membership field are ignored by V1 ontology validation and trusted query results.
+Entities are Markdown files outside the type folder with one of the configured entity type fields. Defaults are `is-instance` and `type`; the first configured field with a non-empty value wins. External YAML identifiers use kebab-case; TypeScript model properties use camelCase internally.
 
 ## Inheritance And Locks
 
-For each type, the indexer stores a transitive ancestor set.
-For each entity, query evaluation uses the entity's direct types plus all ancestors.
+For each type, the indexer stores a transitive ancestor set. For each entity, query evaluation uses direct types plus all ancestors.
 
 Effective type lock:
 
-- `locked`: type has `lock: true` and all ancestors have `lock: true`
-- `incomplete`: type has `lock: true`, but at least one ancestor is not locked
-- `unlocked`: type has no `lock: true`
+- `locked` — `lock: true` and all ancestors locked
+- `incomplete` — `lock: true` but at least one ancestor not locked
+- `unlocked` — no `lock: true`
 
-Types that participate in a circular inheritance chain are tracked in `OntologyIndex.circularTypes` and can never be effectively locked, regardless of lock intent.
-This upholds the spec rule that no file in a circular chain can ever be locked: the cycle is reported as an error and every member (and everything that inherits from a member) computes as `incomplete` at best, keeping cyclic schemas out of trusted query results.
+Types in a circular inheritance chain are tracked in `OntologyIndex.circularTypes` and can never be effectively locked, regardless of lock intent.
 
 Effective entity lock:
 
-- `locked`: entity has `lock: true` and all direct types are effectively locked
-- `incomplete`: entity has `lock: true`, but at least one direct type is not effectively locked
-- `unlocked`: entity has no `lock: true`
+- `locked` — `lock: true` and all direct types effectively locked
+- `incomplete` — `lock: true` but at least one direct type not effectively locked
+- `unlocked` — no `lock: true`
 
 Query blocks default to locked results unless the query includes `include: incomplete` or `include: all`.
 
 ## Validation
 
-Entity contracts are merged across every declared type before validating, so an entity with two types sharing an ancestor reports each problem exactly once.
-All issue pushes are deduplicated in O(1) through a keyed seen-set, and incremental upserts recompute derived state once per event rather than once for the removal and once for the insert.
-`cannot-have` names resolve through the same `frontmatter-key` alias mapping as `must-have` and `can-have`.
+Entity contracts are merged across every declared type before validating, so each problem is reported exactly once. All issue pushes are deduplicated in O(1) through a keyed seen-set.
 
-The current checker reports:
+The checker reports:
 
-- Unknown parent types
-- Circular inheritance
-- Unknown instantiated types
-- Direct instantiation of abstract types
+- Unknown parent types; circular inheritance
+- Unknown instantiated types; direct instantiation of abstract types
 - Disjoint type conflicts
+- `requires` co-membership violations (warning)
+- `excludes` co-membership conflicts (error)
 - Missing inherited `must-have` properties
 - Present inherited `cannot-have` properties
 - Cardinality violations for `one` and `one-to-one`
-- Unknown relation targets
-- Relation targets outside declared `range`
+- Unknown relation targets; relation targets outside declared `range`
 - Property values outside inline or nominal allowed values
 - Relation values that both assert and explicitly negate the same target
-- Missing inverse or symmetric relation entries
-- Duplicate entity names (two notes with the same basename) and relation targets that resolve to a duplicated name
-
-Entity names are resolved by note basename.
-When two ontology notes share a basename, the name is recorded in `OntologyIndex.ambiguousEntityNames`, a vault-level warning is raised, and relation targets pointing at that name are flagged as ambiguous instead of being validated against an arbitrary file.
-Inverse fixing skips ambiguous targets for the same reason: a write that lands on an arbitrary note is worse than no write.
-
-Missing inverse entries are marked autofixable.
-They are not silently written during validation unless plugin-level automatic inverse updates are enabled and the relation itself declares `auto-update: true`.
+- Missing inverse or symmetric relation entries (autofixable)
+- Duplicate entity basenames; relation targets that resolve to a duplicated name
 
 ## Query Engine
 
-V1 query parsing is deliberately small but supports boolean expressions.
-It supports `AND`, `OR`, unary `NOT`, parenthesized groups, type filters, property filters, existence checks, and include-mode widening.
+V1 query parsing supports `AND`, `OR`, unary `NOT`, parenthesized groups, type filters, property filters, existence checks, and include-mode widening.
 
-Examples:
+The `Default locked query results` setting controls the default include mode. An explicit `include:` inside the block always wins. The default is applied as an engine option, not by rewriting query source.
 
-```text
-type: Person
-type: Philosopher AND influenced-by: [[Descartes]]
-type: Philosopher AND NOT influenced: [[Nietzsche]]
-type: Philosopher OR type: Scientist
-(type: Rationalist OR type: Empiricist) AND birth-date: EXISTS
-type: Person AND birth-date: EXISTS
-type: Philosopher AND include: all
-```
-
-Query blocks default to locked-only results.
-The `Default locked query results` plugin setting moves that default: when disabled, blocks without an explicit `include:` evaluate as `include: all`.
-An explicit `include:` inside the block always wins over the setting.
-The default is applied as an engine option (`runOntologyQuery`'s `defaultInclude`), not by rewriting the query source, so there is exactly one place where the locked-only rule lives.
-Rendered result tables end with a result count.
-
-Traversal, saved queries, and comparison expressions from the larger spec are not implemented yet.
+Traversal, saved queries, and comparison expressions from the spec are not implemented yet.
 
 ## Mutations
 
-The plugin mutates frontmatter through explicit commands and one guarded automatic path:
+Scaffolding adds missing inherited fields with `null` values. Properties with `insert` plan a required-member mutation: create, append to an existing list, or convert scalar to list while preserving it. `applyScaffoldPlan` executes selected plans.
 
-- `Scaffold active ontology note`
-- `Fix missing inverse relations`
+`shouldAutoApplyScaffold` returns `true` when any of an entity's types has `auto-apply: true` (or an `auto-apply` block that evaluates to true against the entity's frontmatter). These types bypass the review modal and write directly.
 
-Scaffolding adds missing inherited `must-have`, `can-have`, and relation fields with `null` values.
-Property definitions with `insert` instead plan a required-member mutation: create the field with that value, append it to an existing list, or preserve an existing scalar by converting the field to a list.
-Validation uses the same resolved property definition and reports when the inserted member is absent.
-Property `type`, relation `value-type`, and relation `range` accept normalized `|` unions and remain strict error-producing constraints.
-Validation succeeds when any union branch matches; nominal-only unions combine their allowed values.
-`included-types` is an OR constraint that emits a warning when a stored value matches none of its entries.
-`excluded-types` is an OR constraint that emits an error when a stored value matches any entry.
-Wiki-link membership and mutation idempotence share `containsFrontmatterValue()` from `src/ontology/links.ts`, preventing validation and scaffolding from disagreeing about whether an inserted link is already present.
-Because `insert`, `included-types`, and `excluded-types` are part of `PropertyDefinition`, global field resolution, interface composition conflict detection, cache persistence, validation, and scaffold planning all carry them through the existing property pipeline.
-`src/ontology/templates.ts` owns the safe insert-template registry and resolver.
-The first supported expression, `date.now()`, resolves to the current local `YYYY-MM-DD` date when `applyScaffoldPlan()` runs.
-Template inserts are initialization-only: planning includes them only for empty fields, applying rechecks emptiness to avoid races, and validation skips literal membership comparison while continuing to enforce the resolved property's ordinary constraints.
-No template path evaluates arbitrary JavaScript.
-Manual scaffolding runs through `Scaffold active ontology note`, which opens a review modal before writing.
-
-When `autoScaffoldEntities` is enabled, the scaffold review opens automatically only on a membership *transition*: the note's resolved direct types changed in this edit (typically because a membership field was just added).
-Ordinary edits to a note that still has missing fields never reopen the review, and closing the review without applying dismisses that note until its membership changes again.
-The automatic path additionally requires that the first full cold-vault rebuild has run and that every direct type exists, is not abstract, is not an interface, and is not part of a circular inheritance chain.
-This lets setting `is-instance`, `type`, or another configured membership field prompt for the expanded note shape without silently writing frontmatter and without nagging on every keystroke.
-
-Inverse fixing reads validation issues, finds missing inverse or symmetric relation entries, and appends wiki links to the target note's frontmatter.
-
-When `autoUpdateInverses` is enabled, rebuilds automatically fix missing inverse entries only for relation definitions with `auto-update: true`.
-The automatic path is guarded against recursive write loops.
+Inverse fixing reads validation issues and appends wiki links to the target note's frontmatter. The automatic path is guarded against recursive write loops.
 
 ## Cache
 
-The cache is derived state, not source of truth.
-It is written after rebuilds and contains:
+The cache is derived state, not source of truth. Written after rebuilds and incremental updates (debounced). Contains:
 
-- Type records
+- Type records (with all fields including `replaces`, `requires`, `excludes`, `template`)
 - Entity records
-- Ancestor sets
-- Effective lock states
-- Validation issues
+- Ancestor sets per type
+- Effective lock states for types and entities
+- Field definitions and relation definitions (global registries)
+- Validation issues and schema issues
+- `ambiguousEntityNames` and `circularTypes` sets
 - Generation timestamp
-- Index settings
+- Index settings (used to detect stale cache on startup)
+- `cacheVersion: 1`
 
-The plugin attempts to load this cache on startup.
 Malformed, missing, or version-mismatched cache files are ignored and replaced by a normal rebuild.
 
 ## Known Gaps
 
 - No parser for `WHERE`, traversal, comparison expressions, or saved-query composition.
 - No migration dry-run and confirmation workflow.
-- No automatic instantiation hook runner.
 - No adaptive validation priority queue.
 - No Obsidian Bases integration.
+- Field-scoped `TypeReplacement` entries (those with a `field` property) are not exposed in the type editor UI and are dropped when a type is saved through the editor. They survive in the YAML source if authored manually.
 
 These are the next implementation layers after the V1 graph, query, validation, and command surface stabilizes.
