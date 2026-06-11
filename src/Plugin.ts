@@ -14,7 +14,9 @@ import {
   removeOntologyFile,
   upsertOntologyFile
 } from './ontology/indexer.ts';
-import { applyMissingInversePlans, applyScaffoldPlan, fixMissingInverses, planMissingInverses, planScaffoldEntity } from './ontology/mutations.ts';
+import { applyMissingInversePlans, applyScaffoldPlan, fixMissingInverses, planMissingInverses, planScaffoldEntity, shouldAutoApplyScaffold } from './ontology/mutations.ts';
+import type { TypeReplacement } from './ontology/types.ts';
+import { normalizeLinkTarget } from './ontology/links.ts';
 import { runOntologyQuery } from './ontology/query.ts';
 import { summarizeIssues } from './ontology/issues.ts';
 import { OntologyIssuesModal } from './OntologyIssuesModal.ts';
@@ -22,7 +24,12 @@ import { OntologyRelationFixModal } from './OntologyRelationFixModal.ts';
 import { OntologyScaffoldReviewModal } from './OntologyScaffoldReviewModal.ts';
 import { OntologySchemaDiagnosticsModal } from './OntologySchemaDiagnosticsModal.ts';
 import { OntologyTypeEditorModal } from './OntologyTypeEditorModal.ts';
+import { OntologyBulkScaffoldModal } from './OntologyBulkScaffoldModal.ts';
+import { OntologyTypeLibraryModal } from './OntologyTypeLibraryModal.ts';
+import { OntologyTypePickerModal, OntologyTypeWizardModal } from './OntologyTypeWizardModal.ts';
 import { emptyTypeEditorModel, TYPE_EDITOR_KEYS, typeEditorFrontmatter, typeEditorModelFromType } from './ontology/type-editor.ts';
+import type { TypeEditorModel } from './ontology/type-editor.ts';
+import { applyTypeTemplate } from './templater.ts';
 import { PluginSettings as PluginSettingsClass } from './PluginSettings.ts';
 import { PluginSettingsTab } from './PluginSettingsTab.ts';
 
@@ -120,9 +127,27 @@ export class Plugin extends ObsidianPlugin {
     });
 
     this.addCommand({
-      callback: () => { this.openCreateTypeModal(); },
+      callback: () => { void this.openTypeLibraryModal(); },
+      id: 'browse-ontology-types',
+      name: 'Browse ontology types',
+    });
+
+    this.addCommand({
+      callback: () => { void this.openCreateTypeModal(); },
       id: 'create-ontology-type',
       name: 'Create ontology type',
+    });
+
+    this.addCommand({
+      callback: () => { void this.scaffoldAllEntities(); },
+      id: 'scaffold-all-entities',
+      name: 'Scaffold all ontology entities',
+    });
+
+    this.addCommand({
+      callback: () => { void this.openBulkScaffoldModal(); },
+      id: 'bulk-scaffold-type',
+      name: 'Bulk scaffold entities of type',
     });
 
     this.addCommand({
@@ -237,10 +262,102 @@ export class Plugin extends ObsidianPlugin {
     }).open();
   }
 
-  private openCreateTypeModal(): void {
+  private async openTypeLibraryModal(): Promise<void> {
+    const index = await this.ensureIndex();
+    new OntologyTypeLibraryModal(this.app, index, {
+      onCreateNew: () => { void this.openCreateTypeModal(); },
+      onCreateSubtype: (parent) => {
+        const model = emptyTypeEditorModel();
+        model.extends = [parent.name];
+        this.openTypeEditorForCreate(model);
+      },
+      onEdit: (type) => {
+        const file = this.app.vault.getFileByPath(type.path);
+        if (file) { void this.openEditTypeModal(file); }
+      },
+      onOpenFile: (type) => {
+        const file = this.app.vault.getFileByPath(type.path);
+        if (file) { void this.app.workspace.getLeaf(false).openFile(file); }
+      },
+    }).open();
+  }
+
+  private async openCreateTypeModal(): Promise<void> {
+    const index = await this.ensureIndex();
+    const types = [...index.types.values()];
+    new OntologyTypeWizardModal(this.app, types, (model) => {
+      this.openTypeEditorForCreate(model);
+    }).open();
+  }
+
+  private async removeTypeMemberships(file: TFile, replacements: TypeReplacement[]): Promise<void> {
+    const defaultFields = this.pluginSettings.entityTypeFields;
+    await this.app.fileManager.processFrontMatter(file, (fm) => {
+      const data = fm as Record<string, unknown>;
+      for (const { value, field } of replacements) {
+        const targets = field ? [field] : defaultFields;
+        for (const key of targets) {
+          const current = data[key];
+          if (current === undefined || current === null) {
+            continue;
+          }
+          if (typeof current === 'string') {
+            if (normalizeLinkTarget(current) === value) {
+              delete data[key];
+            }
+          } else if (Array.isArray(current)) {
+            const filtered = current.filter((v) => normalizeLinkTarget(String(v)) !== value);
+            if (filtered.length === 0) {
+              delete data[key];
+            } else if (filtered.length < current.length) {
+              data[key] = filtered.length === 1 ? filtered[0] : filtered;
+            }
+          }
+        }
+      }
+    });
+  }
+
+  private async applyBulkScaffoldDiffs(diffs: BulkScaffoldEntityDiff[]): Promise<number> {
+    let totalFields = 0;
+    for (const { path, plans } of diffs) {
+      const file = this.app.vault.getFileByPath(path);
+      if (!file) {
+        continue;
+      }
+      totalFields += await applyScaffoldPlan(this.app, file, plans);
+    }
+    if (totalFields > 0) {
+      await this.rebuildIndex(false);
+      new Notice(`Added ${totalFields} field${totalFields === 1 ? '' : 's'} across ${diffs.length} ${diffs.length === 1 ? 'entity' : 'entities'}.`);
+    }
+    return totalFields;
+  }
+
+  private async scaffoldAllEntities(): Promise<void> {
+    const index = await this.ensureIndex();
+    new OntologyBulkScaffoldModal(this.app, index, async (diffs) => {
+      const totalFields = await this.applyBulkScaffoldDiffs(diffs);
+      this.pluginSettings.initialScaffoldComplete = true;
+      await this.saveData(this.pluginSettings);
+      if (totalFields === 0) {
+        new Notice('All entities are already fully scaffolded.');
+      }
+      return totalFields;
+    }).open();
+  }
+
+  private async openBulkScaffoldModal(): Promise<void> {
+    const index = await this.ensureIndex();
+    new OntologyBulkScaffoldModal(this.app, index, async (diffs) => {
+      return this.applyBulkScaffoldDiffs(diffs);
+    }).open();
+  }
+
+  private openTypeEditorForCreate(preset: TypeEditorModel): void {
     new OntologyTypeEditorModal(this.app, {
       editing: false,
-      model: emptyTypeEditorModel(),
+      model: preset,
       onSave: async (model) => {
         const folder = normalizePath(this.pluginSettings.typeFolder);
         const path = normalizePath(`${folder}/${model.name}.md`);
@@ -318,15 +435,28 @@ export class Plugin extends ObsidianPlugin {
    * cancelled review does not reopen on the next keystroke.
    */
   private applyAutoScaffold(file: TFile): void {
-    if (!this.index || !this.pluginSettings.autoScaffoldEntities || !this.indexReady || !this.canAutoScaffold(file)) {
+    if (!this.index || !this.indexReady || !this.canAutoScaffold(file)) {
       return;
     }
-    if (this.scaffoldDismissedPaths.has(file.path) || this.scaffoldReviewOpenPaths.has(file.path)) {
+    if (!this.pluginSettings.initialScaffoldComplete) {
+      return;
+    }
+    if (this.scaffoldReviewOpenPaths.has(file.path) || this.scaffoldDismissedPaths.has(file.path)) {
       return;
     }
 
     const plans = planScaffoldEntity(this.index, file.path);
     if (plans.length === 0) {
+      return;
+    }
+
+    const entity = this.index.entities.get(file.path);
+    if (entity && shouldAutoApplyScaffold(this.index, entity)) {
+      void applyScaffoldPlan(this.app, file, plans);
+      return;
+    }
+
+    if (!this.pluginSettings.autoScaffoldEntities) {
       return;
     }
     new Notice(`Ontology scaffold available: ${plans.length} fields.`);
@@ -460,6 +590,22 @@ export class Plugin extends ObsidianPlugin {
       this.scaffoldDismissedPaths.delete(file.path);
       if (membershipAfter.length > 0) {
         this.applyAutoScaffold(file);
+        const addedTypes = membershipAfter.filter((t) => !membershipBefore.includes(t));
+        const toReplace: TypeReplacement[] = [];
+        let appliedTemplate = false;
+        for (const typeName of addedTypes) {
+          const type = this.index.types.get(typeName);
+          for (const r of type?.replaces ?? []) {
+            toReplace.push(r);
+          }
+          if (type?.template && !appliedTemplate) {
+            void applyTypeTemplate(this.app, type.template, file);
+            appliedTemplate = true;
+          }
+        }
+        if (toReplace.length > 0) {
+          void this.removeTypeMemberships(file, toReplace);
+        }
       }
     }
 
@@ -512,6 +658,7 @@ export class Plugin extends ObsidianPlugin {
   }
 
   private indexSettings(): {
+    autoApplyBlockPrefix: string;
     entityTypeFields: string[];
     filesToIgnore: string[];
     foldersToIgnore: string[];
@@ -520,6 +667,7 @@ export class Plugin extends ObsidianPlugin {
     typeFolder: string;
   } {
     return {
+      autoApplyBlockPrefix: this.pluginSettings.autoApplyBlockPrefix,
       entityTypeFields: this.pluginSettings.entityTypeFields,
       filesToIgnore: this.pluginSettings.filesToIgnore,
       foldersToIgnore: this.pluginSettings.foldersToIgnore,

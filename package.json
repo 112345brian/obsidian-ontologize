@@ -1,5 +1,5 @@
 {
-  "name": "obsidian-ontology",
+  "name": "obsidian-ontologize",
   "version": "0.2.0",
   "description": "Local-first ontology, inheritance-aware querying, validation, and relation maintenance for Obsidian Markdown vaults.",
   "keywords": [

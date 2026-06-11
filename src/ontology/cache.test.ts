@@ -61,6 +61,7 @@ function makeIndex(): OntologyIndex {
       { file: '_types/Broken.md', message: 'Unknown type field typo', severity: 'warning' as const },
     ],
     settings: {
+      autoApplyBlockPrefix: 'condition-',
       entityTypeFields: ['instance_of', 'type'],
       filesToIgnore: ['\\.canvas\\.md$'],
       foldersToIgnore: ['Archive'],
@@ -74,7 +75,10 @@ function makeIndex(): OntologyIndex {
         canHave: new Map([['magnum-opus', { type: 'Work' }]]),
         cannotHave: new Set(['tag']),
         disjoint: ['Musician'],
+        excludes: [],
         extends: ['Person'],
+        replaces: [],
+        requires: [],
         fields: new Map([['birth-year', { frontmatterKey: 'birth_year', type: 'number' }]]),
         implements: ['Influenceable'],
         isInterface: false,

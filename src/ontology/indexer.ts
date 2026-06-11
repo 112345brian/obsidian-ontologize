@@ -14,6 +14,7 @@ import { lintOntologySchemaSource, lintOntologyTypeSource } from './schema-linte
 import { validateIndex, validateSchemaCompositionConflicts } from './validate.ts';
 
 export interface BuildIndexSettings {
+  autoApplyBlockPrefix?: string;
   entityTypeFields?: string[];
   filesToIgnore?: string[];
   foldersToIgnore?: string[];
@@ -104,6 +105,7 @@ function createEmptyOntologyIndex(settings: BuildIndexSettings): OntologyIndex {
     relationDefinitions: new Map<string, RelationDefinition>(),
     schemaIssues: [],
     settings: {
+      autoApplyBlockPrefix: settings.autoApplyBlockPrefix ?? 'condition-',
       entityTypeFields: normalizedEntityTypeFields(settings.entityTypeFields),
       filesToIgnore: settings.filesToIgnore ?? [],
       foldersToIgnore: settings.foldersToIgnore ?? [],
@@ -294,12 +296,12 @@ async function loadSchemaTypes(app: App, index: OntologyIndex, settings: BuildIn
   }
 
   const source = await app.vault.adapter.read(schemaPath);
-  const lintIssues = lintOntologySchemaSource(schemaPath, source);
+  const lintIssues = lintOntologySchemaSource(schemaPath, source, settings.autoApplyBlockPrefix);
   index.schemaIssues?.push(...lintIssues);
   if (lintIssues.some((item) => item.severity === 'error')) {
     return;
   }
-  for (const type of parseOntologySchema(schemaPath, source)) {
+  for (const type of parseOntologySchema(schemaPath, source, settings.autoApplyBlockPrefix)) {
     index.types.set(type.name, type);
   }
 }
@@ -316,12 +318,12 @@ export async function upsertOntologyFile(app: App, index: OntologyIndex, file: T
 
   if (isOntologyTypeFile(file, settings.typeFolder)) {
     const source = await app.vault.read(file);
-    const lintIssues = lintOntologyTypeSource(file.path, source);
+    const lintIssues = lintOntologyTypeSource(file.path, source, settings.autoApplyBlockPrefix);
     index.schemaIssues?.push(...lintIssues);
     if (lintIssues.some((item) => item.severity === 'error')) {
       return recomputeOntologyDerivedState(index);
     }
-    const type = parseOntologyType(file.path, source);
+    const type = parseOntologyType(file.path, source, settings.autoApplyBlockPrefix);
     index.types.set(type.name, type);
     return recomputeOntologyDerivedState(index);
   }
@@ -351,12 +353,12 @@ export async function buildOntologyIndex(app: App, settings: BuildIndexSettings)
 
     if (isOntologyTypeFile(file, settings.typeFolder)) {
       const source = await app.vault.read(file);
-      const lintIssues = lintOntologyTypeSource(file.path, source);
+      const lintIssues = lintOntologyTypeSource(file.path, source, settings.autoApplyBlockPrefix);
       index.schemaIssues?.push(...lintIssues);
       if (lintIssues.some((item) => item.severity === 'error')) {
         continue;
       }
-      const type = parseOntologyType(file.path, source);
+      const type = parseOntologyType(file.path, source, settings.autoApplyBlockPrefix);
       index.types.set(type.name, type);
       continue;
     }

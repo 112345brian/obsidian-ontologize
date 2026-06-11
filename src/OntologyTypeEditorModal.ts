@@ -71,6 +71,26 @@ export class OntologyTypeEditorModal extends Modal {
       .setDesc('Interfaces, separated by commas or lines.')
       .addTextArea((text) => text.setPlaceholder('observable').setValue(model.implements.join('\n')).onChange((value) => { model.implements = splitNames(value); }));
 
+    new Setting(contentEl)
+      .setName('Requires')
+      .setDesc('Classes an entity must already belong to before this class can apply. One per line.')
+      .addTextArea((text) => text.setPlaceholder('person').setValue(model.requires.join('\n')).onChange((value) => { model.requires = splitNames(value); }));
+
+    new Setting(contentEl)
+      .setName('Excludes')
+      .setDesc('Classes that cannot coexist with this one on the same entity. One per line.')
+      .addTextArea((text) => text.setPlaceholder('building').setValue(model.excludes.join('\n')).onChange((value) => { model.excludes = splitNames(value); }));
+
+    new Setting(contentEl)
+      .setName('Replaces')
+      .setDesc('Classes removed from the entity when this class is applied. One per line.')
+      .addTextArea((text) => text.setPlaceholder('friend').setValue(model.replaces.join('\n')).onChange((value) => { model.replaces = splitNames(value); }));
+
+    new Setting(contentEl)
+      .setName('Template')
+      .setDesc('Templater template applied to a new entity when this type is first assigned. Leave blank for none.')
+      .addText((text) => text.setPlaceholder('My Template').setValue(model.template).onChange((value) => { model.template = value.trim(); }));
+
     this.renderFieldSection(contentEl, 'Required fields', model.mustHave, 'must-have');
     this.renderFieldSection(contentEl, 'Optional fields', model.canHave, 'can-have');
     this.renderRelations(contentEl);

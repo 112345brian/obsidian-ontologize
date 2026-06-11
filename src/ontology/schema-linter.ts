@@ -3,20 +3,26 @@ import { parseYaml } from 'obsidian';
 import type { OntologyIssue } from './types.ts';
 
 import { isInsertTemplate } from './templates.ts';
+import { DEFAULT_BLOCK_PREFIX } from './parser.ts';
 import { isValidTypeExpression } from './type-expression.ts';
 
 const TYPE_KEYS = new Set([
   'abstract',
+  'auto-apply',
   'can-have',
   'cannot-have',
   'disjoint',
+  'excludes',
   'extends',
   'fields',
   'implements',
+  'requires',
   'interface',
   'lock',
   'must-have',
   'relations',
+  'replaces',
+  'template',
   'type',
   'values',
 ]);
@@ -199,7 +205,60 @@ function lintRelationMap(file: string, value: unknown, issues: OntologyIssue[]):
   }
 }
 
-function lintTypeRecord(file: string, value: unknown, issues: OntologyIssue[]): void {
+function lintAutoApplyBlock(file: string, context: string, value: unknown, issues: OntologyIssue[], prefix: string): void {
+  const record = asRecord(value);
+  if (!record) {
+    issues.push(issue(file, `${context} must be a map of conditions or named condition blocks`));
+    return;
+  }
+  for (const [key, val] of Object.entries(record)) {
+    if (key === 'match') {
+      if (val !== 'any' && val !== 'all') {
+        issues.push(issue(file, `${context}.match must be "any" or "all"`));
+      }
+    } else if (key.startsWith(prefix)) {
+      if (val !== null && typeof val === 'object' && !Array.isArray(val)) {
+        lintAutoApplyBlock(file, `${context}.${key}`, val, issues, prefix);
+      } else {
+        issues.push(issue(file, `${context}.${key} must be a map (named condition block)`, 'warning'));
+      }
+    } else if (val !== null && typeof val === 'object' && !Array.isArray(val)) {
+      issues.push(issue(file, `${context}.${key} is a map value; use a "${prefix}" prefix to define a named sub-block`, 'warning'));
+    }
+  }
+}
+
+function lintAutoApply(file: string, value: unknown, issues: OntologyIssue[], prefix: string): void {
+  if (value === undefined || value === true) {
+    return;
+  }
+  lintAutoApplyBlock(file, 'auto-apply', value, issues, prefix);
+}
+
+function lintReplacesField(file: string, value: unknown, issues: OntologyIssue[]): void {
+  if (value === undefined) {
+    return;
+  }
+  const items = Array.isArray(value) ? value : [value];
+  for (const item of items) {
+    if (typeof item === 'string') {
+      continue;
+    }
+    const record = asRecord(item);
+    if (!record) {
+      issues.push(issue(file, 'replaces entries must be a wikilink string or {value, field} object'));
+      continue;
+    }
+    if (typeof record['value'] !== 'string') {
+      issues.push(issue(file, 'replaces entry is missing a value field'));
+    }
+    if (record['field'] !== undefined && typeof record['field'] !== 'string') {
+      issues.push(issue(file, 'replaces entry field must be a string'));
+    }
+  }
+}
+
+function lintTypeRecord(file: string, value: unknown, issues: OntologyIssue[], prefix: string): void {
   const record = asRecord(value);
   if (!record) {
     issues.push(issue(file, 'Type definition must be a map/object'));
@@ -209,24 +268,28 @@ function lintTypeRecord(file: string, value: unknown, issues: OntologyIssue[]): 
   lintStringOrStringArray(file, 'extends', record['extends'], issues);
   lintStringOrStringArray(file, 'implements', record['implements'], issues);
   lintStringOrStringArray(file, 'disjoint', record['disjoint'], issues);
+  lintStringOrStringArray(file, 'excludes', record['excludes'], issues);
+  lintReplacesField(file, record['replaces'], issues);
+  lintStringOrStringArray(file, 'requires', record['requires'], issues);
   lintBoolean(file, 'abstract', record['abstract'], issues);
   lintBoolean(file, 'interface', record['interface'], issues);
   lintBoolean(file, 'lock', record['lock'], issues);
+  lintAutoApply(file, record['auto-apply'], issues, prefix);
   lintPropertyMap(file, 'must-have', record['must-have'], issues);
   lintPropertyMap(file, 'can-have', record['can-have'], issues);
   lintPropertyMap(file, 'fields', record['fields'], issues);
   lintRelationMap(file, record['relations'], issues);
 }
 
-export function lintOntologyTypeSource(file: string, source: string): OntologyIssue[] {
+export function lintOntologyTypeSource(file: string, source: string, blockPrefix = DEFAULT_BLOCK_PREFIX): OntologyIssue[] {
   const parsed = parseSource(file, source, false);
   if (parsed.value) {
-    lintTypeRecord(file, parsed.value, parsed.issues);
+    lintTypeRecord(file, parsed.value, parsed.issues, blockPrefix);
   }
   return parsed.issues;
 }
 
-export function lintOntologySchemaSource(file: string, source: string): OntologyIssue[] {
+export function lintOntologySchemaSource(file: string, source: string, blockPrefix = DEFAULT_BLOCK_PREFIX): OntologyIssue[] {
   const parsed = parseSource(file, source, file.endsWith('.json'));
   if (!parsed.value) {
     return parsed.issues;
@@ -239,7 +302,7 @@ export function lintOntologySchemaSource(file: string, source: string): Ontology
       continue;
     }
     for (const [name, definition] of Object.entries(definitions ?? {})) {
-      lintTypeRecord(`${file}#${group}/${name}`, definition, parsed.issues);
+      lintTypeRecord(`${file}#${group}/${name}`, definition, parsed.issues, blockPrefix);
     }
   }
   lintPropertyMap(file, 'fields', parsed.value['fields'], parsed.issues);

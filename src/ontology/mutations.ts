@@ -1,9 +1,9 @@
 import type { App, TFile } from 'obsidian';
 
-import type { FrontmatterValue, OntologyIndex, OntologyIssue, PropertyDefinition } from './types.ts';
+import type { AutoApplyBlock, FrontmatterValue, OntologyEntity, OntologyIndex, OntologyIssue, PropertyDefinition } from './types.ts';
 
 import { getInheritedCanHave, getInheritedMustHave, resolveEntityRelations } from './compose.ts';
-import { containsFrontmatterValue, extractAssertedLinkTargets, toWikiLink } from './links.ts';
+import { containsFrontmatterValue, extractAssertedLinkTargets, normalizeLinkTarget, toWikiLink } from './links.ts';
 import { isInsertTemplate, resolveInsertTemplate } from './templates.ts';
 
 export interface FixMissingInversesOptions {
@@ -23,6 +23,8 @@ export interface MissingInverseFixPlan {
 }
 
 export interface ScaffoldFieldPlan {
+  candidates?: string[] | undefined;
+  existingValue?: unknown;
   insert?: FrontmatterValue | undefined;
   kind: 'optional' | 'relation' | 'required';
   property: string;
@@ -37,12 +39,47 @@ function findFile(app: App, path: string): TFile | null {
   return file && 'extension' in file && file.extension === 'md' ? file as TFile : null;
 }
 
-function scaffoldPlan(property: string, kind: ScaffoldFieldPlan['kind'], definition?: PropertyDefinition): ScaffoldFieldPlan {
+function buildCandidates(
+  index: OntologyIndex,
+  definition: PropertyDefinition | undefined,
+  relDef: RelationDefinition | undefined,
+): string[] | undefined {
+  if (definition?.values?.length) {
+    return definition.values;
+  }
+  if (relDef !== undefined) {
+    const rangeType = relDef.range ? normalizeLinkTarget(relDef.range) : undefined;
+    const entities = [...index.entities.values()];
+    const filtered = rangeType ? entities.filter((e) => e.instanceOf.includes(rangeType)) : entities;
+    return filtered.sort((a, b) => a.name.localeCompare(b.name)).map((e) => `[[${e.name}]]`);
+  }
+  if (definition?.type?.includes('wikilink')) {
+    return [...index.entities.values()]
+      .sort((a, b) => a.name.localeCompare(b.name))
+      .map((e) => `[[${e.name}]]`);
+  }
+  return undefined;
+}
+
+function scaffoldPlan(
+  property: string,
+  kind: ScaffoldFieldPlan['kind'],
+  index: OntologyIndex,
+  definition?: PropertyDefinition,
+  relDef?: RelationDefinition,
+): ScaffoldFieldPlan {
   return {
+    candidates: buildCandidates(index, definition, relDef),
     ...(definition?.insert !== undefined ? { insert: definition.insert } : {}),
     kind,
     property,
   };
+}
+
+function looksLikeWikilinks(value: unknown): boolean {
+  if (typeof value === 'string') { return /\[\[.+\]\]/.test(value); }
+  if (Array.isArray(value)) { return value.length > 0 && value.every((v) => typeof v === 'string' && /\[\[.+\]\]/.test(v)); }
+  return false;
 }
 
 function needsScaffold(frontmatter: Record<string, unknown>, property: string, definition?: PropertyDefinition): boolean {
@@ -55,6 +92,59 @@ function needsScaffold(frontmatter: Record<string, unknown>, property: string, d
   return definition?.insert !== undefined && !containsFrontmatterValue(frontmatter[property], definition.insert);
 }
 
+const COMPARISON_RE = /^(>=|<=|!=|==|>|<)\s*(.+)$/;
+
+function evalConditionValue(actual: unknown, expected: unknown): boolean {
+  if (actual === undefined || actual === null) {
+    return false;
+  }
+  if (typeof expected === 'string') {
+    const m = COMPARISON_RE.exec(expected);
+    if (m) {
+      const [, op, rhs] = m;
+      const numRhs = Number(rhs);
+      const numActual = Number(actual);
+      if (!Number.isNaN(numRhs) && !Number.isNaN(numActual)) {
+        if (op === '>') { return numActual > numRhs; }
+        if (op === '<') { return numActual < numRhs; }
+        if (op === '>=') { return numActual >= numRhs; }
+        if (op === '<=') { return numActual <= numRhs; }
+        if (op === '!=') { return numActual !== numRhs; }
+        if (op === '==') { return numActual === numRhs; }
+      }
+      const strActual = String(actual);
+      const strRhs = rhs.trim();
+      if (op === '!=') { return strActual !== strRhs; }
+      if (op === '==') { return strActual === strRhs; }
+    }
+  }
+  return containsFrontmatterValue(actual, expected);
+}
+
+function evalAutoApplyBlock(frontmatter: Record<string, unknown>, block: AutoApplyBlock): boolean {
+  const all: boolean[] = [
+    ...Object.entries(block.conditions).map(([key, expected]) => evalConditionValue(frontmatter[key], expected)),
+    ...Object.values(block.blocks).map((sub) => evalAutoApplyBlock(frontmatter, sub)),
+  ];
+  if (all.length === 0) {
+    return false;
+  }
+  return block.match === 'all' ? all.every(Boolean) : all.some(Boolean);
+}
+
+export function shouldAutoApplyScaffold(index: OntologyIndex, entity: OntologyEntity): boolean {
+  return entity.instanceOf.some((typeName) => {
+    const type = index.types.get(typeName);
+    if (!type?.autoApply) {
+      return false;
+    }
+    if (type.autoApply === true) {
+      return true;
+    }
+    return evalAutoApplyBlock(entity.frontmatter, type.autoApply);
+  });
+}
+
 export function planScaffoldEntity(index: OntologyIndex, path: string): ScaffoldFieldPlan[] {
   const entity = index.entities.get(path);
   if (!entity) {
@@ -64,17 +154,25 @@ export function planScaffoldEntity(index: OntologyIndex, path: string): Scaffold
   const plans = new Map<string, ScaffoldFieldPlan>();
   for (const [property, definition] of getInheritedMustHave(index, entity)) {
     if (needsScaffold(entity.frontmatter, property, definition)) {
-      plans.set(property, scaffoldPlan(property, 'required', definition));
+      const existing = entity.frontmatter[property];
+      const plan = scaffoldPlan(property, 'required', index, definition);
+      plans.set(property, existing != null ? { ...plan, existingValue: existing } : plan);
     }
   }
   for (const [property, definition] of getInheritedCanHave(index, entity)) {
     if (needsScaffold(entity.frontmatter, property, definition) && !plans.has(property)) {
-      plans.set(property, scaffoldPlan(property, 'optional', definition));
+      const existing = entity.frontmatter[property];
+      const plan = scaffoldPlan(property, 'optional', index, definition);
+      plans.set(property, existing != null ? { ...plan, existingValue: existing } : plan);
     }
   }
-  for (const property of resolveEntityRelations(index, entity.instanceOf).keys()) {
-    if (!(property in entity.frontmatter) && !plans.has(property)) {
-      plans.set(property, { kind: 'relation', property });
+  for (const [property, relDef] of resolveEntityRelations(index, entity.instanceOf)) {
+    if (plans.has(property)) { continue; }
+    const existing = entity.frontmatter[property];
+    if (!(property in entity.frontmatter)) {
+      plans.set(property, scaffoldPlan(property, 'relation', index, undefined, relDef));
+    } else if (!looksLikeWikilinks(existing)) {
+      plans.set(property, { ...scaffoldPlan(property, 'relation', index, undefined, relDef), existingValue: existing });
     }
   }
   return [...plans.values()];

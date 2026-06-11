@@ -1,6 +1,6 @@
 import type { App } from 'obsidian';
 
-import type { EffectiveLockState, FrontmatterIgnoreRule, OntologyEntity, OntologyIndex, OntologyIssue, OntologyType, PropertyDefinition, RelationDefinition } from './types.ts';
+import type { EffectiveLockState, FrontmatterIgnoreRule, OntologyEntity, OntologyIndex, OntologyIssue, OntologyType, PropertyDefinition, RelationDefinition, TypeReplacement } from './types.ts';
 
 function mapToObject<T>(map: Map<string, T>, mapper: (value: T) => unknown): Record<string, unknown> {
   return Object.fromEntries([...map.entries()].map(([key, value]) => [key, mapper(value)]));
@@ -47,15 +47,26 @@ function hydrateType(value: unknown): OntologyType {
     canHave: hydrateMap<PropertyDefinition>(record['canHave'], (item) => item as PropertyDefinition),
     cannotHave: new Set(Array.isArray(record['cannotHave']) ? record['cannotHave'].map(String) : []),
     disjoint: Array.isArray(record['disjoint']) ? record['disjoint'].map(String) : [],
+    excludes: Array.isArray(record['excludes']) ? record['excludes'].map(String) : [],
     extends: Array.isArray(record['extends']) ? record['extends'].map(String) : [],
     fields: hydrateMap<PropertyDefinition>(record['fields'], (item) => item as PropertyDefinition),
     implements: Array.isArray(record['implements']) ? record['implements'].map(String) : [],
+    replaces: Array.isArray(record['replaces']) ? record['replaces'].flatMap((r: unknown): TypeReplacement[] => {
+      if (typeof r === 'string') {
+        return r ? [{ value: r }] : [];
+      }
+      const rec = r && typeof r === 'object' && !Array.isArray(r) ? r as Record<string, unknown> : {};
+      const value = typeof rec['value'] === 'string' ? rec['value'] : '';
+      return value ? [{ value, ...(typeof rec['field'] === 'string' ? { field: rec['field'] } : {}) }] : [];
+    }) : [],
+    requires: Array.isArray(record['requires']) ? record['requires'].map(String) : [],
     isInterface: record['isInterface'] === true,
     lockIntent: record['lockIntent'] === true,
     mustHave: hydrateMap<PropertyDefinition>(record['mustHave'], (item) => item as PropertyDefinition),
     name: stringValue(record['name']),
     path: stringValue(record['path']),
     relations: hydrateMap<RelationDefinition>(record['relations'], (item) => item as RelationDefinition),
+    template: typeof record['template'] === 'string' ? record['template'] : undefined,
     typeKind: typeof record['typeKind'] === 'string' ? record['typeKind'] : undefined,
     values: Array.isArray(record['values']) ? record['values'].map(String) : [],
   };
@@ -99,6 +110,7 @@ export async function readOntologyCache(app: App, cachePath: string): Promise<On
       relationDefinitions: hydrateMap<RelationDefinition>(payload['relationDefinitions'], (item) => item as RelationDefinition),
       schemaIssues: Array.isArray(payload['schemaIssues']) ? payload['schemaIssues'] as OntologyIssue[] : [],
       settings: {
+        autoApplyBlockPrefix: stringValue(settings['autoApplyBlockPrefix'], 'condition-'),
         entityTypeFields: stringArrayValue(settings['entityTypeFields']).length > 0 ? stringArrayValue(settings['entityTypeFields']) : ['is-instance', 'type'],
         filesToIgnore: stringArrayValue(settings['filesToIgnore']),
         foldersToIgnore: stringArrayValue(settings['foldersToIgnore']),

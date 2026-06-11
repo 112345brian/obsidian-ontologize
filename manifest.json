@@ -2,8 +2,8 @@
   "author": "112345brian",
   "authorUrl": "https://github.com/112345brian/",
   "description": "Ontology-aware inheritance, validation, query blocks, and inverse relation maintenance for Markdown notes.",
-  "id": "obsidian-ontology",
+  "id": "obsidian-ontologize",
   "isDesktopOnly": false,
-  "name": "Obsidian Ontology",
+  "name": "Ontologize",
   "version": "0.2.0"
 }

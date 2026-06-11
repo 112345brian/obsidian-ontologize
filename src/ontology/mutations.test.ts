@@ -1,13 +1,13 @@
 import { describe, expect, it, vi } from 'vitest';
 
 import type { App, TFile } from 'obsidian';
-import type { OntologyIndex, OntologyType } from './types.ts';
+import type { AutoApplyBlock, OntologyIndex, OntologyType } from './types.ts';
 
 vi.mock('obsidian', () => ({
   Notice: vi.fn(),
 }));
 
-import { applyScaffoldPlan, planMissingInverses, planScaffoldEntity } from './mutations.ts';
+import { applyScaffoldPlan, planMissingInverses, planScaffoldEntity, shouldAutoApplyScaffold } from './mutations.ts';
 
 function makeType(): OntologyType {
   return {
@@ -270,7 +270,8 @@ describe('ontology frontmatter mutations', () => {
       instance_of: '[[Philosopher]]',
     };
 
-    expect(planScaffoldEntity(index, 'Spinoza.md')).toEqual([
+    const plans = planScaffoldEntity(index, 'Spinoza.md');
+    expect(plans.map(({ candidates: _c, ...rest }) => rest)).toEqual([
       { kind: 'required', property: 'school' },
       { kind: 'relation', property: 'influenced' },
     ]);
@@ -297,7 +298,7 @@ describe('ontology frontmatter mutations', () => {
     } as unknown as App;
 
     const plans = planScaffoldEntity(index, 'Spinoza.md');
-    expect(plans).toContainEqual({ kind: 'required', property: 'up', insert: '[[Person]]' });
+    expect(plans).toContainEqual(expect.objectContaining({ kind: 'required', property: 'up', insert: '[[Person]]' }));
 
     await applyScaffoldPlan(app, { path: 'Spinoza.md' } as TFile, plans);
     expect(frontmatter['up']).toEqual(['[[Thinker]]', '[[Person]]']);
@@ -361,5 +362,152 @@ describe('ontology frontmatter mutations', () => {
       now: new Date(2026, 5, 11),
     })).toBe(0);
     expect(frontmatter['date-start']).toBe('2020-01-01');
+  });
+});
+
+function block(conditions: Record<string, unknown>, opts: { match?: 'any' | 'all'; blocks?: Record<string, AutoApplyBlock> } = {}): AutoApplyBlock {
+  return { blocks: opts.blocks ?? {}, conditions, match: opts.match ?? 'all' };
+}
+
+describe('shouldAutoApplyScaffold', () => {
+  it('returns false when type has no auto-apply', () => {
+    const index = makeIndex();
+    const entity = index.entities.get('Spinoza.md')!;
+    expect(shouldAutoApplyScaffold(index, entity)).toBe(false);
+  });
+
+  it('returns true when type has auto-apply: true', () => {
+    const index = makeIndex();
+    index.types.get('Philosopher')!.autoApply = true;
+    const entity = index.entities.get('Spinoza.md')!;
+    expect(shouldAutoApplyScaffold(index, entity)).toBe(true);
+  });
+
+  it('flat all (default): all conditions must match', () => {
+    const index = makeIndex();
+    const entity = index.entities.get('Spinoza.md')!;
+    index.types.get('Philosopher')!.autoApply = block({ influenced: '[[Leibniz]]' });
+    expect(shouldAutoApplyScaffold(index, entity)).toBe(true);
+    index.types.get('Philosopher')!.autoApply = block({ influenced: '[[Descartes]]' });
+    expect(shouldAutoApplyScaffold(index, entity)).toBe(false);
+    index.types.get('Philosopher')!.autoApply = block({ influenced: '[[Leibniz]]', 'school-of-thought': '[[Rationalism]]' });
+    expect(shouldAutoApplyScaffold(index, entity)).toBe(false);
+  });
+
+  it('flat any: any matching condition is enough', () => {
+    const index = makeIndex();
+    const entity = index.entities.get('Spinoza.md')!;
+    index.types.get('Philosopher')!.autoApply = block({ influenced: '[[Leibniz]]', 'school-of-thought': '[[Rationalism]]' }, { match: 'any' });
+    expect(shouldAutoApplyScaffold(index, entity)).toBe(true);
+    index.types.get('Philosopher')!.autoApply = block({ influenced: '[[Descartes]]', 'school-of-thought': '[[Rationalism]]' }, { match: 'any' });
+    expect(shouldAutoApplyScaffold(index, entity)).toBe(false);
+  });
+
+  it('named blocks default to any (OR): any matching block triggers', () => {
+    const index = makeIndex();
+    const entity = index.entities.get('Spinoza.md')!;
+    index.types.get('Philosopher')!.autoApply = block({}, {
+      match: 'any',
+      blocks: {
+        'has-leibniz': block({ influenced: '[[Leibniz]]' }),
+        'has-descartes': block({ influenced: '[[Descartes]]' }),
+      },
+    });
+    expect(shouldAutoApplyScaffold(index, entity)).toBe(true);
+  });
+
+  it('named blocks with match: all — all blocks must match', () => {
+    const index = makeIndex();
+    const entity = index.entities.get('Spinoza.md')!;
+    index.types.get('Philosopher')!.autoApply = block({}, {
+      match: 'all',
+      blocks: {
+        'has-leibniz': block({ influenced: '[[Leibniz]]' }),
+        'has-descartes': block({ influenced: '[[Descartes]]' }),
+      },
+    });
+    expect(shouldAutoApplyScaffold(index, entity)).toBe(false);
+  });
+
+  it('per-block match mode applies within that block', () => {
+    const index = makeIndex();
+    const entity = index.entities.get('Spinoza.md')!;
+    // inner block uses match: any — either condition is enough
+    index.types.get('Philosopher')!.autoApply = block({}, {
+      blocks: {
+        'either-link': block({ influenced: '[[Leibniz]]', 'school-of-thought': '[[Rationalism]]' }, { match: 'any' }),
+      },
+    });
+    expect(shouldAutoApplyScaffold(index, entity)).toBe(true);
+  });
+
+  it('returns false when a matched property is absent from frontmatter', () => {
+    const index = makeIndex();
+    const entity = index.entities.get('Spinoza.md')!;
+    index.types.get('Philosopher')!.autoApply = block({ 'school-of-thought': '[[Rationalism]]' });
+    expect(shouldAutoApplyScaffold(index, entity)).toBe(false);
+  });
+
+  it('returns true when any direct type satisfies auto-apply', () => {
+    const index = makeIndex();
+    index.types.set('Scientist', {
+      ...makeType(),
+      autoApply: true,
+      name: 'Scientist',
+      path: '_types/Scientist.md',
+    });
+    const entity = index.entities.get('Spinoza.md')!;
+    entity.instanceOf = ['Philosopher', 'Scientist'];
+    expect(shouldAutoApplyScaffold(index, entity)).toBe(true);
+  });
+
+  it('evaluates numeric > comparison', () => {
+    const index = makeIndex();
+    const entity = index.entities.get('Spinoza.md')!;
+    index.types.get('Philosopher')!.autoApply = block({ 'birth-year': '> 1600' });
+    entity.frontmatter = { ...entity.frontmatter, 'birth-year': 1632 };
+    expect(shouldAutoApplyScaffold(index, entity)).toBe(true);
+    entity.frontmatter = { ...entity.frontmatter, 'birth-year': 1400 };
+    expect(shouldAutoApplyScaffold(index, entity)).toBe(false);
+  });
+
+  it('evaluates numeric < comparison', () => {
+    const index = makeIndex();
+    const entity = index.entities.get('Spinoza.md')!;
+    index.types.get('Philosopher')!.autoApply = block({ 'birth-year': '< 500' });
+    entity.frontmatter = { ...entity.frontmatter, 'birth-year': 400 };
+    expect(shouldAutoApplyScaffold(index, entity)).toBe(true);
+    entity.frontmatter = { ...entity.frontmatter, 'birth-year': 1632 };
+    expect(shouldAutoApplyScaffold(index, entity)).toBe(false);
+  });
+
+  it('evaluates >= and <= comparisons', () => {
+    const index = makeIndex();
+    const entity = index.entities.get('Spinoza.md')!;
+    entity.frontmatter = { ...entity.frontmatter, 'birth-year': 1632 };
+    index.types.get('Philosopher')!.autoApply = block({ 'birth-year': '>= 1632' });
+    expect(shouldAutoApplyScaffold(index, entity)).toBe(true);
+    index.types.get('Philosopher')!.autoApply = block({ 'birth-year': '<= 1632' });
+    expect(shouldAutoApplyScaffold(index, entity)).toBe(true);
+  });
+
+  it('evaluates != comparison', () => {
+    const index = makeIndex();
+    const entity = index.entities.get('Spinoza.md')!;
+    index.types.get('Philosopher')!.autoApply = block({ 'birth-year': '!= 2000' });
+    entity.frontmatter = { ...entity.frontmatter, 'birth-year': 1632 };
+    expect(shouldAutoApplyScaffold(index, entity)).toBe(true);
+    entity.frontmatter = { ...entity.frontmatter, 'birth-year': 2000 };
+    expect(shouldAutoApplyScaffold(index, entity)).toBe(false);
+  });
+
+  it('mixes wiki link and numeric conditions', () => {
+    const index = makeIndex();
+    const entity = index.entities.get('Spinoza.md')!;
+    index.types.get('Philosopher')!.autoApply = block({ influenced: '[[Leibniz]]', 'birth-year': '> 1600' });
+    entity.frontmatter = { ...entity.frontmatter, 'birth-year': 1632 };
+    expect(shouldAutoApplyScaffold(index, entity)).toBe(true);
+    entity.frontmatter = { ...entity.frontmatter, 'birth-year': 1400 };
+    expect(shouldAutoApplyScaffold(index, entity)).toBe(false);
   });
 });

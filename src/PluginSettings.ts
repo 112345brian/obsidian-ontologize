@@ -1,4 +1,5 @@
 import type { FrontmatterIgnoreRule } from './ontology/types.ts';
+import { DEFAULT_BLOCK_PREFIX } from './ontology/parser.ts';
 
 export class PluginSettings {
   public typeFolder = '_types';
@@ -11,4 +12,6 @@ export class PluginSettings {
   public foldersToIgnore: string[] = [];
   public filesToIgnore: string[] = [];
   public frontmatterIgnoreRules: FrontmatterIgnoreRule[] = [];
+  public autoApplyBlockPrefix = DEFAULT_BLOCK_PREFIX;
+  public initialScaffoldComplete = false;
 }

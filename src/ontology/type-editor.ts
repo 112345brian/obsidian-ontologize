@@ -27,6 +27,7 @@ export interface TypeEditorRelation {
 export interface TypeEditorModel {
   abstract: boolean;
   canHave: TypeEditorField[];
+  excludes: string[];
   extends: string[];
   implements: string[];
   isInterface: boolean;
@@ -34,12 +35,16 @@ export interface TypeEditorModel {
   mustHave: TypeEditorField[];
   name: string;
   relations: TypeEditorRelation[];
+  replaces: string[];
+  requires: string[];
+  template: string;
 }
 
 export function emptyTypeEditorModel(): TypeEditorModel {
   return {
     abstract: false,
     canHave: [],
+    excludes: [],
     extends: [],
     implements: [],
     isInterface: false,
@@ -47,6 +52,9 @@ export function emptyTypeEditorModel(): TypeEditorModel {
     mustHave: [],
     name: '',
     relations: [],
+    replaces: [],
+    requires: [],
+    template: '',
   };
 }
 
@@ -75,6 +83,7 @@ export function typeEditorModelFromType(type: OntologyType): TypeEditorModel {
   return {
     abstract: type.abstract,
     canHave: [...type.canHave].map(([name, definition]) => fieldFromDefinition(name, definition)),
+    excludes: [...type.excludes],
     extends: [...type.extends],
     implements: [...type.implements],
     isInterface: type.isInterface,
@@ -92,6 +101,9 @@ export function typeEditorModelFromType(type: OntologyType): TypeEditorModel {
       uses: definition.uses ?? '',
       valueType: definition.valueType ?? '',
     })),
+    replaces: type.replaces.filter((r) => !r.field).map((r) => r.value),
+    requires: [...type.requires],
+    template: type.template ?? '',
   };
 }
 
@@ -162,6 +174,15 @@ export function typeEditorFrontmatter(model: TypeEditorModel): Record<string, un
   if (model.implements.length > 0) {
     frontmatter['implements'] = model.implements.map((name) => `[[${name}]]`);
   }
+  if (model.replaces.length > 0) {
+    frontmatter['replaces'] = model.replaces.map((name) => `[[${name}]]`);
+  }
+  if (model.requires.length > 0) {
+    frontmatter['requires'] = model.requires.map((name) => `[[${name}]]`);
+  }
+  if (model.excludes.length > 0) {
+    frontmatter['excludes'] = model.excludes.map((name) => `[[${name}]]`);
+  }
   const mustHave = serializeFields(model.mustHave);
   if (mustHave) {
     frontmatter['must-have'] = mustHave;
@@ -169,6 +190,9 @@ export function typeEditorFrontmatter(model: TypeEditorModel): Record<string, un
   const canHave = serializeFields(model.canHave);
   if (canHave) {
     frontmatter['can-have'] = canHave;
+  }
+  if (model.template.trim()) {
+    frontmatter['template'] = `[[${model.template.trim()}]]`;
   }
   if (model.relations.length > 0) {
     frontmatter['relations'] = Object.fromEntries(model.relations.filter((relation) => relation.name.trim()).map((relation) => {
@@ -190,10 +214,14 @@ export function typeEditorFrontmatter(model: TypeEditorModel): Record<string, un
 export const TYPE_EDITOR_KEYS = [
   'abstract',
   'can-have',
+  'excludes',
   'extends',
   'implements',
   'interface',
   'lock',
   'must-have',
   'relations',
+  'replaces',
+  'requires',
+  'template',
 ] as const;

@@ -69,7 +69,9 @@ describe('type editor frontmatter', () => {
       canHave: new Map(),
       cannotHave: new Set(),
       disjoint: [],
+      excludes: [],
       extends: [],
+      replaces: [],
       fields: new Map(),
       implements: [],
       isInterface: false,
@@ -78,6 +80,7 @@ describe('type editor frontmatter', () => {
       name: 'person',
       path: '_types/person.md',
       relations: new Map(),
+      requires: [],
       values: [],
     };
 

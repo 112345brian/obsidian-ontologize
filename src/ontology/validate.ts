@@ -217,6 +217,24 @@ export function validateIndex(index: OntologyIndex): void {
           });
         }
       }
+      for (const required of type.requires) {
+        if (!chain.has(required)) {
+          pushIssueOnce(index.issues, {
+            file: entity.path,
+            message: `${typeName} requires class membership: ${required}`,
+            severity: 'error',
+          });
+        }
+      }
+      for (const excluded of type.excludes) {
+        if (chain.has(excluded)) {
+          pushIssueOnce(index.issues, {
+            file: entity.path,
+            message: `${typeName} excludes class membership: ${excluded}`,
+            severity: 'error',
+          });
+        }
+      }
     }
 
     // Contracts are merged across every declared type before validating, so an

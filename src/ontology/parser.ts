@@ -1,6 +1,6 @@
 import { parseYaml } from 'obsidian';
 
-import type { OntologyEntity, OntologyType, PropertyDefinition, RelationDefinition } from './types.ts';
+import type { AutoApplyBlock, OntologyEntity, OntologyType, PropertyDefinition, RelationDefinition, TypeReplacement } from './types.ts';
 
 import { basenameWithoutExtension, extractLinkTargets, normalizeLinkTarget } from './links.ts';
 import { normalizeTypeExpression } from './type-expression.ts';
@@ -106,14 +106,85 @@ function parseRelations(value: unknown): Map<string, RelationDefinition> {
   return new Map(Object.entries(asRecord(value)).map(([key, definition]) => [key, parseRelationDefinition(definition)]));
 }
 
-function parseOntologyTypeRecord(name: string, path: string, yaml: Record<string, unknown>): OntologyType {
+export const DEFAULT_BLOCK_PREFIX = 'condition-';
+
+function parseAutoApplyBlock(value: unknown, prefix: string): AutoApplyBlock | undefined {
+  const record = asRecord(value);
+  if (!record) {
+    return undefined;
+  }
+  const explicitMatch = record['match'] === 'any' ? 'any' : record['match'] === 'all' ? 'all' : null;
+  const conditions: Record<string, unknown> = {};
+  const blocks: Record<string, AutoApplyBlock> = {};
+  for (const [key, val] of Object.entries(record)) {
+    if (key === 'match') {
+      continue;
+    }
+    if (key.startsWith(prefix)) {
+      const sub = parseAutoApplyBlock(val, prefix);
+      if (sub) {
+        blocks[key] = sub;
+        continue;
+      }
+    }
+    conditions[key] = val;
+  }
+  const hasBlocks = Object.keys(blocks).length > 0;
+  const match = explicitMatch ?? (hasBlocks ? 'any' : 'all');
+  return { blocks, conditions, match };
+}
+
+function parseReplacement(item: unknown): TypeReplacement | null {
+  if (typeof item === 'string') {
+    const value = normalizeLinkTarget(item);
+    return value ? { value } : null;
+  }
+  const record = asRecord(item);
+  const raw = record['value'];
+  if (typeof raw !== 'string') {
+    return null;
+  }
+  const value = normalizeLinkTarget(raw);
+  if (!value) {
+    return null;
+  }
+  const field = typeof record['field'] === 'string' ? record['field'].trim() || undefined : undefined;
+  return { value, ...(field ? { field } : {}) };
+}
+
+function parseReplaces(raw: unknown): TypeReplacement[] {
+  if (typeof raw === 'string') {
+    const value = normalizeLinkTarget(raw);
+    return value ? [{ value }] : [];
+  }
+  if (!Array.isArray(raw)) {
+    return [];
+  }
+  return raw.flatMap((item) => {
+    const r = parseReplacement(item);
+    return r ? [r] : [];
+  });
+}
+
+function parseAutoApply(value: unknown, prefix: string): OntologyType['autoApply'] {
+  if (value === true) {
+    return true;
+  }
+  return parseAutoApplyBlock(value, prefix);
+}
+
+function parseOntologyTypeRecord(name: string, path: string, yaml: Record<string, unknown>, prefix: string): OntologyType {
   return {
     abstract: yaml['abstract'] === true,
+    autoApply: parseAutoApply(yaml['auto-apply'], prefix),
     canHave: parsePropertyMap(yaml['can-have']),
     cannotHave: parseCannotHave(yaml['cannot-have']),
     disjoint: extractLinkTargets(yaml['disjoint']),
+    excludes: extractLinkTargets(yaml['excludes']),
     extends: extractLinkTargets(yaml['extends']),
     implements: extractLinkTargets(yaml['implements']),
+    replaces: parseReplaces(yaml['replaces']),
+    requires: extractLinkTargets(yaml['requires']),
     isInterface: yaml['interface'] === true || yaml['type'] === 'interface',
     lockIntent: yaml['lock'] === true,
     fields: parsePropertyMap(yaml['fields']),
@@ -121,28 +192,29 @@ function parseOntologyTypeRecord(name: string, path: string, yaml: Record<string
     name,
     path,
     relations: parseRelations(yaml['relations']),
+    template: extractLinkTargets(yaml['template'])[0],
     typeKind: typeof yaml['type'] === 'string' ? yaml['type'] : undefined,
     values: Array.isArray(yaml['values']) ? yaml['values'].map(String) : [],
   };
 }
 
-export function parseOntologyType(path: string, markdown: string): OntologyType {
-  return parseOntologyTypeRecord(basenameWithoutExtension(path), path, readYamlObject(markdown));
+export function parseOntologyType(path: string, markdown: string, blockPrefix = DEFAULT_BLOCK_PREFIX): OntologyType {
+  return parseOntologyTypeRecord(basenameWithoutExtension(path), path, readYamlObject(markdown), blockPrefix);
 }
 
-function parseSchemaTypeMap(path: string, group: string, value: unknown, defaults: Partial<OntologyType> = {}): OntologyType[] {
+function parseSchemaTypeMap(path: string, group: string, value: unknown, blockPrefix: string, defaults: Partial<OntologyType> = {}): OntologyType[] {
   return Object.entries(asRecord(value)).map(([name, definition]) => ({
-    ...parseOntologyTypeRecord(name, `${path}#${group}/${name}`, asRecord(definition)),
+    ...parseOntologyTypeRecord(name, `${path}#${group}/${name}`, asRecord(definition), blockPrefix),
     ...defaults,
     name,
   }));
 }
 
-export function parseOntologySchema(path: string, source: string): OntologyType[] {
+export function parseOntologySchema(path: string, source: string, blockPrefix = DEFAULT_BLOCK_PREFIX): OntologyType[] {
   const schema = readStructuredObject(source, path);
   const types = [
-    ...parseSchemaTypeMap(path, 'types', schema['types']),
-    ...parseSchemaTypeMap(path, 'interfaces', schema['interfaces'], {
+    ...parseSchemaTypeMap(path, 'types', schema['types'], blockPrefix),
+    ...parseSchemaTypeMap(path, 'interfaces', schema['interfaces'], blockPrefix, {
       isInterface: true,
     }),
   ];
@@ -151,14 +223,14 @@ export function parseOntologySchema(path: string, source: string): OntologyType[
     types.push(parseOntologyTypeRecord('_relations', `${path}#relations`, {
       relations: schema['relations'],
       type: 'relation-definitions',
-    }));
+    }, blockPrefix));
   }
 
   if (schema['fields'] !== undefined) {
     types.push(parseOntologyTypeRecord('_fields', `${path}#fields`, {
       fields: schema['fields'],
       type: 'field-definitions',
-    }));
+    }, blockPrefix));
   }
 
   return types;

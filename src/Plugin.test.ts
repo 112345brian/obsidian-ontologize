@@ -73,6 +73,10 @@ vi.mock('obsidian', () => {
     }
   }
 
+  class FuzzySuggestModal extends Modal {
+    public setPlaceholder(): this { return this; }
+  }
+
   class PluginSettingTab {
     public constructor(_app: unknown, _plugin: unknown) {
       // not exercised
@@ -86,6 +90,7 @@ vi.mock('obsidian', () => {
   }
 
   return {
+    FuzzySuggestModal,
     MarkdownRenderer: { render: vi.fn() },
     Modal,
     Notice: vi.fn(),
@@ -175,7 +180,7 @@ async function settle(plugin: Plugin): Promise<void> {
 }
 
 async function loadPlugin(fake: FakeVault, savedSettings: Record<string, unknown> = {}): Promise<Plugin> {
-  const plugin = new Plugin(makeFakeApp(fake), { id: 'obsidian-ontology' } as never);
+  const plugin = new Plugin(makeFakeApp(fake), { id: 'obsidian-ontologize' } as never);
   plugin.loadData = () => Promise.resolve(savedSettings);
   await plugin.onload();
   return plugin;
@@ -208,6 +213,7 @@ describe('Plugin orchestration', () => {
     matched.files.set('.obsidian/ontology-cache.json', JSON.stringify({
       cacheVersion: 1,
       settings: {
+        autoApplyBlockPrefix: 'condition-',
         entityTypeFields: ['is-instance', 'type'],
         filesToIgnore: [],
         foldersToIgnore: [],
@@ -268,7 +274,7 @@ describe('Plugin orchestration', () => {
     const rexFile = makeTFile('Rex.md');
     fake.frontmatterByPath.set('Rex.md', {});
 
-    const plugin = await loadPlugin(fake, { autoScaffoldEntities: true });
+    const plugin = await loadPlugin(fake, { autoScaffoldEntities: true, initialScaffoldComplete: true });
     for (const callback of layoutCallbacks) {
       callback();
     }

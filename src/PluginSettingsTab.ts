@@ -32,7 +32,7 @@ export class PluginSettingsTab extends PluginSettingTab {
   public override display(): void {
     const { containerEl } = this;
     containerEl.empty();
-    containerEl.createEl('h2', { text: 'Obsidian Ontology' });
+    containerEl.createEl('h2', { text: 'Ontologize' });
 
     new Setting(containerEl)
       .setName('Issue report')
@@ -180,6 +180,21 @@ export class PluginSettingsTab extends PluginSettingTab {
           .setValue(formatFrontmatterIgnoreRules(this.plugin.pluginSettings.frontmatterIgnoreRules))
           .onChange(async (value) => {
             this.plugin.pluginSettings.frontmatterIgnoreRules = parseFrontmatterIgnoreRules(value);
+            await this.plugin.savePluginSettings();
+          })
+      );
+
+    containerEl.createEl('h3', { text: 'Advanced' });
+
+    new Setting(containerEl)
+      .setName('Auto-apply block prefix')
+      .setDesc('Key prefix that marks named sub-blocks inside an auto-apply condition map. Keys starting with this prefix are parsed as nested condition groups; all others are treated as flat frontmatter field conditions. Change this only if your notes already use keys that start with the default prefix.')
+      .addText((text) =>
+        text
+          .setPlaceholder('condition-')
+          .setValue(this.plugin.pluginSettings.autoApplyBlockPrefix)
+          .onChange(async (value) => {
+            this.plugin.pluginSettings.autoApplyBlockPrefix = value || 'condition-';
             await this.plugin.savePluginSettings();
           })
       );

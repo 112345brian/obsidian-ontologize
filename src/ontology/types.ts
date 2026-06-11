@@ -28,20 +28,36 @@ export interface RelationDefinition {
   valueType?: string | undefined;
 }
 
+export interface TypeReplacement {
+  field?: string | undefined;
+  value: string;
+}
+
+export interface AutoApplyBlock {
+  match: 'any' | 'all';
+  conditions: Record<string, unknown>;
+  blocks: Record<string, AutoApplyBlock>;
+}
+
 export interface OntologyType {
   abstract: boolean;
+  autoApply?: AutoApplyBlock | true | undefined;
   canHave: Map<string, PropertyDefinition>;
   cannotHave: Set<string>;
   disjoint: string[];
+  excludes: string[];
   extends: string[];
   implements: string[];
   isInterface: boolean;
+  replaces: TypeReplacement[];
+  requires: string[];
   lockIntent: boolean;
   fields: Map<string, PropertyDefinition>;
   mustHave: Map<string, PropertyDefinition>;
   name: string;
   path: string;
   relations: Map<string, RelationDefinition>;
+  template?: string | undefined;
   typeKind?: string | undefined;
   values: string[];
 }
@@ -89,6 +105,7 @@ export interface OntologyIndex {
   schemaIssues?: OntologyIssue[] | undefined;
   generatedAt: string;
   settings: {
+    autoApplyBlockPrefix: string;
     entityTypeFields: string[];
     filesToIgnore: string[];
     foldersToIgnore: string[];
