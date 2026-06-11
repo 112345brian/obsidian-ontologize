@@ -318,6 +318,8 @@ must-have:
 Scaffolding creates a missing field, appends to an existing list, or converts an existing scalar to a list while preserving it.
 Validation fails if the inserted value is absent.
 A `type` array accepts a value when any listed type matches.
+Inserted constraints participate in inheritance, interface composition, and global field `uses` resolution.
+Two definitions of the same semantic field conflict when they specify different inserted values or different accepted type sets.
 
 ### Constraint Inheritance
 

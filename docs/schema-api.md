@@ -172,6 +172,7 @@ When a type composes multiple parents or interfaces, duplicate frontmatter keys 
 Use global `fields` plus property `uses` when a key means the same thing everywhere.
 Local fields from different interfaces are treated as different semantic fields even if their definitions look identical, so composing them under the same frontmatter key is a schema error.
 Different `type`, `cardinality`, `frontmatter-key`, or `possible-values` constraints for the same global field are schema errors.
+Different union-type sets or `insert` values for the same global field are also schema errors.
 Combining `cannot-have` with `must-have` or `can-have` for the same key is also a schema error.
 
 Minimum concrete type:
@@ -277,6 +278,8 @@ must-have:
 If `up` is absent, scaffolding creates it with `[[Person]]`.
 If `up` already contains another scalar or list value, scaffolding preserves that value and appends `[[Person]]`.
 Validation requires the inserted value to remain present.
+`insert` is inherited and composed like the rest of the property definition, including when it comes from a global field referenced with `uses`.
+When an inserted value is a wiki link, membership compares normalized link targets, so aliases and paths resolving to the same note are treated as the same required member.
 
 Use `values` only on `type: nominal` constructors, not on ordinary property definitions.
 
@@ -346,9 +349,11 @@ The plugin validates:
 - Direct instantiation of abstract types or interfaces.
 - Disjoint type conflicts.
 - Missing `must-have` properties.
+- Missing values required by `insert` constraints.
 - Present `cannot-have` properties.
 - Cardinality violations for `one` and `one-to-one`.
 - Scalar value type mismatches.
+- Union type mismatches when a value matches none of the listed types.
 - Nominal value mismatches.
 - Unknown relation targets.
 - Ambiguous relation targets when multiple entity notes share a basename.

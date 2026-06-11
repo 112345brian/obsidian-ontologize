@@ -6,7 +6,7 @@ It keeps ontology data in ordinary Markdown and YAML frontmatter, then adds inhe
 ## Features
 
 - Reads type definitions from `_types/*.md` or a single `_types/ontology.schema.yaml`
-- Supports `extends`, `abstract`, `interface`, `implements`, `disjoint`, `must-have`, `can-have`, `cannot-have`, `relations`, `lock`, `possible-values`, and nominal `values`
+- Supports `extends`, `abstract`, `interface`, `implements`, `disjoint`, `must-have`, `can-have`, `cannot-have`, global fields/relations, `insert`, union property types, `possible-values`, and nominal `values`
 - Resolves inherited and composed type chains for entities with configured ontology membership frontmatter fields
 - Computes effective lock state from entity/type lock intent and ancestor locks
 - Keeps a hot in-memory ontology graph updated from Obsidian file and metadata events; all graph writes are serialized to prevent stale state from clobbering a newer rebuild
@@ -14,7 +14,7 @@ It keeps ontology data in ordinary Markdown and YAML frontmatter, then adds inhe
 - Supports Linter-style ignored folders, ignored file path patterns, and ignored frontmatter rules
 - Renders inheritance-aware queries in `ontology-query` code blocks with a result count footer
 - Writes `.obsidian/ontology-cache.json` after rebuilds; discards cached graphs whose settings differ from current plugin settings
-- Validates schema consistency: inheritance, circular types (never locked), unknown types, abstract/interface instantiation, disjoint conflicts, must-have/cannot-have properties, cardinality, relation ranges, possible values, nominal values, negation conflicts, and missing inverse/symmetric entries
+- Validates schema consistency: inheritance, circular types (never locked), unknown types, abstract/interface instantiation, disjoint conflicts, must-have/cannot-have properties, required inserted members, union types, cardinality, relation ranges, possible values, nominal values, negation conflicts, and missing inverse/symmetric entries
 - Flags duplicate entity basenames and ambiguous relation targets instead of silently resolving to an arbitrary file
 - Inverse relation fixing uses the same composition-chain resolution as validation, so the fix always writes the property that the issue reported
 - Can automatically offer a scaffold review when a note's ontology membership changes; closing the review keeps it dismissed until the membership changes again
@@ -65,8 +65,13 @@ implements:
 lock: true
 must-have:
   school-of-thought: [[SchoolOfThought]]
+  up:
+    insert: "[[Person]]"
+    type: [wikilink, string]
 can-have:
   magnum-opus: [[Work]]
+  reference:
+    type: [wikilink, string]
 relations:
   influenced:
     range: [[Person]]
