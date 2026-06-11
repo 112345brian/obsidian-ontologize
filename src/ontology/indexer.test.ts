@@ -326,6 +326,47 @@ describe('incremental ontology index state', () => {
     }));
   });
 
+  it('validates required inserted members and union property types', () => {
+    const index = makeIndex();
+    index.types.get('Philosopher')!.mustHave.set('up', {
+      acceptedTypes: ['wikilink', 'string'],
+      insert: '[[Person]]',
+    });
+    index.entities.get('Ada.md')!.frontmatter['up'] = '[[Thinker]]';
+
+    recomputeOntologyDerivedState(index);
+
+    expect(index.issues).toContainEqual(expect.objectContaining({
+      file: 'Ada.md',
+      message: 'up must include [[Person]]',
+      property: 'up',
+      severity: 'error',
+    }));
+    expect(index.issues.some((issue) => issue.message.startsWith('up must be'))).toBe(false);
+
+    index.entities.get('Ada.md')!.frontmatter['up'] = ['[[Thinker]]', '[[Person]]'];
+    recomputeOntologyDerivedState(index);
+    expect(index.issues.some((issue) => issue.property === 'up')).toBe(false);
+  });
+
+  it('treats union property types as OR constraints', () => {
+    const index = makeIndex();
+    index.types.get('Philosopher')!.canHave.set('reference', {
+      acceptedTypes: ['wikilink', 'string'],
+    });
+    index.entities.get('Ada.md')!.frontmatter['reference'] = 42;
+
+    recomputeOntologyDerivedState(index);
+    expect(index.issues).toContainEqual(expect.objectContaining({
+      message: 'reference must be wikilink or string',
+      property: 'reference',
+    }));
+
+    index.entities.get('Ada.md')!.frontmatter['reference'] = 'plain text';
+    recomputeOntologyDerivedState(index);
+    expect(index.issues.some((issue) => issue.property === 'reference')).toBe(false);
+  });
+
   it('allows shared global fields and lets required beat optional', () => {
     const index = makeIndex();
     index.types.set('_fields', makeType('_fields', '_types/_fields.md', false, [], {

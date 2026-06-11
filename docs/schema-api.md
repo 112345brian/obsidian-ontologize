@@ -258,9 +258,25 @@ Recognized property definition fields:
 
 | Field | Meaning |
 |---|---|
-| `type` | Scalar type, nominal type, or linked ontology type. |
+| `type` | One accepted type, or an array of accepted types. Arrays use OR semantics. |
 | `cardinality` | Currently validates `one` and `one-to-one` as single-value constraints. |
+| `insert` | Required value that validation expects and scaffolding inserts without overwriting existing values. |
 | `possible-values` | Inline allowed values for this property. |
+
+Required inserted member:
+
+```yaml
+must-have:
+  up:
+    insert: "[[Person]]"
+    type:
+      - wikilink
+      - string
+```
+
+If `up` is absent, scaffolding creates it with `[[Person]]`.
+If `up` already contains another scalar or list value, scaffolding preserves that value and appends `[[Person]]`.
+Validation requires the inserted value to remain present.
 
 Use `values` only on `type: nominal` constructors, not on ordinary property definitions.
 
@@ -345,7 +361,8 @@ Manual inverse fixes are reviewed in a modal before frontmatter is written.
 ## Scaffolding
 
 The `Scaffold active ontology note` command and the optional `Auto-scaffold entities` setting use the same scaffolder.
-The scaffolder adds missing inherited `must-have`, `can-have`, and relation fields with `null` values.
+The scaffolder adds missing inherited `must-have`, `can-have`, and relation fields with `null` values unless a property defines `insert`.
+For `insert`, it creates the field, appends to an existing list, or converts an existing scalar to a list while preserving it.
 It does not overwrite existing frontmatter values.
 Both manual and automatic scaffolding open a review modal first.
 The modal lists the missing fields, labels them as required, optional, or relation fields, and writes only the selected fields.

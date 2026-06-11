@@ -12,6 +12,10 @@ interface OntologyScaffoldReviewModalOptions {
   plans: ScaffoldFieldPlan[];
 }
 
+function displayInsert(plan: ScaffoldFieldPlan): string {
+  return typeof plan.insert === 'string' ? plan.insert : JSON.stringify(plan.insert);
+}
+
 export class OntologyScaffoldReviewModal extends Modal {
   private readonly selected = new Set<string>();
 
@@ -54,7 +58,7 @@ export class OntologyScaffoldReviewModal extends Modal {
     for (const plan of this.options.plans) {
       new Setting(list)
         .setName(plan.property)
-        .setDesc(plan.kind)
+        .setDesc(plan.insert === undefined ? plan.kind : `${plan.kind} · insert ${displayInsert(plan)}`)
         .addToggle((toggle) => {
           toggle
             .setValue(this.selected.has(plan.property))

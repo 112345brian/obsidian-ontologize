@@ -25,6 +25,11 @@ Audit-driven correctness, performance, and infrastructure release. Also rolls up
 - The scaffold review modal exposes an `onClosed` callback instead of having its `onClose` monkey-patched by the plugin.
 - Removed the dead `validationThreshold` setting (it was exposed in the UI but wired to nothing) and the superseded `scaffoldEntity` helper.
 
+### Features
+
+- Property definitions support non-destructive `insert` constraints. Validation requires the configured member, and scaffolding can create, append, or preserve-and-convert existing frontmatter values.
+- Property `type` accepts an array with OR semantics, such as `type: [wikilink, string]`.
+
 ### Infrastructure
 
 - GitHub Actions CI: lint, type check, tests, and build run on every push and pull request.

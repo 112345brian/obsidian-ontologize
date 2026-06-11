@@ -2,6 +2,16 @@ import { describe, expect, it, vi } from 'vitest';
 
 vi.mock('obsidian', () => ({
   parseYaml: (source: string) => {
+    if (source.includes('insert:') && source.includes('up:')) {
+      return {
+        'must-have': {
+          up: {
+            insert: '[[Person]]',
+            type: ['wikilink', 'string'],
+          },
+        },
+      };
+    }
     if (source.includes('possible-values:')) {
       return {
         'can-have': {
@@ -103,8 +113,10 @@ can-have:
 ---`);
 
     expect(type.canHave.get('descriptor')).toEqual({
+      acceptedTypes: undefined,
       cardinality: undefined,
       frontmatterKey: undefined,
+      insert: undefined,
       type: 'string',
       uses: undefined,
       values: ['happy', 'sad', 'weird'],
@@ -123,8 +135,10 @@ can-have:
 ---`);
 
     expect(type.canHave.get('descriptor')).toEqual({
+      acceptedTypes: undefined,
       cardinality: undefined,
       frontmatterKey: undefined,
+      insert: undefined,
       type: 'string',
       uses: undefined,
       values: undefined,
@@ -145,17 +159,42 @@ must-have:
 ---`);
 
     expect(type.fields.get('birth-year')).toEqual({
+      acceptedTypes: undefined,
       cardinality: 'one',
       frontmatterKey: 'birth_year',
+      insert: undefined,
       type: 'number',
       uses: undefined,
       values: undefined,
     });
     expect(type.mustHave.get('born')).toEqual({
+      acceptedTypes: undefined,
       cardinality: undefined,
       frontmatterKey: undefined,
+      insert: undefined,
       type: undefined,
       uses: 'birth-year',
+      values: undefined,
+    });
+  });
+
+  it('parses inserted values and union property types', () => {
+    const type = parseOntologyType('_types/Philosopher.md', `---
+must-have:
+  up:
+    insert: "[[Person]]"
+    type:
+      - wikilink
+      - string
+---`);
+
+    expect(type.mustHave.get('up')).toEqual({
+      acceptedTypes: ['wikilink', 'string'],
+      cardinality: undefined,
+      frontmatterKey: undefined,
+      insert: '[[Person]]',
+      type: undefined,
+      uses: undefined,
       values: undefined,
     });
   });

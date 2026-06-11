@@ -39,6 +39,36 @@ export function extractAssertedLinkTargets(value: unknown): string[] {
   return extractTargets(value, 'asserted');
 }
 
+export function extractAssertedWikiLinkTargets(value: unknown): string[] {
+  if (typeof value === 'string') {
+    const trimmed = value.trim();
+    if (trimmed.startsWith('NOT ') || !/^\[\[[^\]]+\]\]$/.test(trimmed)) {
+      return [];
+    }
+    return [normalizeLinkTarget(trimmed)];
+  }
+  if (Array.isArray(value)) {
+    return value.flatMap((item) => extractAssertedWikiLinkTargets(item));
+  }
+  if (value && typeof value === 'object' && 'target' in value) {
+    return extractAssertedWikiLinkTargets(value.target);
+  }
+  return [];
+}
+
+export function containsFrontmatterValue(value: unknown, inserted: unknown): boolean {
+  if (Array.isArray(value)) {
+    return value.some((item) => containsFrontmatterValue(item, inserted));
+  }
+  if (typeof inserted === 'string') {
+    const insertedTargets = extractAssertedWikiLinkTargets(inserted);
+    if (insertedTargets.length > 0) {
+      return insertedTargets.every((target) => extractAssertedWikiLinkTargets(value).includes(target));
+    }
+  }
+  return JSON.stringify(value) === JSON.stringify(inserted);
+}
+
 export function extractLinkTargets(value: unknown): string[] {
   return extractTargets(value, 'all');
 }

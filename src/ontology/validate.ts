@@ -14,7 +14,7 @@ import {
   resolvePropertyDefinition,
   typeCompositionChain
 } from './compose.ts';
-import { extractAssertedLinkTargets, extractLinkTargets, extractNegatedLinkTargets, hasNegatedTarget, normalizeLinkTarget } from './links.ts';
+import { containsFrontmatterValue, extractAssertedLinkTargets, extractAssertedWikiLinkTargets, extractLinkTargets, extractNegatedLinkTargets, hasNegatedTarget, normalizeLinkTarget } from './links.ts';
 
 export function hasValue(frontmatter: Record<string, unknown>, key: string): boolean {
   const value = frontmatter[key];
@@ -57,42 +57,45 @@ function valuesForValidation(value: unknown): string[] {
   return [];
 }
 
-function validateValueType(file: string, property: string, expectedType: string | undefined, value: unknown, issues: OntologyIssue[]): void {
-  if (!expectedType || value === undefined || value === null || value === '') {
+function valueMatchesType(expectedType: string, value: unknown): boolean {
+  switch (normalizeLinkTarget(expectedType).toLowerCase()) {
+    case 'boolean':
+      return typeof value === 'boolean';
+    case 'date':
+      return typeof value === 'string' && !Number.isNaN(Date.parse(value));
+    case 'link':
+    case 'wikilink':
+      return extractAssertedWikiLinkTargets(value).length > 0;
+    case 'number':
+      return typeof value === 'number';
+    case 'string':
+    case 'text':
+      return typeof value === 'string';
+    default:
+      return true;
+  }
+}
+
+function validateValueType(file: string, property: string, expectedTypes: string[], value: unknown, issues: OntologyIssue[]): void {
+  if (expectedTypes.length === 0 || value === undefined || value === null || value === '') {
     return;
   }
 
-  const normalizedType = normalizeLinkTarget(expectedType).toLowerCase();
   const values = Array.isArray(value) ? value : [value];
   for (const item of values) {
-    const valid = (() => {
-      switch (normalizedType) {
-        case 'boolean':
-          return typeof item === 'boolean';
-        case 'date':
-          return typeof item === 'string' && !Number.isNaN(Date.parse(item));
-        case 'link':
-        case 'wikilink':
-          return extractAssertedLinkTargets(item).length > 0;
-        case 'number':
-          return typeof item === 'number';
-        case 'string':
-        case 'text':
-          return typeof item === 'string';
-        default:
-          return true;
-      }
-    })();
-
-    if (!valid) {
+    if (!expectedTypes.some((expectedType) => valueMatchesType(expectedType, item))) {
       pushIssueOnce(issues, {
         file,
-        message: `${property} must be ${expectedType}`,
+        message: `${property} must be ${expectedTypes.join(' or ')}`,
         property,
         severity: 'error',
       });
     }
   }
+}
+
+function displayInsertedValue(value: PropertyDefinition['insert']): string {
+  return typeof value === 'string' ? value : JSON.stringify(value);
 }
 
 function allowedPropertyValues(index: OntologyIndex, definition: PropertyDefinition): string[] {
@@ -114,7 +117,16 @@ function validatePropertyDefinition(
 ): void {
   const value = entity.frontmatter[property];
   validateCardinality(entity.path, property, definition, value, index.issues);
-  validateValueType(entity.path, property, definition.type, value, index.issues);
+  validateValueType(entity.path, property, definition.acceptedTypes ?? (definition.type ? [definition.type] : []), value, index.issues);
+
+  if (definition.insert !== undefined && !containsFrontmatterValue(value, definition.insert)) {
+    pushIssueOnce(index.issues, {
+      file: entity.path,
+      message: `${property} must include ${displayInsertedValue(definition.insert)}`,
+      property,
+      severity: 'error',
+    });
+  }
 
   const allowedValues = allowedPropertyValues(index, definition);
   if (allowedValues.length === 0) {
@@ -216,7 +228,7 @@ function validateRelation(index: OntologyIndex, entity: OntologyEntity, property
   }
 
   validateCardinality(entity.path, property, relation, value, index.issues);
-  validateValueType(entity.path, property, relation.valueType, value, index.issues);
+  validateValueType(entity.path, property, relation.valueType ? [relation.valueType] : [], value, index.issues);
 
   const assertedTargets = new Set(extractAssertedLinkTargets(value));
   const negatedTargets = new Set(extractNegatedLinkTargets(value));
@@ -287,17 +299,21 @@ function sameStringArray(left: string[] | undefined, right: string[] | undefined
 }
 
 function samePropertyDefinition(left: PropertyDefinition, right: PropertyDefinition): boolean {
-  return left.cardinality === right.cardinality
+  return sameStringArray(left.acceptedTypes, right.acceptedTypes)
+    && left.cardinality === right.cardinality
     && left.frontmatterKey === right.frontmatterKey
+    && JSON.stringify(left.insert) === JSON.stringify(right.insert)
     && left.type === right.type
     && sameStringArray(left.values, right.values);
 }
 
 function describePropertyDefinition(definition: PropertyDefinition): string {
   const parts = [
+    definition.acceptedTypes?.length ? `type ${definition.acceptedTypes.join(' or ')}` : '',
     definition.type ? `type ${definition.type}` : '',
     definition.cardinality ? `cardinality ${definition.cardinality}` : '',
     definition.frontmatterKey ? `frontmatter-key ${definition.frontmatterKey}` : '',
+    definition.insert !== undefined ? `insert ${displayInsertedValue(definition.insert)}` : '',
     definition.values?.length ? `possible-values ${definition.values.join(', ')}` : '',
   ].filter(Boolean);
   return parts.length > 0 ? parts.join('; ') : 'untyped';

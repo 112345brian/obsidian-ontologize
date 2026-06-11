@@ -1,9 +1,9 @@
 import type { App, TFile } from 'obsidian';
 
-import type { OntologyIndex, OntologyIssue } from './types.ts';
+import type { FrontmatterValue, OntologyIndex, OntologyIssue, PropertyDefinition } from './types.ts';
 
 import { getInheritedCanHave, getInheritedMustHave, resolveEntityRelations } from './compose.ts';
-import { extractAssertedLinkTargets, toWikiLink } from './links.ts';
+import { containsFrontmatterValue, extractAssertedLinkTargets, toWikiLink } from './links.ts';
 
 export interface FixMissingInversesOptions {
   onlyAutoUpdate?: boolean;
@@ -22,6 +22,7 @@ export interface MissingInverseFixPlan {
 }
 
 export interface ScaffoldFieldPlan {
+  insert?: FrontmatterValue | undefined;
   kind: 'optional' | 'relation' | 'required';
   property: string;
 }
@@ -31,6 +32,21 @@ function findFile(app: App, path: string): TFile | null {
   return file && 'extension' in file && file.extension === 'md' ? file as TFile : null;
 }
 
+function scaffoldPlan(property: string, kind: ScaffoldFieldPlan['kind'], definition?: PropertyDefinition): ScaffoldFieldPlan {
+  return {
+    ...(definition?.insert !== undefined ? { insert: definition.insert } : {}),
+    kind,
+    property,
+  };
+}
+
+function needsScaffold(frontmatter: Record<string, unknown>, property: string, definition?: PropertyDefinition): boolean {
+  if (!(property in frontmatter)) {
+    return true;
+  }
+  return definition?.insert !== undefined && !containsFrontmatterValue(frontmatter[property], definition.insert);
+}
+
 export function planScaffoldEntity(index: OntologyIndex, path: string): ScaffoldFieldPlan[] {
   const entity = index.entities.get(path);
   if (!entity) {
@@ -38,14 +54,14 @@ export function planScaffoldEntity(index: OntologyIndex, path: string): Scaffold
   }
 
   const plans = new Map<string, ScaffoldFieldPlan>();
-  for (const property of getInheritedMustHave(index, entity).keys()) {
-    if (!(property in entity.frontmatter)) {
-      plans.set(property, { kind: 'required', property });
+  for (const [property, definition] of getInheritedMustHave(index, entity)) {
+    if (needsScaffold(entity.frontmatter, property, definition)) {
+      plans.set(property, scaffoldPlan(property, 'required', definition));
     }
   }
-  for (const property of getInheritedCanHave(index, entity).keys()) {
-    if (!(property in entity.frontmatter) && !plans.has(property)) {
-      plans.set(property, { kind: 'optional', property });
+  for (const [property, definition] of getInheritedCanHave(index, entity)) {
+    if (needsScaffold(entity.frontmatter, property, definition) && !plans.has(property)) {
+      plans.set(property, scaffoldPlan(property, 'optional', definition));
     }
   }
   for (const property of resolveEntityRelations(index, entity.instanceOf).keys()) {
@@ -57,13 +73,25 @@ export function planScaffoldEntity(index: OntologyIndex, path: string): Scaffold
 }
 
 export async function applyScaffoldPlan(app: App, file: TFile, plans: ScaffoldFieldPlan[]): Promise<number> {
-  const properties = [...new Set(plans.map((plan) => plan.property))];
   let added = 0;
   await app.fileManager.processFrontMatter(file, (frontmatter) => {
     const data = frontmatter as Record<string, unknown>;
-    for (const property of properties) {
-      if (!(property in data)) {
-        data[property] = null;
+    for (const plan of plans) {
+      const existing = data[plan.property];
+      if (plan.insert !== undefined) {
+        if (containsFrontmatterValue(existing, plan.insert)) {
+          continue;
+        }
+        if (existing === undefined || existing === null || existing === '' || (Array.isArray(existing) && existing.length === 0)) {
+          data[plan.property] = plan.insert;
+        } else if (Array.isArray(existing)) {
+          existing.push(plan.insert);
+        } else {
+          data[plan.property] = [existing, plan.insert];
+        }
+        added++;
+      } else if (!(plan.property in data)) {
+        data[plan.property] = null;
         added++;
       }
     }

@@ -275,4 +275,31 @@ describe('ontology frontmatter mutations', () => {
       { kind: 'relation', property: 'influenced' },
     ]);
   });
+
+  it('inserts required values without overwriting existing frontmatter', async () => {
+    const index = makeIndex();
+    index.types.get('Philosopher')!.mustHave.set('up', {
+      acceptedTypes: ['wikilink', 'string'],
+      insert: '[[Person]]',
+    });
+    index.entities.get('Spinoza.md')!.frontmatter = {
+      instance_of: '[[Philosopher]]',
+      up: '[[Thinker]]',
+    };
+    const frontmatter = { ...index.entities.get('Spinoza.md')!.frontmatter };
+    const app = {
+      fileManager: {
+        processFrontMatter: (_file: TFile, callback: (data: Record<string, unknown>) => void) => {
+          callback(frontmatter);
+          return Promise.resolve();
+        },
+      },
+    } as unknown as App;
+
+    const plans = planScaffoldEntity(index, 'Spinoza.md');
+    expect(plans).toContainEqual({ kind: 'required', property: 'up', insert: '[[Person]]' });
+
+    await applyScaffoldPlan(app, { path: 'Spinoza.md' } as TFile, plans);
+    expect(frontmatter['up']).toEqual(['[[Thinker]]', '[[Person]]']);
+  });
 });

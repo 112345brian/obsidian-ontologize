@@ -349,6 +349,9 @@ The plugin mutates frontmatter through explicit commands and one guarded automat
 - `Fix missing inverse relations`
 
 Scaffolding adds missing inherited `must-have`, `can-have`, and relation fields with `null` values.
+Property definitions with `insert` instead plan a required-member mutation: create the field with that value, append it to an existing list, or preserve an existing scalar by converting the field to a list.
+Validation uses the same resolved property definition and reports when the inserted member is absent.
+Property `type` arrays are OR constraints; each stored value must match at least one accepted type.
 Manual scaffolding runs through `Scaffold active ontology note`, which opens a review modal before writing.
 
 When `autoScaffoldEntities` is enabled, the scaffold review opens automatically only on a membership *transition*: the note's resolved direct types changed in this edit (typically because a membership field was just added).

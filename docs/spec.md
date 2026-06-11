@@ -301,6 +301,24 @@ can-have:
 
 Use `values` only for `type: nominal` constructors, not ordinary property definitions.
 
+### Required Inserted Values
+
+A required property can declare a value that must be present:
+
+```yaml
+must-have:
+  up:
+    insert: "[[Person]]"
+    type:
+      - wikilink
+      - string
+```
+
+`insert` is non-destructive.
+Scaffolding creates a missing field, appends to an existing list, or converts an existing scalar to a list while preserving it.
+Validation fails if the inserted value is absent.
+A `type` array accepts a value when any listed type matches.
+
 ### Constraint Inheritance
 
 Subtypes may tighten constraints from parent types. A `can-have` in a parent can be promoted to `must-have` in a subtype. Constraints may not be loosened going down the hierarchy.
@@ -718,6 +736,7 @@ When `Auto-scaffold entities` is enabled and a note has completed ontology membe
 Completed membership means the configured entity type field has at least one value and every direct type exists, is instantiable, and is not part of a circular inheritance chain.
 
 Scaffolding can add missing inherited `must-have`, `can-have`, and relation fields with empty values.
+For properties declaring `insert`, it previews and applies the required value without overwriting existing values.
 The review modal labels each field as required, optional, or relation-backed and writes only the selected fields.
 
 Manual scaffolding is also available through the `Scaffold active ontology note` command.
