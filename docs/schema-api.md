@@ -263,7 +263,7 @@ Recognized property definition fields:
 | `included-types` | Preferred types. A value matching none of them produces a warning. |
 | `excluded-types` | Forbidden types. A value matching any of them produces an error. |
 | `cardinality` | Currently validates `one` and `one-to-one` as single-value constraints. |
-| `insert` | Required value that validation expects and scaffolding inserts without overwriting existing values. |
+| `insert` | Literal required member, or registered template used to initialize an empty field. |
 | `possible-values` | Inline allowed values for this property. |
 
 Required inserted member:
@@ -287,6 +287,29 @@ If none match, validation reports a warning.
 `excluded-types` also uses OR semantics, but matching any listed type reports an error.
 `insert` is inherited and composed like the rest of the property definition, including when it comes from a global field referenced with `uses`.
 When an inserted value is a wiki link, membership compares normalized link targets, so aliases and paths resolving to the same note are treated as the same required member.
+
+### Insert Templates
+
+`insert` can also contain a recognized template expression:
+
+```yaml
+must-have:
+  date-start:
+    insert: date.now()
+    type: date
+```
+
+Supported templates:
+
+| Expression | Result |
+|---|---|
+| `date.now()` | Current local date in `YYYY-MM-DD` format. |
+
+Templates are evaluated when the scaffold mutation is applied, not when the schema is parsed or the review modal opens.
+A template initializes only a missing, null, empty-string, or empty-list field.
+It never overwrites or appends to an already populated field.
+Validation treats the generated result as an ordinary property value: `must-have`, `type`, included/excluded types, and possible values still apply, but the stored value is not compared to the template expression itself.
+Template expressions come from a fixed registry and are never executed as arbitrary JavaScript.
 
 Use `values` only on `type: nominal` constructors, not on ordinary property definitions.
 
@@ -375,7 +398,8 @@ Manual inverse fixes are reviewed in a modal before frontmatter is written.
 
 The `Scaffold active ontology note` command and the optional `Auto-scaffold entities` setting use the same scaffolder.
 The scaffolder adds missing inherited `must-have`, `can-have`, and relation fields with `null` values unless a property defines `insert`.
-For `insert`, it creates the field, appends to an existing list, or converts an existing scalar to a list while preserving it.
+For a literal `insert`, it creates the field, appends to an existing list, or converts an existing scalar to a list while preserving it.
+For a template `insert`, it evaluates the expression at apply time and initializes only an empty field.
 It does not overwrite existing frontmatter values.
 Both manual and automatic scaffolding open a review modal first.
 The modal lists the missing fields, labels them as required, optional, or relation fields, and writes only the selected fields.

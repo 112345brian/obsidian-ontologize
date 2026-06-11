@@ -302,4 +302,64 @@ describe('ontology frontmatter mutations', () => {
     await applyScaffoldPlan(app, { path: 'Spinoza.md' } as TFile, plans);
     expect(frontmatter['up']).toEqual(['[[Thinker]]', '[[Person]]']);
   });
+
+  it('resolves date templates only when scaffolding a missing field', async () => {
+    const index = makeIndex();
+    index.types.get('Philosopher')!.mustHave.set('date-start', {
+      insert: 'date.now()',
+      type: 'date',
+    });
+    index.entities.get('Spinoza.md')!.frontmatter = {
+      instance_of: '[[Philosopher]]',
+    };
+    const frontmatter = { ...index.entities.get('Spinoza.md')!.frontmatter };
+    const app = {
+      fileManager: {
+        processFrontMatter: (_file: TFile, callback: (data: Record<string, unknown>) => void) => {
+          callback(frontmatter);
+          return Promise.resolve();
+        },
+      },
+    } as unknown as App;
+
+    const plans = planScaffoldEntity(index, 'Spinoza.md');
+    expect(plans).toContainEqual({ kind: 'required', property: 'date-start', insert: 'date.now()' });
+
+    await applyScaffoldPlan(app, { path: 'Spinoza.md' } as TFile, plans, {
+      now: new Date(2026, 5, 11, 14, 30, 0),
+    });
+    expect(frontmatter['date-start']).toBe('2026-06-11');
+
+    index.entities.get('Spinoza.md')!.frontmatter['date-start'] = '2020-01-01';
+    expect(planScaffoldEntity(index, 'Spinoza.md')).not.toContainEqual(expect.objectContaining({ property: 'date-start' }));
+  });
+
+  it('does not overwrite a field populated after template preview', async () => {
+    const index = makeIndex();
+    index.types.get('Philosopher')!.mustHave.set('date-start', {
+      insert: 'date.now()',
+      type: 'date',
+    });
+    index.entities.get('Spinoza.md')!.frontmatter = {
+      instance_of: '[[Philosopher]]',
+    };
+    const plans = planScaffoldEntity(index, 'Spinoza.md').filter((plan) => plan.property === 'date-start');
+    const frontmatter: Record<string, unknown> = {
+      'date-start': '2020-01-01',
+      instance_of: '[[Philosopher]]',
+    };
+    const app = {
+      fileManager: {
+        processFrontMatter: (_file: TFile, callback: (data: Record<string, unknown>) => void) => {
+          callback(frontmatter);
+          return Promise.resolve();
+        },
+      },
+    } as unknown as App;
+
+    expect(await applyScaffoldPlan(app, { path: 'Spinoza.md' } as TFile, plans, {
+      now: new Date(2026, 5, 11),
+    })).toBe(0);
+    expect(frontmatter['date-start']).toBe('2020-01-01');
+  });
 });

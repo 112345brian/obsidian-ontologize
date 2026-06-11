@@ -6,7 +6,7 @@ It keeps ontology data in ordinary Markdown and YAML frontmatter, then adds inhe
 ## Features
 
 - Reads type definitions from `_types/*.md` or a single `_types/ontology.schema.yaml`
-- Supports `extends`, `abstract`, `interface`, `implements`, `disjoint`, `must-have`, `can-have`, `cannot-have`, global fields/relations, `insert`, union property types, `possible-values`, and nominal `values`
+- Supports `extends`, `abstract`, `interface`, `implements`, `disjoint`, `must-have`, `can-have`, `cannot-have`, global fields/relations, literal and templated `insert` values, included/excluded types, `possible-values`, and nominal `values`
 - Resolves inherited and composed type chains for entities with configured ontology membership frontmatter fields
 - Computes effective lock state from entity/type lock intent and ancestor locks
 - Keeps a hot in-memory ontology graph updated from Obsidian file and metadata events; all graph writes are serialized to prevent stale state from clobbering a newer rebuild
@@ -69,6 +69,9 @@ must-have:
     insert: "[[Person]]"
     included-types: [wikilink, string]
     excluded-types: [number]
+  date-start:
+    insert: date.now()
+    type: date
 can-have:
   magnum-opus: [[Work]]
   reference:

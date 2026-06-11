@@ -14,4 +14,7 @@ fields:
     type: number
     cardinality: one
     frontmatter-key: birth_year
+  date-start:
+    type: date
+    insert: date.now()
 ---

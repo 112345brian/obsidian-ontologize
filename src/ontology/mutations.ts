@@ -4,6 +4,7 @@ import type { FrontmatterValue, OntologyIndex, OntologyIssue, PropertyDefinition
 
 import { getInheritedCanHave, getInheritedMustHave, resolveEntityRelations } from './compose.ts';
 import { containsFrontmatterValue, extractAssertedLinkTargets, toWikiLink } from './links.ts';
+import { isInsertTemplate, resolveInsertTemplate } from './templates.ts';
 
 export interface FixMissingInversesOptions {
   onlyAutoUpdate?: boolean;
@@ -27,6 +28,10 @@ export interface ScaffoldFieldPlan {
   property: string;
 }
 
+export interface ApplyScaffoldPlanOptions {
+  now?: Date | undefined;
+}
+
 function findFile(app: App, path: string): TFile | null {
   const file = app.vault.getAbstractFileByPath(path);
   return file && 'extension' in file && file.extension === 'md' ? file as TFile : null;
@@ -43,6 +48,9 @@ function scaffoldPlan(property: string, kind: ScaffoldFieldPlan['kind'], definit
 function needsScaffold(frontmatter: Record<string, unknown>, property: string, definition?: PropertyDefinition): boolean {
   if (!(property in frontmatter)) {
     return true;
+  }
+  if (isInsertTemplate(definition?.insert)) {
+    return false;
   }
   return definition?.insert !== undefined && !containsFrontmatterValue(frontmatter[property], definition.insert);
 }
@@ -72,22 +80,33 @@ export function planScaffoldEntity(index: OntologyIndex, path: string): Scaffold
   return [...plans.values()];
 }
 
-export async function applyScaffoldPlan(app: App, file: TFile, plans: ScaffoldFieldPlan[]): Promise<number> {
+export async function applyScaffoldPlan(app: App, file: TFile, plans: ScaffoldFieldPlan[], options: ApplyScaffoldPlanOptions = {}): Promise<number> {
   let added = 0;
+  const now = options.now ?? new Date();
   await app.fileManager.processFrontMatter(file, (frontmatter) => {
     const data = frontmatter as Record<string, unknown>;
     for (const plan of plans) {
       const existing = data[plan.property];
       if (plan.insert !== undefined) {
-        if (containsFrontmatterValue(existing, plan.insert)) {
+        const template = isInsertTemplate(plan.insert);
+        const insertedValue = resolveInsertTemplate(plan.insert, { now });
+        const empty = existing === undefined || existing === null || existing === '' || (Array.isArray(existing) && existing.length === 0);
+        if (template) {
+          if (empty) {
+            data[plan.property] = insertedValue;
+            added++;
+          }
           continue;
         }
-        if (existing === undefined || existing === null || existing === '' || (Array.isArray(existing) && existing.length === 0)) {
-          data[plan.property] = plan.insert;
+        if (containsFrontmatterValue(existing, insertedValue)) {
+          continue;
+        }
+        if (empty) {
+          data[plan.property] = insertedValue;
         } else if (Array.isArray(existing)) {
-          existing.push(plan.insert);
+          existing.push(insertedValue);
         } else {
-          data[plan.property] = [existing, plan.insert];
+          data[plan.property] = [existing, insertedValue];
         }
         added++;
       } else if (!(plan.property in data)) {

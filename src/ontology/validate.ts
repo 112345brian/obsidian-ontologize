@@ -15,6 +15,7 @@ import {
   typeCompositionChain
 } from './compose.ts';
 import { containsFrontmatterValue, extractAssertedLinkTargets, extractAssertedWikiLinkTargets, extractLinkTargets, extractNegatedLinkTargets, hasNegatedTarget, normalizeLinkTarget } from './links.ts';
+import { isInsertTemplate } from './templates.ts';
 
 export function hasValue(frontmatter: Record<string, unknown>, key: string): boolean {
   const value = frontmatter[key];
@@ -154,7 +155,7 @@ function validatePropertyDefinition(
   validateIncludedTypes(entity.path, property, definition.includedTypes ?? [], value, index.issues);
   validateExcludedTypes(entity.path, property, definition.excludedTypes ?? [], value, index.issues);
 
-  if (definition.insert !== undefined && !containsFrontmatterValue(value, definition.insert)) {
+  if (definition.insert !== undefined && !isInsertTemplate(definition.insert) && !containsFrontmatterValue(value, definition.insert)) {
     pushIssueOnce(index.issues, {
       file: entity.path,
       message: `${property} must include ${displayInsertedValue(definition.insert)}`,

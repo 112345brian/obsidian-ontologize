@@ -29,6 +29,7 @@ Audit-driven correctness, performance, and infrastructure release. Also rolls up
 
 - Property definitions support non-destructive `insert` constraints. Validation requires the configured member, and scaffolding can create, append, or preserve-and-convert existing frontmatter values.
 - Added `included-types` and `excluded-types` property constraints. Missing all included types is a warning; matching any excluded type is an error. Scalar `type` remains strict.
+- Added safe insert templates. `date.now()` initializes an empty field with the current local `YYYY-MM-DD` date when a scaffold is applied, without evaluating arbitrary JavaScript or overwriting existing values.
 
 ### Infrastructure
 

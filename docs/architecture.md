@@ -356,6 +356,10 @@ Scalar property `type` remains a strict error-producing constraint.
 `excluded-types` is an OR constraint that emits an error when a stored value matches any entry.
 Wiki-link membership and mutation idempotence share `containsFrontmatterValue()` from `src/ontology/links.ts`, preventing validation and scaffolding from disagreeing about whether an inserted link is already present.
 Because `insert`, `included-types`, and `excluded-types` are part of `PropertyDefinition`, global field resolution, interface composition conflict detection, cache persistence, validation, and scaffold planning all carry them through the existing property pipeline.
+`src/ontology/templates.ts` owns the safe insert-template registry and resolver.
+The first supported expression, `date.now()`, resolves to the current local `YYYY-MM-DD` date when `applyScaffoldPlan()` runs.
+Template inserts are initialization-only: planning includes them only for empty fields, applying rechecks emptiness to avoid races, and validation skips literal membership comparison while continuing to enforce the resolved property's ordinary constraints.
+No template path evaluates arbitrary JavaScript.
 Manual scaffolding runs through `Scaffold active ontology note`, which opens a review modal before writing.
 
 When `autoScaffoldEntities` is enabled, the scaffold review opens automatically only on a membership *transition*: the note's resolved direct types changed in this edit (typically because a membership field was just added).

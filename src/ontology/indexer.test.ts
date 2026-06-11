@@ -349,6 +349,19 @@ describe('incremental ontology index state', () => {
     expect(index.issues.some((issue) => issue.property === 'up')).toBe(false);
   });
 
+  it('validates generated inserts by field type without requiring the template literal', () => {
+    const index = makeIndex();
+    index.types.get('Philosopher')!.mustHave.set('date-start', {
+      insert: 'date.now()',
+      type: 'date',
+    });
+    index.entities.get('Ada.md')!.frontmatter['date-start'] = '2020-01-01';
+
+    recomputeOntologyDerivedState(index);
+
+    expect(index.issues.some((issue) => issue.property === 'date-start')).toBe(false);
+  });
+
   it('warns when values do not match included types', () => {
     const index = makeIndex();
     index.types.get('Philosopher')!.canHave.set('reference', {

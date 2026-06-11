@@ -6,6 +6,8 @@ can-have:
   birth_year:
     type: number
     cardinality: one
+  date-start:
+    uses: date-start
 relations:
   - observed
   - has_companion
