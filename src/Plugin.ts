@@ -1,6 +1,6 @@
 import type { MarkdownPostProcessorContext, TAbstractFile } from 'obsidian';
 
-import { MarkdownRenderer, Notice, Plugin as ObsidianPlugin, TFile } from 'obsidian';
+import { MarkdownRenderer, normalizePath, Notice, Plugin as ObsidianPlugin, stringifyYaml, TFile } from 'obsidian';
 
 import type { OntologyIndex } from './ontology/types.ts';
 import type { PluginSettings } from './PluginSettings.ts';
@@ -21,6 +21,8 @@ import { OntologyIssuesModal } from './OntologyIssuesModal.ts';
 import { OntologyRelationFixModal } from './OntologyRelationFixModal.ts';
 import { OntologyScaffoldReviewModal } from './OntologyScaffoldReviewModal.ts';
 import { OntologySchemaDiagnosticsModal } from './OntologySchemaDiagnosticsModal.ts';
+import { OntologyTypeEditorModal } from './OntologyTypeEditorModal.ts';
+import { emptyTypeEditorModel, TYPE_EDITOR_KEYS, typeEditorFrontmatter, typeEditorModelFromType } from './ontology/type-editor.ts';
 import { PluginSettings as PluginSettingsClass } from './PluginSettings.ts';
 import { PluginSettingsTab } from './PluginSettingsTab.ts';
 
@@ -117,6 +119,27 @@ export class Plugin extends ObsidianPlugin {
       name: 'Fix missing inverse relations',
     });
 
+    this.addCommand({
+      callback: () => { this.openCreateTypeModal(); },
+      id: 'create-ontology-type',
+      name: 'Create ontology type',
+    });
+
+    this.addCommand({
+      checkCallback: (checking) => {
+        const file = this.app.workspace.getActiveFile();
+        if (!file || !isOntologyTypeFile(file, this.pluginSettings.typeFolder)) {
+          return false;
+        }
+        if (!checking) {
+          void this.openEditTypeModal(file);
+        }
+        return true;
+      },
+      id: 'edit-active-ontology-type',
+      name: 'Edit active ontology type',
+    });
+
     this.registerEvent(this.app.metadataCache.on('changed', (file) => { void this.handleMetadataChanged(file); }));
     this.registerEvent(this.app.vault.on('create', (file) => { void this.handleVaultCreate(file); }));
     this.registerEvent(this.app.vault.on('delete', (file) => { void this.handleVaultDelete(file); }));
@@ -210,6 +233,55 @@ export class Plugin extends ObsidianPlugin {
       },
       onRebuild: async () => {
         await this.rebuildIndex(true);
+      },
+    }).open();
+  }
+
+  private openCreateTypeModal(): void {
+    new OntologyTypeEditorModal(this.app, {
+      editing: false,
+      model: emptyTypeEditorModel(),
+      onSave: async (model) => {
+        const folder = normalizePath(this.pluginSettings.typeFolder);
+        const path = normalizePath(`${folder}/${model.name}.md`);
+        if (await this.app.vault.adapter.exists(path)) {
+          new Notice(`Ontology type already exists: ${path}`);
+          return false;
+        }
+        if (!(await this.app.vault.adapter.exists(folder))) {
+          await this.app.vault.adapter.mkdir(folder);
+        }
+        const source = `---\n${stringifyYaml(typeEditorFrontmatter(model))}---\n`;
+        const file = await this.app.vault.create(path, source);
+        await this.rebuildIndex(false);
+        await this.app.workspace.getLeaf(false).openFile(file);
+        new Notice(`Created ontology type ${model.name}.`);
+        return true;
+      },
+    }).open();
+  }
+
+  private async openEditTypeModal(file: TFile): Promise<void> {
+    const index = await this.ensureIndex();
+    const type = [...index.types.values()].find((candidate) => candidate.path === file.path);
+    if (!type) {
+      new Notice('The active file is not a parsed ontology type.');
+      return;
+    }
+    new OntologyTypeEditorModal(this.app, {
+      editing: true,
+      model: typeEditorModelFromType(type),
+      onSave: async (model) => {
+        const generated = typeEditorFrontmatter(model);
+        await this.app.fileManager.processFrontMatter(file, (frontmatter) => {
+          for (const key of TYPE_EDITOR_KEYS) {
+            delete frontmatter[key];
+          }
+          Object.assign(frontmatter, generated);
+        });
+        await this.rebuildIndex(false);
+        new Notice(`Updated ontology type ${model.name}.`);
+        return true;
       },
     }).open();
   }

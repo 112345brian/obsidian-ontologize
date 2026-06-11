@@ -49,6 +49,10 @@ Any Markdown file inside that folder is treated as a schema constructor file ins
 Frontmatter property and relation identifiers conventionally use kebab-case.
 Use names such as `is-instance`, `birth-year`, and `influenced-by`; the internal schema linter warns about underscore or mixed-case schema identifiers.
 
+The command palette includes `Create ontology type` and `Edit active ontology type`.
+The structured editor manages type/interface flags, inheritance, implemented interfaces, required and optional fields, unions, inserts, aliases, value constraints, and relation behavior without requiring direct YAML editing.
+Editing preserves schema keys outside the editor's ownership.
+
 ## Schema Sources
 
 ### Single Schema File

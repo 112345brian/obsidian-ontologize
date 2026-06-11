@@ -129,6 +129,9 @@ The source linter requires YAML wiki links to be quoted strings; bare `[[Type]]`
 ## Type Parsing
 
 Type files are regular Markdown files in the configured type folder, `_types` by default.
+`OntologyTypeEditorModal` provides structured creation and modification of these modular constructor files.
+Creation writes a frontmatter-only Markdown file into the configured type folder; modification uses Obsidian's `processFrontMatter()` and replaces only editor-owned constructor keys, preserving unrelated metadata and future schema keys.
+Both save paths rebuild the ontology index immediately.
 The parser accepts either YAML frontmatter or the spec's heading-plus-YAML body style.
 This is an either/or contract per file: if frontmatter exists, it is the schema definition and body YAML is ignored; otherwise the body is parsed after an optional `# Heading`.
 

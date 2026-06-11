@@ -112,3 +112,59 @@
 .ontology-diagnostics-section {
   margin-top: 1em;
 }
+
+.ontology-type-editor-shell {
+  max-height: 88vh;
+  width: min(960px, 92vw);
+}
+
+.ontology-type-editor-modal {
+  max-width: 100%;
+}
+
+.ontology-type-editor-section {
+  border-top: 1px solid var(--background-modifier-border);
+  margin-top: 1em;
+  padding-top: 0.75em;
+}
+
+.ontology-type-editor-header {
+  align-items: center;
+  display: flex;
+  justify-content: space-between;
+}
+
+.ontology-type-editor-header h3 {
+  margin: 0;
+}
+
+.ontology-type-editor-field {
+  border: 1px solid var(--background-modifier-border);
+  border-radius: 4px;
+  margin-top: 0.5em;
+  padding: 0 0.75em;
+}
+
+.ontology-type-editor-field .setting-item-control {
+  display: grid;
+  flex: 1 1 100%;
+  gap: 0.5em;
+  grid-template-columns: repeat(2, minmax(150px, 1fr));
+  width: 100%;
+}
+
+.ontology-type-editor-field .setting-item {
+  align-items: flex-start;
+  display: block;
+}
+
+.ontology-type-editor-field input {
+  min-width: 0;
+  width: 100%;
+}
+
+@media (max-width: 700px) {
+  .ontology-type-editor-field .setting-item-control {
+    grid-template-columns: 1fr;
+  }
+}

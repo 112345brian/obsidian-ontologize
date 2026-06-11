@@ -6,6 +6,7 @@ Audit-driven correctness, performance, and infrastructure release. Also rolls up
 
 ### Bug fixes
 
+- **Types can be created and modified through a structured modal.** Command-palette actions now edit inheritance, interfaces, fields, inserts, type unions, value constraints, and relations without requiring users to manipulate YAML directly.
 - **Property and relation types support `|` unions.** Expressions such as `type: wikilink | string`, `value-type: wikilink | string`, and `range: Person | Organization` now normalize and validate as strict alternatives, while malformed unions are reported by the schema linter.
 - **Frontmatter schema identifiers now follow kebab-case.** The default membership field is `is-instance`, bundled examples use hyphenated property and relation names, and the internal schema linter warns about non-kebab property names, relation names, inverse names, and aliases.
 - **Auto-scaffold now fires only on membership transitions and respects dismissal.** Previously the review modal reopened on every metadata change while a note had missing fields — cancelling it and continuing to edit reopened it immediately. It now opens only when a note's resolved direct types change, and closing it dismisses that note until the membership changes again.
