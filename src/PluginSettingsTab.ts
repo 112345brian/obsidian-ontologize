@@ -87,11 +87,11 @@ export class PluginSettingsTab extends PluginSettingTab {
       .setDesc('One frontmatter field per line used to read ontology membership from entity notes. The first matching field wins.')
       .addTextArea((text) =>
         text
-          .setPlaceholder('instance_of\ntype')
+          .setPlaceholder('is-instance\ntype')
           .setValue(this.plugin.pluginSettings.entityTypeFields.join('\n'))
           .onChange(async (value) => {
             const fields = value.split(/\r?\n/).map((line) => line.trim()).filter(Boolean);
-            this.plugin.pluginSettings.entityTypeFields = fields.length > 0 ? fields : ['instance_of', 'type'];
+            this.plugin.pluginSettings.entityTypeFields = fields.length > 0 ? fields : ['is-instance', 'type'];
             await this.plugin.savePluginSettings();
           })
       );

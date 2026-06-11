@@ -1,8 +1,8 @@
 ---
-instance_of: "[[person]]"
+is-instance: "[[person]]"
 lock: true
-full_name: Charles Darwin
-birth_year: 1809
+full-name: Charles Darwin
+birth-year: 1809
 observed:
   - "[[Ada the Dog]]"
 ---
@@ -10,4 +10,4 @@ observed:
 # Charles Darwin
 
 Example `person` entity.
-The `observed` relation points to an `animal` and has `observed_by` as its inverse.
+The `observed` relation points to an `animal` and has `observed-by` as its inverse.

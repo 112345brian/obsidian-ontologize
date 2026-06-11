@@ -28,7 +28,7 @@ function normalizedFolders(folders: string[] | undefined): string[] {
 
 function normalizedEntityTypeFields(fields: string[] | undefined): string[] {
   const normalized = (fields ?? []).map((field) => field.trim()).filter(Boolean);
-  return normalized.length > 0 ? normalized : ['instance_of', 'type'];
+  return normalized.length > 0 ? normalized : ['is-instance', 'type'];
 }
 
 function safePatternMatches(pattern: string, path: string): boolean {

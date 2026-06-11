@@ -193,7 +193,7 @@ describe('Plugin orchestration', () => {
     mismatched.files.set('.obsidian/ontology-cache.json', JSON.stringify({
       cacheVersion: 1,
       settings: {
-        entityTypeFields: ['instance_of', 'type'],
+        entityTypeFields: ['is-instance', 'type'],
         filesToIgnore: [],
         foldersToIgnore: ['SomewhereElse'],
         frontmatterIgnoreRules: [],
@@ -208,7 +208,7 @@ describe('Plugin orchestration', () => {
     matched.files.set('.obsidian/ontology-cache.json', JSON.stringify({
       cacheVersion: 1,
       settings: {
-        entityTypeFields: ['instance_of', 'type'],
+        entityTypeFields: ['is-instance', 'type'],
         filesToIgnore: [],
         foldersToIgnore: [],
         frontmatterIgnoreRules: [],
@@ -243,7 +243,7 @@ describe('Plugin orchestration', () => {
 
   it('suppresses automatic inverse writes until the first cold rebuild completes', async () => {
     const fake = makeFakeVault();
-    fake.frontmatterByPath.set('Spinoza.md', { influenced: ['[[Leibniz]]'], instance_of: '[[Philosopher]]' });
+    fake.frontmatterByPath.set('Spinoza.md', { influenced: ['[[Leibniz]]'], 'is-instance': '[[Philosopher]]' });
     const entityFile = makeTFile('Spinoza.md');
     const plugin = await loadPlugin(fake, { autoUpdateInverses: true });
     const processFrontMatter = (plugin.app as App).fileManager.processFrontMatter;
@@ -282,20 +282,20 @@ describe('Plugin orchestration', () => {
     expect(hoisted.openedModals).toHaveLength(0);
 
     // Membership transition: modal opens once.
-    fake.frontmatterByPath.set('Rex.md', { instance_of: '[[Dog]]' });
+    fake.frontmatterByPath.set('Rex.md', { 'is-instance': '[[Dog]]' });
     await plugin['handleMetadataChanged'](rexFile);
     await settle(plugin);
     expect(hoisted.openedModals).toHaveLength(1);
 
     // Close without applying, then keep editing: stays dismissed.
     hoisted.openedModals[0]!.close();
-    fake.frontmatterByPath.set('Rex.md', { instance_of: '[[Dog]]', mood: 'good' });
+    fake.frontmatterByPath.set('Rex.md', { 'is-instance': '[[Dog]]', mood: 'good' });
     await plugin['handleMetadataChanged'](rexFile);
     await settle(plugin);
     expect(hoisted.openedModals).toHaveLength(1);
 
     // Membership change clears the dismissal.
-    fake.frontmatterByPath.set('Rex.md', { instance_of: '[[Cat]]' });
+    fake.frontmatterByPath.set('Rex.md', { 'is-instance': '[[Cat]]' });
     await plugin['handleMetadataChanged'](rexFile);
     await settle(plugin);
     expect(hoisted.openedModals).toHaveLength(2);

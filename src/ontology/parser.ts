@@ -163,7 +163,7 @@ export function parseOntologySchema(path: string, source: string): OntologyType[
   return types;
 }
 
-export function parseOntologyEntity(path: string, frontmatter: Record<string, unknown>, typeFields: string[] = ['instance_of', 'type']): OntologyEntity | null {
+export function parseOntologyEntity(path: string, frontmatter: Record<string, unknown>, typeFields: string[] = ['is-instance', 'type']): OntologyEntity | null {
   const typeValue = typeFields.map((field) => frontmatter[field]).find((value) => value !== undefined && value !== null && value !== '');
   const instanceOf = extractLinkTargets(typeValue);
   if (instanceOf.length === 0) {

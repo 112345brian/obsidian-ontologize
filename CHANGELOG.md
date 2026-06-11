@@ -6,11 +6,12 @@ Audit-driven correctness, performance, and infrastructure release. Also rolls up
 
 ### Bug fixes
 
+- **Frontmatter schema identifiers now follow kebab-case.** The default membership field is `is-instance`, bundled examples use hyphenated property and relation names, and the internal schema linter warns about non-kebab property names, relation names, inverse names, and aliases.
 - **Auto-scaffold now fires only on membership transitions and respects dismissal.** Previously the review modal reopened on every metadata change while a note had missing fields — cancelling it and continuing to edit reopened it immediately. It now opens only when a note's resolved direct types change, and closing it dismisses that note until the membership changes again.
 - **Validation reports each entity problem exactly once.** Entities with multiple direct types sharing an ancestor previously produced duplicate "missing required property" and relation issues, inflating issue counts. Contracts are now merged across all declared types before validating, and every issue push is deduplicated.
 - **`cannot-have` honors `frontmatter-key` aliases.** A type forbidding a global field's semantic name now catches the aliased frontmatter key, in both entity validation and schema composition conflict detection.
 - **Folder renames trigger a full rebuild.** Obsidian does not reliably emit per-child rename events, so renaming a folder of entities previously dropped them from the index until the next manual rebuild.
-- **Custom entity type fields work as query predicates.** A configured membership field (for example `is`) now queries the inheritance chain like `type:` and `instance_of:` instead of degrading to a plain property match.
+- **Custom entity type fields work as query predicates.** A configured membership field (for example `is`) now queries the inheritance chain like `type:` and `is-instance:` instead of degrading to a plain property match.
 
 ### Performance
 

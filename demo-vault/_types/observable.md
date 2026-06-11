@@ -2,5 +2,5 @@
 interface: true
 lock: true
 relations:
-  - observed_by
+  - observed-by
 ---

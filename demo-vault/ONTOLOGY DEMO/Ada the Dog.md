@@ -1,19 +1,19 @@
 ---
-instance_of: "[[dog]]"
+is-instance: "[[dog]]"
 lock: true
-common_name: dog
+common-name: dog
 habitat: home
 descriptor: happy
 paws: 4
-conservation_status: domesticated
-gestation_days: 63
+conservation-status: domesticated
+gestation-days: 63
 fur: true
 breed: mixed
 trained: true
 nickname: Ada
-observed_by:
+observed-by:
   - "[[Charles Darwin]]"
-companion_of:
+companion-of:
   - "[[Charles Darwin]]"
 ---
 

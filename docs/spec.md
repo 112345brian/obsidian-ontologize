@@ -10,8 +10,9 @@ No proprietary database. No cloud dependency. No vendor lock-in.
 
 The fundamental problem this solves: **you should not have to repeat yourself**.
 
-If you declare a note as `instance_of: [[Friend]]`, you should never also have to tag it `people`, `friends-and-family`, or any other parent type. The system resolves the full inheritance chain automatically. Querying `type: Person` returns your friend. You said it once.
-`instance_of` is the default membership field; vaults can configure different frontmatter fields for ontology membership.
+If you declare a note as `is-instance: [[Friend]]`, you should never also have to tag it `people`, `friends-and-family`, or any other parent type. The system resolves the full inheritance chain automatically. Querying `type: Person` returns your friend. You said it once.
+`is-instance` is the default membership field; vaults can configure different frontmatter fields for ontology membership.
+Schema-facing frontmatter identifiers use kebab-case, including property and relation names such as `birth-year` and `influenced-by`.
 
 Everything else in this system — validation, relations, queries, migrations — exists to make that inheritance trustworthy at scale. The consistency checker exists not as an end in itself but so that when you query "philosophers who didn't influence Nietzsche who were women" you can trust the answer.
 
@@ -19,7 +20,7 @@ Everything else in this system — validation, relations, queries, migrations �
 
 1. **Declare a type once** — never manually maintain what that implies
 2. **Auto-scaffold new notes** — setting the configured ontology membership field to `[[Philosopher]]` can fill in the right fields automatically
-3. **Auto-maintain relations** — writing `influenced: [[Leibniz]]` on Spinoza's page writes `influenced_by: [[Spinoza]]` on Leibniz's page automatically
+3. **Auto-maintain relations** — writing `influenced: [[Leibniz]]` on Spinoza's page writes `influenced-by: [[Spinoza]]` on Leibniz's page automatically
 4. **Query correctly** — inheritance-aware queries that return the right answer without manual tagging
 
 ---
@@ -91,7 +92,7 @@ It compiles into the same internal graph as modular `_types/*.md` constructor fi
 
 ```yaml
 relations:
-  influenced_by:
+  influenced-by:
     value-type: wikilink
     range: [[Person]]
     inverse: influenced
@@ -101,7 +102,7 @@ interfaces:
   Influenceable:
     lock: true
     relations:
-      - influenced_by
+      - influenced-by
 
 types:
   Person:
@@ -136,7 +137,7 @@ Interfaces are type files that define reusable property and relation contracts b
 # Influenceable
 interface: true
 relations:
-  - influenced_by
+  - influenced-by
 ```
 
 Concrete types opt into those contracts:
@@ -167,7 +168,7 @@ fields:
   birth-year:
     type: number
     cardinality: one
-    frontmatter-key: birth_year
+    frontmatter-key: birth-year
 ```
 
 ```yaml
@@ -218,21 +219,21 @@ disjoint:
 
 Regular Markdown notes. All ontology data is stored in **YAML frontmatter** — standard Obsidian frontmatter, compatible with every other plugin that reads it.
 An entity enters the ontology when it has one of the configured ontology membership fields.
-The default fields are `instance_of` and `type`, checked in that order.
+The default fields are `is-instance` and `type`, checked in that order.
 
 ```markdown
 ---
-instance_of: "[[Rationalist]]"
+is-instance: "[[Rationalist]]"
 wrote:
   - "[[Ethics]]"
-influenced_by:
+influenced-by:
   - "[[Descartes]]"
 ---
 
 # Spinoza
 ```
 
-`type` is supported as a default shorthand alias for `instance_of`.
+`type` is supported as a default shorthand alias for `is-instance`.
 The membership field list is configurable in plugin settings, so a vault can use a field such as `ontology`, `kind`, or `class` instead.
 
 ---
@@ -401,7 +402,7 @@ Global relation definitions live in a type file marked as a relation registry:
 # _types/_relations.md
 type: relation-definitions
 relations:
-  influenced_by:
+  influenced-by:
     value-type: wikilink
     range: [[Person]]
     inverse: influenced
@@ -410,7 +411,7 @@ relations:
   influenced:
     value-type: wikilink
     range: [[Person]]
-    inverse: influenced_by
+    inverse: influenced-by
     auto-update: true
 ```
 
@@ -420,15 +421,15 @@ Interfaces or types can reference those global definitions by name:
 # Influenceable
 interface: true
 relations:
-  - influenced_by
+  - influenced-by
 ```
 
 The explicit form can override part of the global definition:
 
 ```markdown
 relations:
-  influenced_by:
-    uses: influenced_by
+  influenced-by:
+    uses: influenced-by
     range: [[Philosopher]]
 ```
 
@@ -443,7 +444,7 @@ relations:
 
   influenced:
     range: [[Person]]
-    inverse: influenced_by
+    inverse: influenced-by
     auto-update: true
 
   married-to:
@@ -468,7 +469,7 @@ relations:
 Relations can carry source and confidence metadata:
 
 ```markdown
-influenced_by:
+influenced-by:
   - target: [[Descartes]]
     source: [[Letter-to-Mersenne-1641]]
     confidence: high
@@ -494,7 +495,7 @@ member-of:
 Explicitly asserting that a relation does not hold, distinct from simply omitting it. Matters for consistency checking in the closed world:
 
 ```markdown
-influenced_by:
+influenced-by:
   - NOT [[Descartes]]
 ```
 
@@ -508,7 +509,7 @@ Queries are written inside `ontology-query` code blocks. The plugin registers a 
 ```ontology-query
 type: Philosopher
 AND NOT influenced: [[Nietzsche]]
-AND instance_of: [[Woman]]
+AND is-instance: [[Woman]]
 ```
 ````
 
@@ -525,7 +526,7 @@ Returns all entities whose resolved type chain includes `Person`.
 ### Relation Filter
 
 ```
-influenced_by: [[Descartes]]
+influenced-by: [[Descartes]]
 ```
 
 ### Boolean Operators
@@ -537,7 +538,7 @@ type: Philosopher AND NOT influenced: [[Nietzsche]]
 
 type: Philosopher OR type: Scientist
 
-type: Person AND NOT instance_of: [[Philosopher]]
+type: Person AND NOT is-instance: [[Philosopher]]
 ```
 
 `NOT` on a relation means the relation is either explicitly negated or absent entirely. `NOT` on a type excludes entities whose resolved type chain includes that type.
@@ -547,20 +548,20 @@ type: Person AND NOT instance_of: [[Philosopher]]
 ```
 type: Philosopher
 AND NOT influenced: [[Nietzsche]]
-AND instance_of: [[Woman]]
+AND is-instance: [[Woman]]
 ```
 
 ### Traversal
 
 ```
-type: Philosopher WHERE influenced_by.school-of-thought == rationalism
+type: Philosopher WHERE influenced-by.school-of-thought == rationalism
 ```
 
 Traversal supports `AND`, `OR`, and `NOT` within the `WHERE` clause:
 
 ```
 type: Philosopher
-WHERE influenced_by.school-of-thought == rationalism
+WHERE influenced-by.school-of-thought == rationalism
 AND NOT wrote.title == "Ethics"
 ```
 
@@ -583,7 +584,7 @@ Queries are files in `_queries/` and are first-class entities in the system. Oth
 
 ```markdown
 # _queries/living-rationalists.md
-instance_of: [[Query]]
+is-instance: [[Query]]
 
 query: |
   type: Rationalist
@@ -639,15 +640,15 @@ No file in a circular chain can ever be locked, so circularity is a hard error r
 
 ### Schema Mode
 
-A vault-wide setting controls how notes without `instance_of` are treated:
+A vault-wide setting controls how notes without `is-instance` are treated:
 
 ```yaml
 # _types/_config.md
 schema-mode: libertarian  # or: authoritarian
 ```
 
-- **Libertarian** — notes without `instance_of` are outside the ontology entirely; no enforcement; invisible to schema validation. This is the default.
-- **Authoritarian** — notes without `instance_of` fail validation.
+- **Libertarian** — notes without `is-instance` are outside the ontology entirely; no enforcement; invisible to schema validation. This is the default.
+- **Authoritarian** — notes without `is-instance` fail validation.
 
 Either way, untyped notes are still queryable as raw notes. The mode only affects schema enforcement.
 

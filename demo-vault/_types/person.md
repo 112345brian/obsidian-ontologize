@@ -1,14 +1,14 @@
 ---
 lock: true
 must-have:
-  full_name: string
+  full-name: string
 can-have:
-  birth_year:
+  birth-year:
     type: number
     cardinality: one
   date-start:
     uses: date-start
 relations:
   - observed
-  - has_companion
+  - has-companion
 ---

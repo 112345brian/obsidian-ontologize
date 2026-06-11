@@ -1,20 +1,20 @@
 ---
-instance_of: "[[cat]]"
+is-instance: "[[cat]]"
 lock: true
-common_name: cat
+common-name: cat
 habitat: home
 descriptor: weird
 paws: 4
-conservation_status: domesticated
-gestation_days: 65
+conservation-status: domesticated
+gestation-days: 65
 fur: true
 nickname: Mittens
 indoor: true
-companion_of:
+companion-of:
   - "[[Charles Darwin]]"
 ---
 
 # Mittens the Cat
 
 Example `cat` entity.
-This note intentionally has `companion_of` without `has_companion` on the person note, so the issue modal can show an autofixable inverse relation.
+This note intentionally has `companion-of` without `has-companion` on the person note, so the issue modal can show an autofixable inverse relation.

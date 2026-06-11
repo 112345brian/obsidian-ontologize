@@ -8,6 +8,7 @@ It keeps ontology data in ordinary Markdown and YAML frontmatter, then adds inhe
 - Reads type definitions from `_types/*.md` or a single `_types/ontology.schema.yaml`
 - Supports `extends`, `abstract`, `interface`, `implements`, `disjoint`, `must-have`, `can-have`, `cannot-have`, global fields/relations, literal and templated `insert` values, included/excluded types, `possible-values`, and nominal `values`
 - Resolves inherited and composed type chains for entities with configured ontology membership frontmatter fields
+- Uses kebab-case for canonical frontmatter properties and relations, including `is-instance`
 - Computes effective lock state from entity/type lock intent and ancestor locks
 - Keeps a hot in-memory ontology graph updated from Obsidian file and metadata events; all graph writes are serialized to prevent stale state from clobbering a newer rebuild
 - Suppresses automatic inverse writes until after the first full cold-vault rebuild, preventing frontmatter edits based on a stale startup cache
@@ -39,7 +40,7 @@ The `Default locked query results` plugin setting changes the default for blocks
 Supported V1 clauses:
 
 - `type: Person`
-- `instance_of: [[Philosopher]]`
+- `is-instance: [[Philosopher]]`
 - any configured entity type field used as an inheritance-aware type predicate
 - `property: [[Target]]`
 - `property: scalar-value`
@@ -80,7 +81,7 @@ can-have:
 relations:
   influenced:
     range: "[[Person]]"
-    inverse: influenced_by
+    inverse: influenced-by
     auto-update: true
 ---
 ```
@@ -89,7 +90,7 @@ Or declare everything in one schema file (`_types/ontology.schema.yaml`):
 
 ```yaml
 relations:
-  influenced_by:
+  influenced-by:
     value-type: wikilink
     range: "[[Person]]"
     inverse: influenced
@@ -98,7 +99,7 @@ relations:
 interfaces:
   Influenceable:
     relations:
-      - influenced_by
+      - influenced-by
 
 types:
   Person:
@@ -126,7 +127,7 @@ types:
 |---|---|---|
 | Type folder | `_types` | Folder containing type definition files |
 | Schema file | `_types/ontology.schema.yaml` | Optional single-file schema |
-| Entity type fields | `instance_of`, `type` | Frontmatter fields used to read entity ontology membership |
+| Entity type fields | `is-instance`, `type` | Frontmatter fields used to read entity ontology membership |
 | Cache path | `.obsidian/ontology-cache.json` | Derived-state cache |
 | Default locked query results | on | Query blocks default to locked-only results |
 | Auto-scaffold entities | off | Offer a scaffold review of inherited fields when a note's ontology membership changes |

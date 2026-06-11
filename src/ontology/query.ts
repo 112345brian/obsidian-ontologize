@@ -144,7 +144,7 @@ function scalarValues(value: unknown): string[] {
 function matchesPredicate(index: OntologyIndex, entity: OntologyEntity, predicate: PredicateNode): boolean {
   // Configured entity membership fields act as type predicates alongside the
   // built-in keys, so custom fields query the inheritance chain too.
-  const typeKeys = new Set(['type', 'instance_of', ...index.settings.entityTypeFields]);
+  const typeKeys = new Set(['type', 'is-instance', ...index.settings.entityTypeFields]);
   if (typeKeys.has(predicate.key)) {
     return entityCompositionChain(entity, index).has(normalizeLinkTarget(predicate.value));
   }

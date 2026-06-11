@@ -166,7 +166,7 @@ The single schema file supports three top-level maps:
 
 ```yaml
 relations:
-  influenced_by:
+  influenced-by:
     value-type: wikilink
     range: [[Person]]
     inverse: influenced
@@ -175,7 +175,7 @@ interfaces:
   Influenceable:
     lock: true
     relations:
-      - influenced_by
+      - influenced-by
 
 types:
   Philosopher:
@@ -207,7 +207,7 @@ Example:
 # _types/Influenceable.md
 interface: true
 relations:
-  - influenced_by
+  - influenced-by
 ```
 
 ```yaml
@@ -225,7 +225,7 @@ Entities cannot directly instantiate interface types.
 Schema composition validates overlapping frontmatter contracts during derived-state recompute.
 Global field registries are declared with `type: field-definitions`, `type: field-registry`, or `type: fields` and are parsed into `OntologyIndex.fieldDefinitions`.
 Property definitions can reference those universal fields with `uses`.
-The resolved definition can also carry a `frontmatter-key` alias, so a global field such as `birth-year` can validate and scaffold `birth_year` in entity notes.
+The resolved definition can also carry a `frontmatter-key` alias, so a global field such as `birth-year` can validate and scaffold `birth-year` in entity notes.
 Compatible optional/required uses of the same global field collapse to the stricter required contract, and incompatible duplicate definitions become schema issues.
 Local fields from different interfaces are considered different semantic fields; if they compose to the same frontmatter key, that is also a schema issue.
 Any `cannot-have` collision with a `must-have` or `can-have` contract is a schema issue.
@@ -238,7 +238,7 @@ Interface and class relation declarations can reference them with shorthand list
 # _types/_relations.md
 type: relation-definitions
 relations:
-  influenced_by:
+  influenced-by:
     value-type: wikilink
     range: [[Person]]
     inverse: influenced
@@ -247,7 +247,7 @@ relations:
 
 ```yaml
 relations:
-  - influenced_by
+  - influenced-by
 ```
 
 The resolver merges the global relation definition with local overrides.
@@ -258,14 +258,16 @@ The query engine uses the same composition chain, so `type: Influenceable` match
 
 Entities are regular Markdown notes outside the type folder.
 An entity participates in the ontology only when its frontmatter contains one of the configured entity type fields.
-The defaults are `instance_of` and `type`.
+The defaults are `is-instance` and `type`.
 The first configured field with a non-empty value wins.
+External YAML identifiers use kebab-case, while TypeScript model properties remain idiomatic camelCase internally.
+The schema linter warns on non-kebab property names, relation names, inverse names, and `frontmatter-key` aliases.
 
 ```yaml
 ---
-instance_of: "[[Rationalist]]"
+is-instance: "[[Rationalist]]"
 lock: true
-influenced_by:
+influenced-by:
   - "[[Descartes]]"
 ---
 ```
@@ -333,7 +335,7 @@ Examples:
 
 ```text
 type: Person
-type: Philosopher AND influenced_by: [[Descartes]]
+type: Philosopher AND influenced-by: [[Descartes]]
 type: Philosopher AND NOT influenced: [[Nietzsche]]
 type: Philosopher OR type: Scientist
 (type: Rationalist OR type: Empiricist) AND birth-date: EXISTS
@@ -373,7 +375,7 @@ Manual scaffolding runs through `Scaffold active ontology note`, which opens a r
 When `autoScaffoldEntities` is enabled, the scaffold review opens automatically only on a membership *transition*: the note's resolved direct types changed in this edit (typically because a membership field was just added).
 Ordinary edits to a note that still has missing fields never reopen the review, and closing the review without applying dismisses that note until its membership changes again.
 The automatic path additionally requires that the first full cold-vault rebuild has run and that every direct type exists, is not abstract, is not an interface, and is not part of a circular inheritance chain.
-This lets setting `instance_of`, `type`, or another configured membership field prompt for the expanded note shape without silently writing frontmatter and without nagging on every keystroke.
+This lets setting `is-instance`, `type`, or another configured membership field prompt for the expanded note shape without silently writing frontmatter and without nagging on every keystroke.
 
 Inverse fixing reads validation issues, finds missing inverse or symmetric relation entries, and appends wiki links to the target note's frontmatter.
 

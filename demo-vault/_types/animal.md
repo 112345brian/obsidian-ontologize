@@ -12,5 +12,5 @@ can-have:
   paws:
     type: number
     cardinality: one
-  conservation_status: "[[conservation-status]]"
+  conservation-status: "[[conservation-status]]"
 ---

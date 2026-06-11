@@ -112,7 +112,14 @@ function lintBoolean(file: string, context: string, value: unknown, issues: Onto
   }
 }
 
+function lintKebabCase(file: string, context: string, value: unknown, issues: OntologyIssue[]): void {
+  if (typeof value === 'string' && !/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(value)) {
+    issues.push(issue(file, `${context} ${value} should use kebab-case`, 'warning'));
+  }
+}
+
 function lintPropertyDefinition(file: string, property: string, value: unknown, issues: OntologyIssue[]): void {
+  lintKebabCase(file, 'Property name', property, issues);
   if (typeof value === 'string') {
     return;
   }
@@ -128,6 +135,7 @@ function lintPropertyDefinition(file: string, property: string, value: unknown, 
   lintStringArray(file, `Property ${property}.included-types`, record['included-types'], issues);
   lintStringArray(file, `Property ${property}.excluded-types`, record['excluded-types'], issues);
   lintStringArray(file, `Property ${property}.possible-values`, record['possible-values'], issues);
+  lintKebabCase(file, `Property ${property}.frontmatter-key`, record['frontmatter-key'], issues);
   const insert = record['insert'];
   if (typeof insert === 'string' && /^[A-Za-z_]\w*(?:\.\w+)*\(.*\)$/.test(insert) && !isInsertTemplate(insert)) {
     issues.push(issue(file, `Property ${property}.insert uses unknown template ${insert}`));
@@ -158,6 +166,7 @@ function lintRelationMap(file: string, value: unknown, issues: OntologyIssue[]):
     return;
   }
   for (const [name, definition] of Object.entries(record)) {
+    lintKebabCase(file, 'Relation name', name, issues);
     if (typeof definition === 'string' || definition === true || definition === null) {
       continue;
     }
@@ -172,6 +181,7 @@ function lintRelationMap(file: string, value: unknown, issues: OntologyIssue[]):
         issues.push(issue(file, `Relation ${name}.${key} must be a string`));
       }
     }
+    lintKebabCase(file, `Relation ${name}.inverse`, relation['inverse'], issues);
     for (const key of ['auto-update', 'symmetric', 'transitive']) {
       lintBoolean(file, `Relation ${name}.${key}`, relation[key], issues);
     }

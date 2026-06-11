@@ -9,7 +9,7 @@ It demonstrates:
 - Interfaces with `observable` and `pet`.
 - Inheritance with `animal -> mammal -> dog/cat`.
 - A nominal type with `conservation-status`.
-- Entity notes that use `instance_of`, `lock`, properties, and relations.
+- Entity notes that use `is-instance`, `lock`, properties, and relations.
 - One intentionally missing inverse relation for the issue modal.
 
 To try it, open `demo-vault` as an Obsidian vault, install or copy the plugin into `.obsidian/plugins/obsidian-ontology`, then run `Obsidian Ontology: Open ontology issues`.

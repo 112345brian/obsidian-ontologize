@@ -16,6 +16,21 @@ vi.mock('obsidian', () => ({
         mystery: true,
       };
     }
+    if (source.includes('underscore-names')) {
+      return {
+        fields: {
+          birth_year: {
+            'frontmatter-key': 'birth_year',
+            type: 'number',
+          },
+        },
+        relations: {
+          influenced_by: {
+            inverse: 'influences_person',
+          },
+        },
+      };
+    }
     return {
       'must-have': {
         started: {
@@ -64,5 +79,16 @@ describe('schema linter', () => {
       message: 'types must be a map of named definitions',
       severity: 'error',
     }));
+  });
+
+  it('warns when schema-facing frontmatter identifiers are not kebab-case', () => {
+    const issues = lintOntologyTypeSource('_types/Legacy.md', '---\nunderscore-names\n---');
+
+    expect(issues.map((entry) => entry.message)).toEqual(expect.arrayContaining([
+      'Property name birth_year should use kebab-case',
+      'Property birth_year.frontmatter-key birth_year should use kebab-case',
+      'Relation name influenced_by should use kebab-case',
+      'Relation influenced_by.inverse influences_person should use kebab-case',
+    ]));
   });
 });

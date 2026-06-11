@@ -41,11 +41,13 @@ The relevant settings are:
 |---|---|---|
 | Type folder | `_types` | Vault-relative folder containing modular Markdown type/interface files. |
 | Schema file | `_types/ontology.schema.yaml` | Optional vault-relative JSON/YAML schema file. Leave empty to use only modular files. |
-| Entity type fields | `instance_of`, `type` | Ordered frontmatter fields used to read ontology membership from entity notes. |
+| Entity type fields | `is-instance`, `type` | Ordered frontmatter fields used to read ontology membership from entity notes. |
 | Auto-scaffold entities | off | Open a review modal for missing inherited property and relation fields when a note's ontology membership changes. |
 
 The type folder is configurable.
 Any Markdown file inside that folder is treated as a schema constructor file instead of an entity note.
+Frontmatter property and relation identifiers conventionally use kebab-case.
+Use names such as `is-instance`, `birth-year`, and `influenced-by`; the internal schema linter warns about underscore or mixed-case schema identifiers.
 
 ## Schema Sources
 
@@ -67,10 +69,10 @@ fields:
   birth-year:
     type: number
     cardinality: one
-    frontmatter-key: birth_year
+    frontmatter-key: birth-year
 
 relations:
-  influenced_by:
+  influenced-by:
     value-type: wikilink
     range: "[[Person]]"
     inverse: influenced
@@ -78,7 +80,7 @@ relations:
 interfaces:
   Influenceable:
     relations:
-      - influenced_by
+      - influenced-by
 
 types:
   Person:
@@ -130,23 +132,23 @@ lock: true
 
 Entity notes are Markdown files outside the configured type folder.
 The plugin indexes an entity note only when its frontmatter contains one of the configured entity type fields.
-By default, those fields are `instance_of` and `type`.
+By default, those fields are `is-instance` and `type`.
 The first configured field with a non-empty value wins.
 
 | Field | Meaning |
 |---|---|
-| `instance_of` | Default direct type field. |
-| `type` | Default alias for `instance_of` on entity notes. |
+| `is-instance` | Default direct type field. |
+| `type` | Default alias for `is-instance` on entity notes. |
 | custom fields | Any configured field, such as `ontology`, `kind`, or `class`. |
 
 Values can be a string, wikilink, or array.
 
 ```yaml
 ---
-instance_of:
+is-instance:
   - "[[Philosopher]]"
 lock: true
-influenced_by:
+influenced-by:
   - "[[Descartes]]"
 ---
 ```
@@ -170,7 +172,7 @@ Detected entity fields:
 | Any schema property | no | Validated when declared in `must-have` or `can-have`. |
 | Any schema relation | no | Validated when declared in `relations`. |
 
-The query language still uses `type:` and `instance_of:` as semantic type predicates.
+The query language still uses `type:` and `is-instance:` as semantic type predicates.
 Those query operators are independent of the frontmatter field names configured for entity detection.
 
 ## Type Constructor Fields
@@ -220,7 +222,7 @@ Minimum interface:
 interface: true
 lock: true
 relations:
-  - influenced_by
+  - influenced-by
 ```
 
 ## Property Definitions
@@ -266,7 +268,7 @@ fields:
   birth-year:
     type: number
     cardinality: one
-    frontmatter-key: birth_year
+    frontmatter-key: birth-year
 ```
 
 Using a global field:
@@ -358,7 +360,7 @@ Global relation:
 
 ```yaml
 relations:
-  influenced_by:
+  influenced-by:
     value-type: wikilink
     range: "[[Person]]"
     inverse: influenced
@@ -369,15 +371,15 @@ Interface usage by shorthand:
 
 ```yaml
 relations:
-  - influenced_by
+  - influenced-by
 ```
 
 Explicit usage with override:
 
 ```yaml
 relations:
-  influenced_by:
-    uses: influenced_by
+  influenced-by:
+    uses: influenced-by
     range: "[[Philosopher]]"
 ```
 

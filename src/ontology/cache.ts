@@ -99,7 +99,7 @@ export async function readOntologyCache(app: App, cachePath: string): Promise<On
       relationDefinitions: hydrateMap<RelationDefinition>(payload['relationDefinitions'], (item) => item as RelationDefinition),
       schemaIssues: Array.isArray(payload['schemaIssues']) ? payload['schemaIssues'] as OntologyIssue[] : [],
       settings: {
-        entityTypeFields: stringArrayValue(settings['entityTypeFields']).length > 0 ? stringArrayValue(settings['entityTypeFields']) : ['instance_of', 'type'],
+        entityTypeFields: stringArrayValue(settings['entityTypeFields']).length > 0 ? stringArrayValue(settings['entityTypeFields']) : ['is-instance', 'type'],
         filesToIgnore: stringArrayValue(settings['filesToIgnore']),
         foldersToIgnore: stringArrayValue(settings['foldersToIgnore']),
         frontmatterIgnoreRules: frontmatterIgnoreRulesValue(settings['frontmatterIgnoreRules']),

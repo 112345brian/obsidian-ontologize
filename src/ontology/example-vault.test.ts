@@ -65,7 +65,7 @@ function exampleApp(root: string): App {
 describe('example vault schema', () => {
   it('lints and builds without schema errors', async () => {
     const index = await buildOntologyIndex(exampleApp(ROOT), {
-      entityTypeFields: ['instance_of', 'type'],
+      entityTypeFields: ['is-instance', 'type'],
       schemaPath: '',
       typeFolder: '_types',
     });
@@ -76,6 +76,6 @@ describe('example vault schema', () => {
     expect(unexpectedEntityErrors).toEqual([]);
     const relationWarnings = index.issues.filter((issue) => issue.autofixable);
     expect(relationWarnings).toHaveLength(2);
-    expect(relationWarnings.every((issue) => issue.property === 'companion_of' && issue.target === 'Charles Darwin')).toBe(true);
+    expect(relationWarnings.every((issue) => issue.property === 'companion-of' && issue.target === 'Charles Darwin')).toBe(true);
   });
 });

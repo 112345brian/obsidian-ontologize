@@ -1,7 +1,7 @@
 ---
 type: relation-definitions
 relations:
-  observed_by:
+  observed-by:
     value-type: wikilink
     range: "[[person]]"
     inverse: observed
@@ -9,14 +9,14 @@ relations:
   observed:
     value-type: wikilink
     range: "[[animal]]"
-    inverse: observed_by
+    inverse: observed-by
     auto-update: true
-  companion_of:
+  companion-of:
     value-type: wikilink
     range: "[[person]]"
-    inverse: has_companion
-  has_companion:
+    inverse: has-companion
+  has-companion:
     value-type: wikilink
     range: "[[animal]]"
-    inverse: companion_of
+    inverse: companion-of
 ---

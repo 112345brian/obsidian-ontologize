@@ -6,11 +6,11 @@ include: all
 ```
 
 ```ontology-query
-type: pet AND companion_of: [[Charles Darwin]]
+type: pet AND companion-of: [[Charles Darwin]]
 include: all
 ```
 
 ```ontology-query
-type: observable AND observed_by: [[Charles Darwin]]
+type: observable AND observed-by: [[Charles Darwin]]
 include: all
 ```
