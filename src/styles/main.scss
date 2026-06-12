@@ -262,6 +262,17 @@
   margin: 0;
 }
 
+.ontology-library-header-actions {
+  align-items: center;
+  display: flex;
+  gap: 0.5em;
+}
+
+.ontology-library-view-toggle {
+  color: var(--text-muted);
+  font-size: var(--font-ui-smaller);
+}
+
 .ontology-library-new-btn {
   flex-shrink: 0;
 }

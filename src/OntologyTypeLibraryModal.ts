@@ -13,7 +13,9 @@ export interface TypeLibraryCallbacks {
 
 export class OntologyTypeLibraryModal extends Modal {
   private query = '';
+  private viewMode: 'alpha' | 'tree' = 'tree';
   private listEl!: HTMLElement;
+  private viewToggleEl!: HTMLButtonElement;
 
   public constructor(
     app: App,
@@ -30,7 +32,19 @@ export class OntologyTypeLibraryModal extends Modal {
 
     const header = contentEl.createEl('div', { cls: 'ontology-library-header' });
     header.createEl('h2', { text: 'Ontology types' });
-    const newBtn = header.createEl('button', { cls: 'mod-cta ontology-library-new-btn', text: 'New type' });
+
+    const headerActions = header.createEl('div', { cls: 'ontology-library-header-actions' });
+    this.viewToggleEl = headerActions.createEl('button', {
+      cls: 'ontology-library-view-toggle',
+      text: this.viewMode === 'tree' ? 'A–Z' : 'Tree',
+    });
+    this.viewToggleEl.addEventListener('click', () => {
+      this.viewMode = this.viewMode === 'tree' ? 'alpha' : 'tree';
+      this.viewToggleEl.textContent = this.viewMode === 'tree' ? 'A–Z' : 'Tree';
+      this.renderList();
+    });
+
+    const newBtn = headerActions.createEl('button', { cls: 'mod-cta ontology-library-new-btn', text: 'New type' });
     newBtn.addEventListener('click', () => { this.close(); this.callbacks.onCreateNew(); });
 
     const search = contentEl.createEl('input', {
@@ -49,20 +63,64 @@ export class OntologyTypeLibraryModal extends Modal {
 
     const allTypes = [...this.index.types.values()].sort((a, b) => a.name.localeCompare(b.name));
     const q = this.query.toLowerCase();
-    const types = q ? allTypes.filter((t) => t.name.toLowerCase().includes(q)) : allTypes;
 
-    if (types.length === 0) {
-      this.listEl.createEl('div', { cls: 'ontology-library-empty', text: this.query ? 'No types match.' : 'No types in ontology.' });
+    if (q) {
+      const filtered = allTypes.filter((t) => t.name.toLowerCase().includes(q));
+      if (filtered.length === 0) {
+        this.listEl.createEl('div', { cls: 'ontology-library-empty', text: 'No types match.' });
+        return;
+      }
+      for (const type of filtered) {
+        this.renderRow(this.listEl, type, 0);
+      }
       return;
     }
 
-    for (const type of types) {
-      this.renderRow(this.listEl, type);
+    if (allTypes.length === 0) {
+      this.listEl.createEl('div', { cls: 'ontology-library-empty', text: 'No types in ontology.' });
+      return;
+    }
+
+    if (this.viewMode === 'alpha') {
+      for (const type of allTypes) {
+        this.renderRow(this.listEl, type, 0);
+      }
+      return;
+    }
+
+    // Tree view: render each type under its first known parent; roots first.
+    const typeNames = new Set(this.index.types.keys());
+    const childrenOf = new Map<string, OntologyType[]>();
+    const roots: OntologyType[] = [];
+
+    for (const type of allTypes) {
+      const knownParent = type.extends.find((p) => typeNames.has(p));
+      if (knownParent) {
+        const siblings = childrenOf.get(knownParent) ?? [];
+        siblings.push(type);
+        childrenOf.set(knownParent, siblings);
+      } else {
+        roots.push(type);
+      }
+    }
+
+    const renderBranch = (type: OntologyType, depth: number): void => {
+      this.renderRow(this.listEl, type, depth);
+      for (const child of childrenOf.get(type.name) ?? []) {
+        renderBranch(child, depth + 1);
+      }
+    };
+
+    for (const root of roots) {
+      renderBranch(root, 0);
     }
   }
 
-  private renderRow(container: HTMLElement, type: OntologyType): void {
+  private renderRow(container: HTMLElement, type: OntologyType, depth: number): void {
     const row = container.createEl('div', { cls: 'ontology-library-row' });
+    if (depth > 0) {
+      row.style.paddingLeft = `${depth * 1.25}rem`;
+    }
 
     const info = row.createEl('div', { cls: 'ontology-library-info' });
 
