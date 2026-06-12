@@ -1,4 +1,4 @@
-import type { FrontmatterValue, OntologyType, PropertyDefinition } from './types.ts';
+import type { FrontmatterValue, OntologyType, PropertyDefinition, TypeReplacement } from './types.ts';
 
 export interface TypeEditorField {
   cardinality: string;
@@ -29,13 +29,16 @@ export interface TypeEditorAutoApplyCondition {
   value: string;
 }
 
+export type TypeEditorRule =
+  | { kind: 'excludes' | 'requires'; value: string }
+  | ({ kind: 'replaces' } & TypeReplacement);
+
 export interface TypeEditorModel {
   abstract: boolean;
   autoApplyConditions: TypeEditorAutoApplyCondition[];
   autoApplyMatch: 'all' | 'any';
   autoApplyMode: 'never' | 'always' | 'conditional';
   canHave: TypeEditorField[];
-  excludes: string[];
   extends: string[];
   implementableBy: string[];
   implements: string[];
@@ -44,8 +47,7 @@ export interface TypeEditorModel {
   mustHave: TypeEditorField[];
   name: string;
   relations: TypeEditorRelation[];
-  replaces: string[];
-  requires: string[];
+  rules: TypeEditorRule[];
   template: string;
 }
 
@@ -56,7 +58,6 @@ export function emptyTypeEditorModel(): TypeEditorModel {
     autoApplyMatch: 'all',
     autoApplyMode: 'never',
     canHave: [],
-    excludes: [],
     extends: [],
     implementableBy: [],
     implements: [],
@@ -65,8 +66,7 @@ export function emptyTypeEditorModel(): TypeEditorModel {
     mustHave: [],
     name: '',
     relations: [],
-    replaces: [],
-    requires: [],
+    rules: [],
     template: '',
   };
 }
@@ -111,7 +111,6 @@ export function typeEditorModelFromType(type: OntologyType): TypeEditorModel {
     abstract: type.abstract,
     ...autoApplyToModel(type.autoApply),
     canHave: [...type.canHave].map(([name, definition]) => fieldFromDefinition(name, definition)),
-    excludes: [...type.excludes],
     extends: [...type.extends],
     implementableBy: [...(type.implementableBy ?? [])],
     implements: [...type.implements],
@@ -130,8 +129,11 @@ export function typeEditorModelFromType(type: OntologyType): TypeEditorModel {
       uses: definition.uses ?? '',
       valueType: definition.valueType ?? '',
     })),
-    replaces: type.replaces.filter((r) => !r.field).map((r) => r.value),
-    requires: [...type.requires],
+    rules: [
+      ...type.requires.map((value): TypeEditorRule => ({ kind: 'requires', value })),
+      ...type.excludes.map((value): TypeEditorRule => ({ kind: 'excludes', value })),
+      ...type.replaces.map((replacement): TypeEditorRule => ({ kind: 'replaces', ...replacement })),
+    ],
     template: type.template ?? '',
   };
 }
@@ -206,14 +208,40 @@ export function typeEditorFrontmatter(model: TypeEditorModel): Record<string, un
   if (model.implements.length > 0) {
     frontmatter['implements'] = model.implements.map((name) => `[[${name}]]`);
   }
-  if (model.replaces.length > 0) {
-    frontmatter['replaces'] = model.replaces.map((name) => `[[${name}]]`);
+  const replacementRules = model.rules.filter((rule): rule is Extract<TypeEditorRule, { kind: 'replaces' }> => rule.kind === 'replaces');
+  if (replacementRules.length > 0) {
+    const serializedReplacements: unknown[] = [];
+    for (const { field, newField, newValue, value } of replacementRules) {
+      const trimmedValue = value.trim();
+      if (!trimmedValue) {
+        continue;
+      }
+      const linkedValue = `[[${trimmedValue}]]`;
+      const trimmedField = field?.trim();
+      const trimmedNewField = newField?.trim();
+      const trimmedNewValue = newValue?.trim();
+      if (!trimmedField && !trimmedNewField && !trimmedNewValue) {
+        serializedReplacements.push(linkedValue);
+        continue;
+      }
+      serializedReplacements.push({
+        ...(trimmedField ? { field: trimmedField } : {}),
+        ...(trimmedNewField ? { 'new-field': trimmedNewField } : {}),
+        ...(trimmedNewValue ? { 'new-value': `[[${trimmedNewValue}]]` } : {}),
+        value: linkedValue,
+      });
+    }
+    if (serializedReplacements.length > 0) {
+      frontmatter['replaces'] = serializedReplacements;
+    }
   }
-  if (model.requires.length > 0) {
-    frontmatter['requires'] = model.requires.map((name) => `[[${name}]]`);
+  const requires = model.rules.filter((rule) => rule.kind === 'requires' && rule.value.trim()).map((rule) => `[[${rule.value.trim()}]]`);
+  if (requires.length > 0) {
+    frontmatter['requires'] = requires;
   }
-  if (model.excludes.length > 0) {
-    frontmatter['excludes'] = model.excludes.map((name) => `[[${name}]]`);
+  const excludes = model.rules.filter((rule) => rule.kind === 'excludes' && rule.value.trim()).map((rule) => `[[${rule.value.trim()}]]`);
+  if (excludes.length > 0) {
+    frontmatter['excludes'] = excludes;
   }
   const mustHave = serializeFields(model.mustHave);
   if (mustHave) {

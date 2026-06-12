@@ -11,6 +11,12 @@ describe('type editor frontmatter', () => {
     model.lock = true;
     model.extends = ['entry'];
     model.implements = ['dated'];
+    model.rules = [
+      { kind: 'requires', value: 'person' },
+      { kind: 'excludes', value: 'archived' },
+      { kind: 'replaces', value: 'draft' },
+      { field: 'status', kind: 'replaces', newField: 'state', newValue: 'approved', value: 'proposed' },
+    ];
     model.mustHave.push({
       cardinality: 'one',
       excludedTypes: [],
@@ -44,7 +50,6 @@ describe('type editor frontmatter', () => {
       uses: 'up',
       valueType: '',
     }];
-
     expect(typeEditorFrontmatter(model)).toEqual({
       lock: true,
       extends: ['[[entry]]'],
@@ -59,6 +64,12 @@ describe('type editor frontmatter', () => {
       'can-have': {
         descriptor: { uses: 'descriptor' },
       },
+      excludes: ['[[archived]]'],
+      replaces: [
+        '[[draft]]',
+        { field: 'status', 'new-field': 'state', 'new-value': '[[approved]]', value: '[[proposed]]' },
+      ],
+      requires: ['[[person]]'],
       relations: { up: { uses: 'up' } },
     });
   });
@@ -69,10 +80,14 @@ describe('type editor frontmatter', () => {
       canHave: new Map(),
       cannotHave: new Set(),
       disjoint: [],
-      excludes: [],
+      excludes: ['enemy'],
       extends: [],
-      replaces: [],
+      replaces: [
+        { value: 'friend' },
+        { field: 'relationship', newValue: 'friend', value: 'colleague' },
+      ],
       fields: new Map(),
+      implementableBy: [],
       implements: [],
       isInterface: false,
       lockIntent: true,
@@ -80,7 +95,8 @@ describe('type editor frontmatter', () => {
       name: 'person',
       path: '_types/person.md',
       relations: new Map(),
-      requires: [],
+      requires: ['person'],
+      scales: new Map(),
       values: [],
     };
 
@@ -88,6 +104,12 @@ describe('type editor frontmatter', () => {
       lock: true,
       extends: [],
       implements: [],
+      rules: [
+        { kind: 'requires', value: 'person' },
+        { kind: 'excludes', value: 'enemy' },
+        { kind: 'replaces', value: 'friend' },
+        { field: 'relationship', kind: 'replaces', newValue: 'friend', value: 'colleague' },
+      ],
     });
   });
 });

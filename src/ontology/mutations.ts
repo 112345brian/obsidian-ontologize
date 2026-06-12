@@ -1,6 +1,6 @@
 import type { App, TFile } from 'obsidian';
 
-import type { AutoApplyBlock, FrontmatterValue, OntologyEntity, OntologyIndex, OntologyIssue, PropertyDefinition, RelationDefinition } from './types.ts';
+import type { AutoApplyBlock, FrontmatterValue, OntologyEntity, OntologyIndex, OntologyIssue, PropertyDefinition, RelationDefinition, TypeReplacement } from './types.ts';
 
 import { getInheritedCanHave, getInheritedMustHave, resolveEntityRelations } from './compose.ts';
 import { containsFrontmatterValue, extractAssertedLinkTargets, normalizeLinkTarget, toWikiLink } from './links.ts';
@@ -32,6 +32,67 @@ export interface ScaffoldFieldPlan {
 
 export interface ApplyScaffoldPlanOptions {
   now?: Date | undefined;
+}
+
+function removeReplacementValue(frontmatter: Record<string, unknown>, field: string, value: string): boolean {
+  const current = frontmatter[field];
+  if (typeof current === 'string') {
+    if (normalizeLinkTarget(current) !== value) {
+      return false;
+    }
+    delete frontmatter[field];
+    return true;
+  }
+  if (!Array.isArray(current)) {
+    return false;
+  }
+  const filtered = current.filter((item) => normalizeLinkTarget(String(item)) !== value);
+  if (filtered.length === current.length) {
+    return false;
+  }
+  if (filtered.length === 0) {
+    delete frontmatter[field];
+  } else {
+    frontmatter[field] = filtered.length === 1 ? filtered[0] : filtered;
+  }
+  return true;
+}
+
+function addReplacementValue(frontmatter: Record<string, unknown>, field: string, value: string): void {
+  const linkedValue = toWikiLink(value);
+  const current = frontmatter[field];
+  if (current === undefined || current === null || current === '') {
+    frontmatter[field] = linkedValue;
+    return;
+  }
+  const values: unknown[] = Array.isArray(current) ? current as unknown[] : [current];
+  if (values.some((item) => normalizeLinkTarget(String(item)) === value)) {
+    return;
+  }
+  frontmatter[field] = [...values, linkedValue];
+}
+
+/** Applies backward-compatible remove-only rules and from/to replacement rules. */
+export function applyTypeReplacements(
+  frontmatter: Record<string, unknown>,
+  replacements: TypeReplacement[],
+  defaultFields: string[],
+): void {
+  for (const replacement of replacements) {
+    const sourceFields = replacement.field ? [replacement.field] : defaultFields;
+    let addedToExplicitDestination = false;
+    for (const sourceField of sourceFields) {
+      if (!removeReplacementValue(frontmatter, sourceField, replacement.value) || !replacement.newValue) {
+        continue;
+      }
+      const destinationField = replacement.newField ?? sourceField;
+      if (replacement.newField && addedToExplicitDestination) {
+        continue;
+      }
+      addReplacementValue(frontmatter, destinationField, replacement.newValue);
+      addedToExplicitDestination = true;
+    }
+  }
 }
 
 function findFile(app: App, path: string): TFile | null {

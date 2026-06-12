@@ -19,7 +19,7 @@ import {
   removeOntologyFile,
   upsertOntologyFile
 } from './ontology/indexer.ts';
-import { applyMissingInversePlans, applyScaffoldPlan, detectAutoApplyType, fixMissingInverses, planMissingInverses, planScaffoldEntity, shouldAutoApplyScaffold } from './ontology/mutations.ts';
+import { applyMissingInversePlans, applyScaffoldPlan, applyTypeReplacements, detectAutoApplyType, fixMissingInverses, planMissingInverses, planScaffoldEntity, shouldAutoApplyScaffold } from './ontology/mutations.ts';
 import type { TypeReplacement } from './ontology/types.ts';
 import { extractAssertedLinkTargets, normalizeLinkTarget } from './ontology/links.ts';
 import { runOntologyQuery, runOntologyQueryDetailed } from './ontology/query.ts';
@@ -363,31 +363,10 @@ export class Plugin extends ObsidianPlugin {
     }).open();
   }
 
-  private async removeTypeMemberships(file: TFile, replacements: TypeReplacement[]): Promise<void> {
+  private async applyTypeReplacementRules(file: TFile, replacements: TypeReplacement[]): Promise<void> {
     const defaultFields = this.pluginSettings.entityTypeFields;
     await this.app.fileManager.processFrontMatter(file, (fm) => {
-      const data = fm as Record<string, unknown>;
-      for (const { value, field } of replacements) {
-        const targets = field ? [field] : defaultFields;
-        for (const key of targets) {
-          const current = data[key];
-          if (current === undefined || current === null) {
-            continue;
-          }
-          if (typeof current === 'string') {
-            if (normalizeLinkTarget(current) === value) {
-              delete data[key];
-            }
-          } else if (Array.isArray(current)) {
-            const filtered = current.filter((v) => normalizeLinkTarget(String(v)) !== value);
-            if (filtered.length === 0) {
-              delete data[key];
-            } else if (filtered.length < current.length) {
-              data[key] = filtered.length === 1 ? filtered[0] : filtered;
-            }
-          }
-        }
-      }
+      applyTypeReplacements(fm as Record<string, unknown>, replacements, defaultFields);
     });
   }
 
@@ -889,7 +868,7 @@ export class Plugin extends ObsidianPlugin {
           }
         }
         if (toReplace.length > 0) {
-          await this.removeTypeMemberships(file, toReplace);
+          await this.applyTypeReplacementRules(file, toReplace);
         }
       }
     }

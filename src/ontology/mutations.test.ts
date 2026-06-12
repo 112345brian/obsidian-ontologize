@@ -7,7 +7,7 @@ vi.mock('obsidian', () => ({
   Notice: vi.fn(),
 }));
 
-import { applyScaffoldPlan, planMissingInverses, planScaffoldEntity, shouldAutoApplyScaffold } from './mutations.ts';
+import { applyScaffoldPlan, applyTypeReplacements, planMissingInverses, planScaffoldEntity, shouldAutoApplyScaffold } from './mutations.ts';
 import { makeIndexSettings, makeOntologyType } from './test-support.ts';
 
 function makeType(): OntologyType {
@@ -470,5 +470,31 @@ describe('shouldAutoApplyScaffold', () => {
     expect(shouldAutoApplyScaffold(index, entity)).toBe(true);
     entity.frontmatter = { ...entity.frontmatter, 'birth-year': 1400 };
     expect(shouldAutoApplyScaffold(index, entity)).toBe(false);
+  });
+});
+
+describe('applyTypeReplacements', () => {
+  it('replaces a value in the same field when new-field is omitted', () => {
+    const frontmatter: Record<string, unknown> = { relationship: ['[[colleague]]', '[[person]]'] };
+
+    applyTypeReplacements(frontmatter, [{ field: 'relationship', newValue: 'friend', value: 'colleague' }], ['is-instance']);
+
+    expect(frontmatter).toEqual({ relationship: ['[[person]]', '[[friend]]'] });
+  });
+
+  it('moves the replacement to a different field', () => {
+    const frontmatter: Record<string, unknown> = { relationship: '[[colleague]]', status: 'active' };
+
+    applyTypeReplacements(frontmatter, [{ field: 'relationship', newField: 'connection', newValue: 'friend', value: 'colleague' }], ['is-instance']);
+
+    expect(frontmatter).toEqual({ connection: '[[friend]]', status: 'active' });
+  });
+
+  it('preserves remove-only replacement rules', () => {
+    const frontmatter: Record<string, unknown> = { 'is-instance': ['[[friend]]', '[[person]]'] };
+
+    applyTypeReplacements(frontmatter, [{ value: 'friend' }], ['is-instance', 'type']);
+
+    expect(frontmatter).toEqual({ 'is-instance': '[[person]]' });
   });
 });

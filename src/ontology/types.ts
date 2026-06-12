@@ -40,6 +40,8 @@ export interface RelationDefinition {
 
 export interface TypeReplacement {
   field?: string | undefined;
+  newField?: string | undefined;
+  newValue?: string | undefined;
   value: string;
 }
 

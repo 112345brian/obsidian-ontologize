@@ -38,7 +38,7 @@ The product contract remains [`spec.md`](spec.md); this document explains how th
 ### Ontology core (`src/ontology/`)
 
 - `src/ontology/types.ts` — core TypeScript data model. Key interfaces: `OntologyType`, `OntologyEntity`, `OntologyIndex`, `PropertyDefinition`, `RelationDefinition`, `TypeReplacement`, `OntologyIssue`, `ScaffoldFieldPlan`, `EffectiveLockState`.
-- `src/ontology/parser.ts` — reads type files, the optional single schema file, and entity frontmatter into typed records. Accepts YAML frontmatter or heading-plus-body YAML. Handles all type fields including `replaces` (string or `{value, field}` objects), `template`, `requires`, `excludes`. Exports `DEFAULT_BLOCK_PREFIX`.
+- `src/ontology/parser.ts` — reads type files, the optional single schema file, and entity frontmatter into typed records. Accepts YAML frontmatter or heading-plus-body YAML. Handles all type fields including backward-compatible remove-only and from/to `replaces` rules, `template`, `requires`, and `excludes`. Exports `DEFAULT_BLOCK_PREFIX`.
 - `src/ontology/compose.ts` — single home for composition-chain resolution: inheritance plus interface flattening, global field/relation registries, definition merging, frontmatter-key aliasing, and issue deduplication. The indexer, validator, query engine, and mutation planner all resolve through it.
 - `src/ontology/schema-linter.ts` — validates source syntax and authoring shapes before constructors enter the graph. Errors block parsing; warnings surface in diagnostics. Validates all type constructor fields including `replaces`, `requires`, `excludes`, `template`. Reports non-kebab identifiers as warnings.
 - `src/ontology/indexer.ts` — builds and incrementally updates the ontology graph. Computes ancestor sets, effective lock states, name indexes, and orchestrates derived-state recomputation after any source change.
@@ -96,7 +96,7 @@ When an entity's resolved direct types change (the set before and after a `metad
 
 1. **Auto-scaffold** — calls `applyAutoScaffold(file)`. Gated by: `initialScaffoldComplete` must be true (the user must have run bulk scaffold at least once), the entity's types must all be concrete and non-circular, and the file must not be in the dismissed set. Types with `auto-apply: true` are scaffolded silently without a review modal. Other types open `OntologyScaffoldReviewModal` if `autoScaffoldEntities` is enabled.
 
-2. **Type replacement** — collects `TypeReplacement[]` from all newly-added types' `replaces` fields. Calls `removeTypeMemberships(file, replacements)` which uses `processFrontMatter` to remove each listed membership value from the appropriate frontmatter field (default: all configured entity type fields; field-scoped: only the specified key).
+2. **Type replacement** — collects `TypeReplacement[]` from all newly-added types' `replaces` fields. Each rule removes its original value and can add a new value in the same or a different frontmatter field. Legacy rules without `new-value` remain remove-only.
 
 3. **Template injection** — for the first newly-added type that declares a `template`, calls `applyTypeTemplate(app, templateName, file)`. Only runs if the entity body is empty. Templater is used if available; otherwise raw body text is copied.
 
@@ -155,7 +155,7 @@ Implemented type constructor fields:
 - `auto-apply` — if `true`, scaffold runs silently without review modal
 - `requires` — co-required types (validation constraint)
 - `excludes` — mutually exclusive types (validation constraint)
-- `replaces` — membership values to remove when this type is applied (string or `{value, field}` objects)
+- `replaces` — original/new frontmatter field-value transformations applied when this type is added; string entries remain remove-only
 - `template` — wikilink to a Markdown note whose body is injected into new entities with empty bodies
 
 The complete authoring reference lives in [`schema-api.md`](schema-api.md).
@@ -289,6 +289,5 @@ Malformed, missing, or version-mismatched cache files are ignored and replaced b
 - No migration dry-run and confirmation workflow.
 - No adaptive validation priority queue.
 - No Obsidian Bases integration.
-- Field-scoped `TypeReplacement` entries (those with a `field` property) are not exposed in the type editor UI and are dropped when a type is saved through the editor. They survive in the YAML source if authored manually.
 
 These are the next implementation layers after the V1 graph, query, validation, and command surface stabilizes.

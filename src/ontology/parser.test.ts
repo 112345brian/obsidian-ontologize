@@ -59,6 +59,16 @@ vi.mock('obsidian', () => ({
         type: 'field-definitions',
       };
     }
+    if (source.includes('new-value:')) {
+      return {
+        replaces: [{
+          field: 'relationship',
+          'new-field': 'connection',
+          'new-value': '[[Friend]]',
+          value: '[[Colleague]]',
+        }],
+      };
+    }
     if (source.includes('abstract: true')) {
       return { abstract: true };
     }
@@ -109,6 +119,23 @@ lock: true
     }, ['ontology']);
 
     expect(entity?.instanceOf).toEqual(['Person']);
+  });
+
+  it('parses from/to replacement rules', () => {
+    const type = parseOntologyType('_types/Friend.md', `---
+replaces:
+  - field: relationship
+    value: "[[Colleague]]"
+    new-field: connection
+    new-value: "[[Friend]]"
+---`);
+
+    expect(type.replaces).toEqual([{
+      field: 'relationship',
+      newField: 'connection',
+      newValue: 'Friend',
+      value: 'Colleague',
+    }]);
   });
 
   it('parses possible-values as property allowed values', () => {

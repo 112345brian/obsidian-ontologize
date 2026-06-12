@@ -80,7 +80,7 @@ function makeIndex(): OntologyIndex {
         disjoint: ['Musician'],
         excludes: ['Sophist'],
         extends: ['Person'],
-        replaces: [{ value: 'Thinker' }, { field: 'category', value: 'Sage' }],
+        replaces: [{ value: 'Thinker' }, { field: 'category', newField: 'role', newValue: 'Philosopher', value: 'Sage' }],
         requires: ['Person'],
         template: 'Templates/Philosopher',
         fields: new Map([['birth-year', { frontmatterKey: 'birth_year', type: 'number' }]]),

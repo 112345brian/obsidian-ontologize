@@ -69,7 +69,11 @@ export class OntologyTypeImpactModal extends Modal {
 
     if (hasFixed) {
       const section = contentEl.createEl('section', { cls: 'ontology-impact-section ontology-impact-fixed' });
-      section.createEl('h3', { text: `Resolved issues (${impact.softFixed.length})` });
+      section.createEl('h3', { text: `Existing issues resolved by this change (${impact.softFixed.length})` });
+      section.createEl('p', {
+        cls: 'ontology-impact-desc',
+        text: 'These issues exist in the current ontology. Saving this change will remove them; they are not new problems caused by the change.',
+      });
       this.renderIssueList(section, impact.softFixed);
     }
 
@@ -91,7 +95,7 @@ export class OntologyTypeImpactModal extends Modal {
           }),
         )
         .addButton((b) => b.setButtonText('Cancel').onClick(() => { this.resolve('cancel'); }));
-    } else {
+    } else if (hasSoft) {
       actions
         .addButton((b) => b.setButtonText('Proceed').setCta().onClick(() => { this.resolve('proceed'); }))
         .addButton((b) =>
@@ -99,6 +103,10 @@ export class OntologyTypeImpactModal extends Modal {
             this.resolve('ignore-affected');
           }),
         )
+        .addButton((b) => b.setButtonText('Cancel').onClick(() => { this.resolve('cancel'); }));
+    } else {
+      actions
+        .addButton((b) => b.setButtonText('Proceed').setCta().onClick(() => { this.resolve('proceed'); }))
         .addButton((b) => b.setButtonText('Cancel').onClick(() => { this.resolve('cancel'); }));
     }
   }

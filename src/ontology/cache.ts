@@ -66,7 +66,12 @@ function hydrateType(value: unknown): OntologyType {
       }
       const rec = r && typeof r === 'object' && !Array.isArray(r) ? r as Record<string, unknown> : {};
       const value = typeof rec['value'] === 'string' ? rec['value'] : '';
-      return value ? [{ value, ...(typeof rec['field'] === 'string' ? { field: rec['field'] } : {}) }] : [];
+      return value ? [{
+        value,
+        ...(typeof rec['field'] === 'string' ? { field: rec['field'] } : {}),
+        ...(typeof rec['newField'] === 'string' ? { newField: rec['newField'] } : {}),
+        ...(typeof rec['newValue'] === 'string' ? { newValue: rec['newValue'] } : {}),
+      }] : [];
     }) : [],
     requires: Array.isArray(record['requires']) ? record['requires'].map(String) : [],
     isInterface: record['isInterface'] === true,

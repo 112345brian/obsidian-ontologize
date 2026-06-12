@@ -250,7 +250,7 @@ function lintReplacesField(file: string, value: unknown, issues: OntologyIssue[]
     }
     const record = asRecord(item);
     if (!record) {
-      issues.push(issue(file, 'replaces entries must be a wikilink string or {value, field} object'));
+      issues.push(issue(file, 'replaces entries must be a wikilink string or replacement rule object'));
       continue;
     }
     if (typeof record['value'] !== 'string') {
@@ -258,6 +258,12 @@ function lintReplacesField(file: string, value: unknown, issues: OntologyIssue[]
     }
     if (record['field'] !== undefined && typeof record['field'] !== 'string') {
       issues.push(issue(file, 'replaces entry field must be a string'));
+    }
+    if (record['new-field'] !== undefined && typeof record['new-field'] !== 'string') {
+      issues.push(issue(file, 'replaces entry new-field must be a string'));
+    }
+    if (record['new-value'] !== undefined && typeof record['new-value'] !== 'string') {
+      issues.push(issue(file, 'replaces entry new-value must be a wikilink string'));
     }
   }
 }

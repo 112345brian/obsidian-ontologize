@@ -243,8 +243,8 @@ These are validation constraints — they do not prevent an entity from having c
 
 ### Replaces
 
-When a type is applied to an entity, `replaces` automatically removes listed membership values.
-This keeps type lists consistent without manual cleanup.
+When a type is applied to an entity, `replaces` transforms matching frontmatter values.
+Omitting `new-value` preserves the legacy remove-only behavior.
 
 ```markdown
 # Enemy
@@ -252,13 +252,25 @@ replaces:
   - "[[Friend]]"
 ```
 
-With a field scope (removes from a specific frontmatter field rather than all entity type fields):
+Replace a value in the same field by omitting `new-field`:
 
 ```markdown
 # Enemy
 replaces:
   - value: "[[Friend]]"
     field: relationship
+    new-value: "[[Enemy]]"
+```
+
+Move the replacement to another field:
+
+```markdown
+# Enemy
+replaces:
+  - field: relationship
+    value: "[[Friend]]"
+    new-field: status
+    new-value: "[[Enemy]]"
 ```
 
 ### Type Templates

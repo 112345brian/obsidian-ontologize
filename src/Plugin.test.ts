@@ -7,6 +7,20 @@ const hoisted = vi.hoisted(() => ({
 }));
 
 vi.mock('obsidian', () => {
+  class AbstractInputSuggest {
+    public constructor(_app: unknown, _inputEl: unknown) {
+      // not exercised
+    }
+
+    public close(): void {
+      // not exercised
+    }
+
+    public setValue(): void {
+      // not exercised
+    }
+  }
+
   class TFile {
     public extension: string;
     public path: string;
@@ -94,6 +108,7 @@ vi.mock('obsidian', () => {
   }
 
   return {
+    AbstractInputSuggest,
     FuzzySuggestModal,
     MarkdownRenderer: { render: vi.fn() },
     Modal,

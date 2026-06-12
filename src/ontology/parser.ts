@@ -171,7 +171,15 @@ function parseReplacement(item: unknown): TypeReplacement | null {
     return null;
   }
   const field = typeof record['field'] === 'string' ? record['field'].trim() || undefined : undefined;
-  return { value, ...(field ? { field } : {}) };
+  const newField = typeof record['new-field'] === 'string' ? record['new-field'].trim() || undefined : undefined;
+  const newValueRaw = typeof record['new-value'] === 'string' ? normalizeLinkTarget(record['new-value']) : '';
+  const newValue = newValueRaw !== '' ? newValueRaw : undefined;
+  return {
+    value,
+    ...(field ? { field } : {}),
+    ...(newField ? { newField } : {}),
+    ...(newValue ? { newValue } : {}),
+  };
 }
 
 function parseReplaces(raw: unknown): TypeReplacement[] {

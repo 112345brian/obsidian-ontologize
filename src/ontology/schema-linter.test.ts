@@ -40,6 +40,15 @@ vi.mock('obsidian', () => ({
         },
       };
     }
+    if (source.includes('bad-replacement')) {
+      return {
+        replaces: [{
+          'new-field': 42,
+          'new-value': false,
+          value: '[[Friend]]',
+        }],
+      };
+    }
     return {
       'must-have': {
         started: {
@@ -106,5 +115,14 @@ describe('schema linter', () => {
       message: 'Property up.type has an invalid union expression',
       severity: 'error',
     }));
+  });
+
+  it('validates replacement destination fields and values', () => {
+    const messages = lintOntologyTypeSource('_types/BadReplacement.md', '---\nbad-replacement\n---').map((entry) => entry.message);
+
+    expect(messages).toEqual(expect.arrayContaining([
+      'replaces entry new-field must be a string',
+      'replaces entry new-value must be a wikilink string',
+    ]));
   });
 });

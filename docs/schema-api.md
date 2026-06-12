@@ -207,7 +207,7 @@ These fields are recognized in type, interface, and single-schema type definitio
 | `values` | array | Allowed values for `type: nominal`. |
 | `requires` | link or array of links | Types that must also appear in an entity's resolved membership for this type to be valid. |
 | `excludes` | link or array of links | Types that must not appear in an entity's resolved membership alongside this type. |
-| `replaces` | link, array of links, or array of `{value, field}` objects | When this type is applied to an entity, the listed membership values are removed from entity type fields. |
+| `replaces` | link, array of links, or replacement rule objects | When this type is applied, matching field values are removed or replaced. |
 | `template` | link | A Markdown note to use as a body template when this type is first applied to an entity with an empty body. Templater is invoked if available; otherwise the body text is copied verbatim. |
 | `implementable-by` | link or array of links | Interfaces only. Restricts which types (or their subtypes) are allowed to implement this interface. A type that implements an interface outside this list is a schema error. |
 | `scales` | map | Named scale definitions for weighted property fields. See [Scales and Weighted Properties](#scales-and-weighted-properties). |
@@ -229,8 +229,9 @@ Validation warns when a `requires` type is absent and errors when an `excludes` 
 
 ### Replaces
 
-When a type is added to an entity, `replaces` removes listed values from the entity's type membership fields.
-This is useful for hygiene — for example, if `Enemy` replaces `Friend`, applying `Enemy` to a note automatically removes `Friend` from its type list.
+When a type is added to an entity, `replaces` finds an original field/value pair and optionally writes a new field/value pair.
+If `new-field` is omitted, the new value is written back to the field where the original was found.
+If `new-value` is omitted, the rule only removes the original value.
 
 Simple form (removes from all configured entity type fields):
 
@@ -240,13 +241,25 @@ replaces:
   - "[[Friend]]"
 ```
 
-Field-scoped form (removes only from a specific frontmatter field):
+Replace in the same field:
 
 ```yaml
 # Enemy.md
 replaces:
   - value: "[[Friend]]"
     field: relationship
+    new-value: "[[Enemy]]"
+```
+
+Move the replacement to another field:
+
+```yaml
+# Enemy.md
+replaces:
+  - field: relationship
+    value: "[[Friend]]"
+    new-field: status
+    new-value: "[[Enemy]]"
 ```
 
 ### Template
