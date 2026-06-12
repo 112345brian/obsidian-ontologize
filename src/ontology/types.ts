@@ -1,3 +1,11 @@
+export interface Scale {
+  max?: number;
+  min?: number;
+  neutral?: number;
+  normalize?: string[];  // custom word-strip list; omit to use the built-in default
+  steps: Record<string, string[]>;  // numeric string key → alias list
+}
+
 export type FrontmatterValue =
   | boolean
   | null
@@ -15,6 +23,8 @@ export interface PropertyDefinition {
   type?: string | undefined;
   uses?: string | undefined;
   values?: string[] | undefined;
+  weighted?: boolean | undefined;
+  weightScale?: string | undefined;
 }
 
 export interface RelationDefinition {
@@ -47,6 +57,7 @@ export interface OntologyType {
   disjoint: string[];
   excludes: string[];
   extends: string[];
+  implementableBy: string[];
   implements: string[];
   isInterface: boolean;
   replaces: TypeReplacement[];
@@ -57,6 +68,7 @@ export interface OntologyType {
   name: string;
   path: string;
   relations: Map<string, RelationDefinition>;
+  scales: Map<string, Scale>;
   template?: string | undefined;
   typeKind?: string | undefined;
   values: string[];
@@ -115,6 +127,7 @@ export interface OntologyIndex {
   fieldDefinitions: Map<string, PropertyDefinition>;
   issues: OntologyIssue[];
   relationDefinitions: Map<string, RelationDefinition>;
+  scales: Map<string, Scale>;
   schemaIssues?: OntologyIssue[] | undefined;
   generatedAt: string;
   settings: {

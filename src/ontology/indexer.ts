@@ -2,7 +2,7 @@ import type { App, TFile } from 'obsidian';
 
 type MaybeFile = { extension: string } | null | undefined;
 
-import type { EffectiveLockState, FrontmatterIgnoreRule, OntologyEntity, OntologyIndex, OntologyIssue, OntologyType, PropertyDefinition, RelationDefinition } from './types.ts';
+import type { EffectiveLockState, FrontmatterIgnoreRule, OntologyEntity, OntologyIndex, OntologyIssue, OntologyType, PropertyDefinition, RelationDefinition, Scale } from './types.ts';
 
 import {
   collectGlobalFieldDefinitions,
@@ -115,6 +115,7 @@ function createEmptyOntologyIndex(settings: BuildIndexSettings): OntologyIndex {
     generatedAt: new Date().toISOString(),
     issues: [],
     relationDefinitions: new Map<string, RelationDefinition>(),
+    scales: new Map<string, Scale>(),
     schemaIssues: [],
     settings: {
       autoApplyBlockPrefix: settings.autoApplyBlockPrefix ?? 'condition-',
@@ -259,6 +260,12 @@ export function recomputeOntologyDerivedState(index: OntologyIndex): OntologyInd
   index.circularTypes = circularTypes;
   index.fieldDefinitions = collectGlobalFieldDefinitions(index.types);
   index.relationDefinitions = collectGlobalRelationDefinitions(index.types);
+  index.scales = new Map<string, Scale>();
+  for (const type of index.types.values()) {
+    for (const [name, scale] of type.scales) {
+      index.scales.set(name, scale);
+    }
+  }
 
   // Surface unknown/mis-marked interface issues once per type; every other
   // chain traversal (validation, queries, mutations) stays side-effect free.

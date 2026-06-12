@@ -4,6 +4,9 @@
 
 ### Features
 
+- **Weighted properties and scales.** Any property can declare `weighted: true` to pair it with a companion weight map (e.g. `influenced-by-weight: {Kant: 2, Hume: -1}`). Scale definitions live under `scales:` on a type and describe step labels, aliases, and optional `min`/`max`/`neutral` bounds. A built-in default scale (-2 to 2) applies when no named scale is specified. Alias matching strips prepositions and articles so "strongly influenced by" resolves the same as "strongly". The `WEIGHTED` query token matches entities with at least one non-neutral map entry.
+- **`implementable-by` field on types.** Restricts which types may implement an interface, validated at schema composition time.
+- **Kebab-case auto-normalization.** All frontmatter keys, property names, relation names, and `inverse` values are silently normalized to kebab-case on read (`influence_weight` → `influence-weight`, `influenceWeight` → `influence-weight`). The schema linter warns on non-kebab identifiers rather than erroring, matching the parser's lenient behavior.
 - **Bulk scaffold modal.** `Scaffold all entities` opens a three-phase modal: select types (with affected entity/field counts), preview per-entity changes, then apply. Running it once enables auto-scaffold going forward; until then the plugin watches for membership changes but does not open per-note review modals automatically.
 - **`replaces` field on types.** When a type is applied to an entity, listed values are removed from entity type fields. Supports simple wikilink form (`- "[[Friend]]"`) and field-scoped form (`{value: "[[Friend]]", field: relationship}`) to target a specific frontmatter key instead of all entity type fields.
 - **`requires` and `excludes` fields on types.** `requires` warns when a co-required type is absent; `excludes` errors when a forbidden type is present in the same resolved membership.
@@ -14,6 +17,7 @@
 
 - **`replaces` now executes.** A `.size` check on an array (which has no `.size` property) silently prevented `removeTypeMemberships` from ever being called. Fixed to `.length`.
 - **Template application no longer drops `replaces` entries from subsequent types.** An early `break` after finding the first template caused the loop to exit before collecting `replaces` entries from any additional added types.
+- **Relation validation correctly matches normalized frontmatter keys.** Relation names and `inverse` values are now normalized at parse time, so validation lookups against entity frontmatter (which is also normalized) always find the right key.
 
 ## 0.2.0
 

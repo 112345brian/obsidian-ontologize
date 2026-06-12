@@ -571,3 +571,91 @@
 .ontology-bulk-field-kind--relation {
   color: var(--color-blue);
 }
+
+/* Tag input */
+
+.ontology-tag-input {
+  align-items: center;
+  border: 1px solid var(--background-modifier-border);
+  border-radius: 4px;
+  cursor: text;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.3em;
+  min-height: 2em;
+  padding: 0.3em 0.5em;
+  position: relative;
+  width: 100%;
+}
+
+.ontology-tag-chip {
+  align-items: center;
+  background: var(--background-modifier-border);
+  border-radius: 3px;
+  display: inline-flex;
+  font-size: var(--font-ui-smaller);
+  gap: 0.25em;
+  padding: 0.15em 0.4em;
+}
+
+.ontology-tag-chip-remove {
+  background: none;
+  border: none;
+  color: var(--text-muted);
+  cursor: pointer;
+  font-size: 0.9em;
+  line-height: 1;
+  padding: 0;
+}
+
+.ontology-tag-chip-remove:hover {
+  color: var(--text-normal);
+}
+
+.ontology-tag-text {
+  background: none;
+  border: none;
+  flex: 1;
+  font-size: var(--font-ui-small);
+  min-width: 8em;
+  outline: none;
+  padding: 0;
+}
+
+.ontology-tag-suggestions {
+  background: var(--background-primary);
+  border: 1px solid var(--background-modifier-border);
+  border-radius: 4px;
+  box-shadow: var(--shadow-s);
+  left: 0;
+  max-height: 180px;
+  overflow-y: auto;
+  position: absolute;
+  top: 100%;
+  width: 100%;
+  z-index: 100;
+}
+
+.ontology-tag-suggestion {
+  cursor: pointer;
+  font-size: var(--font-ui-small);
+  padding: 0.35em 0.6em;
+}
+
+.ontology-tag-suggestion:hover,
+.ontology-tag-suggestion.is-focused {
+  background: var(--background-modifier-hover);
+}
+
+.ontology-field-tag-group {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4em;
+  margin-top: 0.4em;
+  width: 100%;
+}
+
+.ontology-field-tag-label {
+  color: var(--text-muted);
+  font-size: var(--font-ui-smaller);
+}

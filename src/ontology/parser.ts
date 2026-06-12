@@ -1,12 +1,32 @@
 import { parseYaml } from 'obsidian';
 
-import type { AutoApplyBlock, OntologyEntity, OntologyType, PropertyDefinition, RelationDefinition, TypeReplacement } from './types.ts';
+import type { AutoApplyBlock, OntologyEntity, OntologyType, PropertyDefinition, RelationDefinition, Scale, TypeReplacement } from './types.ts';
 
 import { basenameWithoutExtension, extractLinkTargets, normalizeLinkTarget } from './links.ts';
 import { normalizeTypeExpression } from './type-expression.ts';
 
 function asRecord(value: unknown): Record<string, unknown> {
   return value && typeof value === 'object' && !Array.isArray(value) ? value as Record<string, unknown> : {};
+}
+
+// Normalizes a frontmatter key to kebab-case.
+// Dots and underscores become hyphens; camelCase segments are split.
+// "influence.weight", "influence_weight", "influenceWeight" → "influence-weight"
+export function normalizeKey(key: string): string {
+  return key
+    .replace(/([a-z])([A-Z])/g, '$1-$2')
+    .toLowerCase()
+    .replace(/[._]+/g, '-')
+    .replace(/-+/g, '-')
+    .replace(/^-|-$/g, '');
+}
+
+function normalizeKeys(record: Record<string, unknown>): Record<string, unknown> {
+  const result: Record<string, unknown> = {};
+  for (const [key, value] of Object.entries(record)) {
+    result[normalizeKey(key)] = value;
+  }
+  return result;
 }
 
 function readStructuredObject(source: string, path = ''): Record<string, unknown> {
@@ -54,12 +74,14 @@ function parsePropertyDefinition(value: unknown): PropertyDefinition {
   const insert = record['insert'] as PropertyDefinition['insert'];
   const uses = typeof record['uses'] === 'string' ? normalizeLinkTarget(record['uses']) : undefined;
   const values = Array.isArray(record['possible-values']) ? record['possible-values'].map(String) : undefined;
-  return { cardinality, excludedTypes, frontmatterKey, includedTypes, insert, type, uses, values };
+  const weighted = record['weighted'] === true ? true : undefined;
+  const weightScale = typeof record['weight-scale'] === 'string' ? record['weight-scale'] : undefined;
+  return { cardinality, excludedTypes, frontmatterKey, includedTypes, insert, type, uses, values, weighted, weightScale };
 }
 
 function parsePropertyMap(value: unknown): Map<string, PropertyDefinition> {
   return new Map(
-    Object.entries(asRecord(value)).map(([key, definition]) => [key, parsePropertyDefinition(definition)])
+    Object.entries(asRecord(value)).map(([key, definition]) => [normalizeKey(key), parsePropertyDefinition(definition)])
   );
 }
 
@@ -81,7 +103,7 @@ function parseRelationDefinition(value: unknown): RelationDefinition {
   return {
     autoUpdate: record['auto-update'] === true,
     cardinality: typeof record['cardinality'] === 'string' ? record['cardinality'] : undefined,
-    inverse: typeof record['inverse'] === 'string' ? record['inverse'] : undefined,
+    inverse: typeof record['inverse'] === 'string' ? normalizeKey(record['inverse']) : undefined,
     range: typeof record['range'] === 'string' ? normalizeTypeExpression(record['range'], normalizeLinkTarget) : undefined,
     symmetric: record['symmetric'] === true,
     transitive: record['transitive'] === true,
@@ -99,11 +121,11 @@ function parseRelationDefinition(value: unknown): RelationDefinition {
 function parseRelations(value: unknown): Map<string, RelationDefinition> {
   if (Array.isArray(value)) {
     return new Map(value.map((item) => {
-      const key = normalizeLinkTarget(String(item));
+      const key = normalizeKey(normalizeLinkTarget(String(item)));
       return [key, { uses: key }];
     }));
   }
-  return new Map(Object.entries(asRecord(value)).map(([key, definition]) => [key, parseRelationDefinition(definition)]));
+  return new Map(Object.entries(asRecord(value)).map(([key, definition]) => [normalizeKey(key), parseRelationDefinition(definition)]));
 }
 
 export const DEFAULT_BLOCK_PREFIX = 'condition-';
@@ -166,6 +188,34 @@ function parseReplaces(raw: unknown): TypeReplacement[] {
   });
 }
 
+function parseScale(value: unknown): Scale {
+  const record = asRecord(value);
+  const steps: Record<string, string[]> = {};
+  for (const [key, aliases] of Object.entries(record)) {
+    if (key === 'min' || key === 'max' || key === 'neutral' || key === 'normalize') continue;
+    if (Array.isArray(aliases)) {
+      steps[key] = aliases.map(String);
+    } else if (aliases !== null && aliases !== undefined) {
+      steps[key] = [String(aliases)];
+    }
+  }
+  const scale: Scale = { steps };
+  if (typeof record['min'] === 'number') scale.min = record['min'];
+  if (typeof record['max'] === 'number') scale.max = record['max'];
+  if (typeof record['neutral'] === 'number') scale.neutral = record['neutral'];
+  if (Array.isArray(record['normalize'])) scale.normalize = record['normalize'].map(String);
+  return scale;
+}
+
+function parseScales(value: unknown): Map<string, Scale> {
+  const result = new Map<string, Scale>();
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return result;
+  for (const [name, def] of Object.entries(value as Record<string, unknown>)) {
+    result.set(name, parseScale(def));
+  }
+  return result;
+}
+
 function parseAutoApply(value: unknown, prefix: string): OntologyType['autoApply'] {
   if (value === true) {
     return true;
@@ -182,6 +232,7 @@ function parseOntologyTypeRecord(name: string, path: string, yaml: Record<string
     disjoint: extractLinkTargets(yaml['disjoint']),
     excludes: extractLinkTargets(yaml['excludes']),
     extends: extractLinkTargets(yaml['extends']),
+    implementableBy: extractLinkTargets(yaml['implementable-by']),
     implements: extractLinkTargets(yaml['implements']),
     replaces: parseReplaces(yaml['replaces']),
     requires: extractLinkTargets(yaml['requires']),
@@ -192,6 +243,7 @@ function parseOntologyTypeRecord(name: string, path: string, yaml: Record<string
     name,
     path,
     relations: parseRelations(yaml['relations']),
+    scales: parseScales(yaml['scales']),
     template: extractLinkTargets(yaml['template'])[0],
     typeKind: typeof yaml['type'] === 'string' ? yaml['type'] : undefined,
     values: Array.isArray(yaml['values']) ? yaml['values'].map(String) : [],
@@ -199,7 +251,7 @@ function parseOntologyTypeRecord(name: string, path: string, yaml: Record<string
 }
 
 export function parseOntologyType(path: string, markdown: string, blockPrefix = DEFAULT_BLOCK_PREFIX): OntologyType {
-  return parseOntologyTypeRecord(basenameWithoutExtension(path), path, readYamlObject(markdown), blockPrefix);
+  return parseOntologyTypeRecord(basenameWithoutExtension(path), path, normalizeKeys(readYamlObject(markdown)), blockPrefix);
 }
 
 function parseSchemaTypeMap(path: string, group: string, value: unknown, blockPrefix: string, defaults: Partial<OntologyType> = {}): OntologyType[] {
@@ -237,17 +289,18 @@ export function parseOntologySchema(path: string, source: string, blockPrefix = 
 }
 
 export function parseOntologyEntity(path: string, frontmatter: Record<string, unknown>, typeFields: string[] = ['is-instance', 'type']): OntologyEntity | null {
-  const typeValue = typeFields.map((field) => frontmatter[field]).find((value) => value !== undefined && value !== null && value !== '');
+  const normalized = normalizeKeys(frontmatter);
+  const typeValue = typeFields.map((field) => normalized[normalizeKey(field)]).find((value) => value !== undefined && value !== null && value !== '');
   const instanceOf = extractLinkTargets(typeValue);
   if (instanceOf.length === 0) {
     return null;
   }
 
   return {
-    frontmatter,
-    ignored: frontmatter['ignored'] === true,
+    frontmatter: normalized,
+    ignored: normalized['ignored'] === true,
     instanceOf,
-    lockIntent: frontmatter['lock'] === true,
+    lockIntent: normalized['lock'] === true,
     name: basenameWithoutExtension(path),
     path,
   };

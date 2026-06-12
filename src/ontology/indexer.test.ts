@@ -38,7 +38,9 @@ function makeType(
     mustHave: new Map(),
     name,
     path,
+    implementableBy: [],
     relations: options.relations ?? new Map<string, RelationDefinition>(),
+    scales: new Map(),
     typeKind: options.typeKind,
     values: [],
   };
@@ -53,7 +55,7 @@ function makeIndex(): OntologyIndex {
     entities: new Map([
       ['Ada.md', {
         frontmatter: {
-          instance_of: '[[Philosopher]]',
+          'instance-of': '[[Philosopher]]',
           lock: true,
         },
         instanceOf: ['Philosopher'],
@@ -67,6 +69,7 @@ function makeIndex(): OntologyIndex {
     generatedAt: '2026-06-09T00:00:00.000Z',
     issues: [],
     relationDefinitions: new Map(),
+    scales: new Map(),
     settings: makeIndexSettings({ entityTypeFields: ['instance_of', 'type'] }),
     types: new Map([
       ['Person', makeType('Person', '_types/Person.md', true)],
@@ -633,11 +636,11 @@ describe('incremental ontology index state', () => {
 
     expect(index.types.get('Influenceable')?.isInterface).toBe(true);
     expect(index.types.get('Philosopher')?.implements).toEqual(['Influenceable']);
-    expect(index.relationDefinitions.get('influenced_by')?.inverse).toBe('influenced');
+    expect(index.relationDefinitions.get('influenced-by')?.inverse).toBe('influenced');
     expect(index.effectiveEntityLocks.get('Spinoza.md')?.state).toBe('locked');
     expect(index.issues).toContainEqual(expect.objectContaining({
       file: 'Spinoza.md',
-      property: 'influenced_by',
+      property: 'influenced-by',
       target: 'Descartes',
     }));
   });
@@ -683,7 +686,7 @@ describe('incremental ontology index state', () => {
     // index. The sweep should re-validate Ada and clear the now-stale issue.
     const index = makeIndex();
     const philType = index.types.get('Philosopher')!;
-    philType.relations.set('influenced_by', { autoUpdate: true, inverse: 'influenced', range: 'Person' });
+    philType.relations.set('influenced-by', { autoUpdate: true, inverse: 'influenced', range: 'Person' });
     index.entities.set('Leibniz.md', {
       frontmatter: { instance_of: '[[Philosopher]]' }, // no inverse yet
       instanceOf: ['Philosopher'],
@@ -691,7 +694,7 @@ describe('incremental ontology index state', () => {
       name: 'Leibniz',
       path: 'Leibniz.md',
     });
-    index.entities.get('Ada.md')!.frontmatter['influenced_by'] = ['[[Leibniz]]'];
+    index.entities.get('Ada.md')!.frontmatter['influenced-by'] = ['[[Leibniz]]'];
 
     recomputeOntologyDerivedState(index);
 

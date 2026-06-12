@@ -119,6 +119,14 @@ function evalConditionValue(actual: unknown, expected: unknown): boolean {
       if (op === '==') { return strActual === strRhs; }
     }
   }
+  // Allow plain names to match wikilink values: condition `up: philosopher`
+  // should fire when the note has `up: [[philosopher]]`.
+  if (typeof expected === 'string' && !COMPARISON_RE.test(expected)) {
+    const actualTargets = extractAssertedLinkTargets(actual);
+    if (actualTargets.length > 0 && actualTargets.includes(normalizeLinkTarget(expected))) {
+      return true;
+    }
+  }
   return containsFrontmatterValue(actual, expected);
 }
 
@@ -144,6 +152,23 @@ export function shouldAutoApplyScaffold(index: OntologyIndex, entity: OntologyEn
     }
     return evalAutoApplyBlock(entity.frontmatter, type.autoApply);
   });
+}
+
+/**
+ * Given raw frontmatter from an untyped note, return the first type whose
+ * conditional auto-apply block matches.  Types with `autoApply: true` are
+ * skipped — they only fire once an entity is already typed.
+ */
+export function detectAutoApplyType(index: OntologyIndex, frontmatter: Record<string, unknown>): string | null {
+  for (const type of index.types.values()) {
+    if (!type.autoApply || type.autoApply === true) {
+      continue;
+    }
+    if (evalAutoApplyBlock(frontmatter, type.autoApply)) {
+      return type.name;
+    }
+  }
+  return null;
 }
 
 export function planScaffoldEntity(index: OntologyIndex, path: string): ScaffoldFieldPlan[] {

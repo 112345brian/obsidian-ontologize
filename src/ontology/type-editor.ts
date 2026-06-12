@@ -37,6 +37,7 @@ export interface TypeEditorModel {
   canHave: TypeEditorField[];
   excludes: string[];
   extends: string[];
+  implementableBy: string[];
   implements: string[];
   isInterface: boolean;
   lock: boolean;
@@ -57,6 +58,7 @@ export function emptyTypeEditorModel(): TypeEditorModel {
     canHave: [],
     excludes: [],
     extends: [],
+    implementableBy: [],
     implements: [],
     isInterface: false,
     lock: false,
@@ -111,6 +113,7 @@ export function typeEditorModelFromType(type: OntologyType): TypeEditorModel {
     canHave: [...type.canHave].map(([name, definition]) => fieldFromDefinition(name, definition)),
     excludes: [...type.excludes],
     extends: [...type.extends],
+    implementableBy: [...(type.implementableBy ?? [])],
     implements: [...type.implements],
     isInterface: type.isInterface,
     lock: type.lockIntent,
@@ -197,6 +200,9 @@ export function typeEditorFrontmatter(model: TypeEditorModel): Record<string, un
   if (model.extends.length > 0) {
     frontmatter['extends'] = model.extends.map((name) => `[[${name}]]`);
   }
+  if (model.implementableBy.length > 0) {
+    frontmatter['implementable-by'] = model.implementableBy.map((name) => `[[${name}]]`);
+  }
   if (model.implements.length > 0) {
     frontmatter['implements'] = model.implements.map((name) => `[[${name}]]`);
   }
@@ -254,6 +260,7 @@ export const TYPE_EDITOR_KEYS = [
   'can-have',
   'excludes',
   'extends',
+  'implementable-by',
   'implements',
   'interface',
   'lock',

@@ -15,9 +15,9 @@ import {
   removeOntologyFile,
   upsertOntologyFile
 } from './ontology/indexer.ts';
-import { applyMissingInversePlans, applyScaffoldPlan, fixMissingInverses, planMissingInverses, planScaffoldEntity, shouldAutoApplyScaffold } from './ontology/mutations.ts';
+import { applyMissingInversePlans, applyScaffoldPlan, detectAutoApplyType, fixMissingInverses, planMissingInverses, planScaffoldEntity, shouldAutoApplyScaffold } from './ontology/mutations.ts';
 import type { TypeReplacement } from './ontology/types.ts';
-import { normalizeLinkTarget } from './ontology/links.ts';
+import { extractAssertedLinkTargets, normalizeLinkTarget } from './ontology/links.ts';
 import { runOntologyQueryDetailed } from './ontology/query.ts';
 import { summarizeIssues } from './ontology/issues.ts';
 import { OntologyIssuesModal } from './OntologyIssuesModal.ts';
@@ -376,8 +376,17 @@ export class Plugin extends ObsidianPlugin {
     }).open();
   }
 
+  private typeEditorNames(): { typeNames: string[]; interfaceNames: string[] } {
+    const all = [...(this.index?.types.values() ?? [])];
+    return {
+      interfaceNames: all.filter((t) => t.isInterface).map((t) => t.name).sort(),
+      typeNames: all.filter((t) => !t.isInterface).map((t) => t.name).sort(),
+    };
+  }
+
   private openTypeEditorForCreate(preset: TypeEditorModel): void {
     new OntologyTypeEditorModal(this.app, {
+      ...this.typeEditorNames(),
       editing: false,
       model: preset,
       onSave: async (model) => {
@@ -408,6 +417,7 @@ export class Plugin extends ObsidianPlugin {
       return;
     }
     new OntologyTypeEditorModal(this.app, {
+      ...this.typeEditorNames(),
       editing: true,
       model: typeEditorModelFromType(type),
       onSave: async (model) => {
@@ -758,6 +768,47 @@ export class Plugin extends ObsidianPlugin {
     const membershipBefore = index.entities.get(file.path)?.instanceOf ?? [];
     this.index = await upsertOntologyFile(this.app, index, file, this.indexSettings());
     const membershipAfter = this.index.entities.get(file.path)?.instanceOf ?? [];
+
+    // Auto-apply detection: if the file is not yet typed, scan all types with
+    // conditional auto-apply to see if any match the file's frontmatter.  When
+    // one matches, stamp is-instance and reconcile `up` for Breadcrumbs:
+    //   - add the direct type to `up` so the chain reads entity → type → parent
+    //   - remove ancestor types from `up` (they're now reachable through the
+    //     type chain; non-type links like topic pages are left alone)
+    if (membershipAfter.length === 0) {
+      const rawFrontmatter = this.app.metadataCache.getFileCache(file)?.frontmatter ?? {};
+      const matched = detectAutoApplyType(this.index, rawFrontmatter);
+      if (matched) {
+        const ancestors = this.index.ancestorsByType.get(matched) ?? new Set<string>();
+        // Walk up extends chain to find the root known ancestor for `up`.
+        // e.g. philosopher → person (root), so up becomes [[person]].
+        let rootAncestor = matched;
+        for (const ancestor of ancestors) {
+          const ancestorType = this.index.types.get(ancestor);
+          if (!ancestorType?.extends.some((p) => this.index.types.has(p))) {
+            rootAncestor = ancestor;
+            break;
+          }
+        }
+        await this.app.fileManager.processFrontMatter(file, (fm) => {
+          const primaryField = this.pluginSettings.entityTypeFields?.[0] ?? 'is-instance';
+          fm[primaryField] = `[[${matched}]]`;
+          // Rebuild `up`: keep non-type links, drop all type names (matched and
+          // ancestors), set the root ancestor as the single type-derived up value.
+          const allTypeNames = new Set([matched, ...ancestors]);
+          const existing: unknown[] = Array.isArray(fm['up'])
+            ? fm['up'] as unknown[]
+            : fm['up'] != null ? [fm['up']] : [];
+          const kept = existing.filter((v) => {
+            const target = typeof v === 'string' ? normalizeLinkTarget(v) : null;
+            return target === null || !allTypeNames.has(target);
+          });
+          kept.push(`[[${rootAncestor}]]`);
+          fm['up'] = kept.length === 1 ? kept[0] : kept;
+        });
+        return;
+      }
+    }
 
     const membershipChanged = membershipBefore.length !== membershipAfter.length
       || membershipBefore.some((typeName, position) => typeName !== membershipAfter[position]);

@@ -46,8 +46,15 @@ The relevant settings are:
 
 The type folder is configurable.
 Any Markdown file inside that folder is treated as a schema constructor file instead of an entity note.
-Frontmatter property and relation identifiers conventionally use kebab-case.
-Use names such as `is-instance`, `birth-year`, and `influenced-by`; the internal schema linter warns about underscore or mixed-case schema identifiers.
+Frontmatter property and relation identifiers must use kebab-case.
+Use names such as `is-instance`, `birth-year`, and `influenced-by`.
+The rules are:
+
+- **Hyphens only** — no underscores, no dots, no camelCase.
+- **Lowercase only** — no uppercase letters.
+- **No dots** — dots are conceptually reserved as a subfield separator, but subfields are expressed through YAML nesting, not dot-notation keys. A key containing a dot is always a mistake.
+
+The plugin auto-normalizes malformed keys on read — dots, underscores, and camelCase segments are all converted to kebab-case silently. `influence.weight`, `influence_weight`, and `influenceWeight` all become `influence-weight` when parsed. For entity files with malformed keys, the diagnostics panel offers a one-click fix to rewrite the frontmatter in place.
 
 The command palette includes `Create ontology type` and `Edit active ontology type`.
 The structured editor manages type/interface flags, inheritance, implemented interfaces, required and optional fields, unions, inserts, aliases, value constraints, and relation behavior without requiring direct YAML editing.
@@ -202,6 +209,8 @@ These fields are recognized in type, interface, and single-schema type definitio
 | `excludes` | link or array of links | Types that must not appear in an entity's resolved membership alongside this type. |
 | `replaces` | link, array of links, or array of `{value, field}` objects | When this type is applied to an entity, the listed membership values are removed from entity type fields. |
 | `template` | link | A Markdown note to use as a body template when this type is first applied to an entity with an empty body. Templater is invoked if available; otherwise the body text is copied verbatim. |
+| `implementable-by` | link or array of links | Interfaces only. Restricts which types (or their subtypes) are allowed to implement this interface. A type that implements an interface outside this list is a schema error. |
+| `scales` | map | Named scale definitions for weighted property fields. See [Scales and Weighted Properties](#scales-and-weighted-properties). |
 
 ### Requires and Excludes
 
@@ -352,6 +361,8 @@ Recognized property definition fields:
 | `cardinality` | Currently validates `one` and `one-to-one` as single-value constraints. |
 | `insert` | Literal required member, or registered template used to initialize an empty field. |
 | `possible-values` | Inline allowed values for this property. |
+| `weighted` | `true` to attach the built-in default weight scale to this field. The companion weight map field is named `{field-key}-weight`. |
+| `weight-scale` | Name of a scale defined in a `scales` block. Attaches a named weight scale to this field. The companion weight map field is named after the scale. |
 
 Required inserted member:
 
@@ -410,6 +421,117 @@ Detected scalar types:
 | `date` | Value must parse as a date string. |
 | `wikilink` or `link` | Value must contain an asserted Obsidian link. |
 | `[[TypeName]]` | Used for nominal lookup when `TypeName` is a `type: nominal`. |
+
+## Scales and Weighted Properties
+
+Many relationships are not binary — the degree of influence, agreement, or association matters.
+Scales let you attach a numeric intensity to any link-valued field and query it by name rather than raw number.
+
+### Declaring a Scale
+
+Scales live in a `scales` block on any type or interface constructor file.
+The scale name is also the frontmatter key that holds the companion weight map on entity notes.
+
+```yaml
+# influence.md
+interface: true
+can-have:
+  influenced-by:
+    type: wikilink
+    weight-scale: influence-weight
+  influence-weight:
+    type: object
+scales:
+  influence-weight:
+    min: -2
+    max: 2
+    neutral: 0
+    steps:
+      "2":
+        - highly influenced
+        - strongly influenced
+      "1":
+        - influenced
+        - somewhat influenced
+      "0":
+        - neutral
+      "-1":
+        - somewhat opposed
+      "-2":
+        - reacted against
+        - opposed
+```
+
+Scale fields:
+
+| Field | Meaning |
+|---|---|
+| `min` | Minimum allowed numeric value. Values below this are flagged as errors. |
+| `max` | Maximum allowed numeric value. Values above this are flagged as errors. |
+| `neutral` | The default / zero-point value. Used by the `WEIGHTED` query operator. Defaults to `0`. |
+| `steps` | Map of numeric string keys to lists of human-readable aliases. |
+| `normalize` | Custom word-strip list for alias matching. Omit to use the built-in default. |
+
+### Using Weights on Entities
+
+The companion weight map key matches the scale name.
+Keys in the map are entity names (matching the corresponding link field); values are integers.
+
+```yaml
+# nietzsche.md
+influenced-by:
+  - "[[kant]]"
+  - "[[schopenhauer]]"
+influence-weight:
+  kant: 2
+  schopenhauer: 1
+```
+
+### Querying Weights
+
+Weight map fields support four query forms:
+
+```
+influence-weight: "highly influenced"    → any entry resolves to step 2
+influence-weight: "influenced by"        → same — prepositions are stripped before matching
+influence-weight: kant                   → kant is present as a key in the map
+influence-weight: WEIGHTED               → at least one entry with value ≠ neutral
+influence-weight: 2                      → any entry equals 2 directly
+```
+
+When a field declares `weight-scale`, you can also query through the link field itself:
+
+```
+influenced-by: "highly influenced"       → checks the companion weight map via the declared scale
+```
+
+### Alias Normalization
+
+Aliases are matched after stripping common prepositions (`by`, `from`, `of`, `to`, `with`, `at`, `in`, `on`, `into`, `onto`, `via`, `per`) and articles (`a`, `an`, `the`), and lowercasing.
+This means `"influenced by"`, `"influenced"`, and `"Influenced By"` all resolve to the same step without requiring you to list every variant explicitly.
+
+The normalization runs on both the stored aliases and the query input, so neither side needs to be written in any particular form.
+
+A custom strip list can be provided per scale with the `normalize` key, but this is rarely needed — the built-in default handles most natural language variation.
+
+### Default Scale
+
+Any field declaring `weighted: true` without a named `weight-scale` uses the built-in default scale:
+
+| Step | Default aliases |
+|---|---|
+| `2` | high, strong, strongly, significant |
+| `1` | moderate, somewhat, partial |
+| `0` | neutral |
+| `-1` | low, somewhat against |
+| `-2` | strongly against, opposed |
+
+Range: `−2` to `2`, neutral at `0`.
+
+### Validation
+
+Weight map values outside the declared `min`/`max` are flagged as errors.
+The neutral value is not validated against the range — it is always permitted.
 
 ## Relation Definitions
 

@@ -17,6 +17,7 @@ import {
 import { containsFrontmatterValue, extractAssertedLinkTargets, extractAssertedWikiLinkTargets, extractLinkTargets, extractNegatedLinkTargets, hasNegatedTarget, normalizeLinkTarget } from './links.ts';
 import { isInsertTemplate } from './templates.ts';
 import { parseTypeExpression } from './type-expression.ts';
+import { scaleNeutral } from './scale.ts';
 
 export function hasValue(frontmatter: Record<string, unknown>, key: string): boolean {
   const value = frontmatter[key];
@@ -283,6 +284,29 @@ export function validateSingleEntity(index: OntologyIndex, entity: OntologyEntit
   for (const [property, relation] of resolveEntityRelations(index, entity.instanceOf)) {
     validateRelation(index, entity, property, relation);
   }
+
+  // Validate weight map values against their scale's min/max.
+  // Any object-valued frontmatter key that matches a known scale name is a weight map.
+  for (const [key, mapValue] of Object.entries(entity.frontmatter)) {
+    if (!mapValue || typeof mapValue !== 'object' || Array.isArray(mapValue)) continue;
+    const scale = index.scales.get(key);
+    if (!scale) continue;
+    const { min, max } = scale;
+    if (min === undefined && max === undefined) continue;
+    const neutral = scaleNeutral(scale);
+    for (const [entryKey, entryValue] of Object.entries(mapValue as Record<string, unknown>)) {
+      if (typeof entryValue !== 'number') continue;
+      if (entryValue === neutral) continue;
+      if ((min !== undefined && entryValue < min) || (max !== undefined && entryValue > max)) {
+        pushIssueOnce(index.issues, {
+          file: entity.path,
+          message: `${key}.${entryKey} value ${entryValue} is outside scale range [${min ?? '−∞'}, ${max ?? '∞'}]`,
+          property: key,
+          severity: 'error',
+        });
+      }
+    }
+  }
 }
 
 export function validateIndex(index: OntologyIndex): void {
@@ -476,6 +500,29 @@ export function validateSchemaCompositionConflicts(index: OntologyIndex): void {
             fields.set(frontmatterKey, { bucket, definition: resolved, semanticId, source });
           }
         }
+      }
+    }
+  }
+
+  // Check implementable-by: if an interface restricts who can implement it,
+  // the implementing type (or one of its ancestors) must be in that list.
+  for (const type of index.types.values()) {
+    if (isRelationDefinitionRegistry(type) || isFieldDefinitionRegistry(type) || type.isInterface) {
+      continue;
+    }
+    for (const ifaceName of type.implements) {
+      const iface = index.types.get(ifaceName);
+      if (!iface?.implementableBy?.length) {
+        continue;
+      }
+      const allowed = new Set(iface.implementableBy);
+      const typeAndAncestors = new Set([type.name, ...(index.ancestorsByType.get(type.name) ?? [])]);
+      if (![...typeAndAncestors].some((t) => allowed.has(t))) {
+        pushIssueOnce(index.issues, {
+          file: type.path,
+          message: `${type.name} cannot implement ${ifaceName}: only ${[...allowed].join(', ')} (or their subtypes) may implement it`,
+          severity: 'error',
+        });
       }
     }
   }

@@ -15,6 +15,7 @@ const TYPE_KEYS = new Set([
   'excludes',
   'extends',
   'fields',
+  'implementable-by',
   'implements',
   'requires',
   'interface',
@@ -22,6 +23,7 @@ const TYPE_KEYS = new Set([
   'must-have',
   'relations',
   'replaces',
+  'scales',
   'template',
   'type',
   'values',
@@ -36,6 +38,8 @@ const PROPERTY_KEYS = new Set([
   'possible-values',
   'type',
   'uses',
+  'weight-scale',
+  'weighted',
 ]);
 
 const RELATION_KEYS = new Set([
@@ -121,7 +125,7 @@ function lintBoolean(file: string, context: string, value: unknown, issues: Onto
 
 function lintKebabCase(file: string, context: string, value: unknown, issues: OntologyIssue[]): void {
   if (typeof value === 'string' && !/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(value)) {
-    issues.push(issue(file, `${context} ${value} should use kebab-case`, 'warning'));
+    issues.push(issue(file, `${context} "${value}" is not kebab-case and will be auto-normalized`, 'warning'));
   }
 }
 

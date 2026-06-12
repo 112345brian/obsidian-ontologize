@@ -1,6 +1,6 @@
 import type { App } from 'obsidian';
 
-import type { AutoApplyBlock, EffectiveLockState, FrontmatterIgnoreRule, OntologyEntity, OntologyIndex, OntologyIssue, OntologyType, PropertyDefinition, RelationDefinition, TypeReplacement } from './types.ts';
+import type { AutoApplyBlock, EffectiveLockState, FrontmatterIgnoreRule, OntologyEntity, OntologyIndex, OntologyIssue, OntologyType, PropertyDefinition, RelationDefinition, Scale, TypeReplacement } from './types.ts';
 
 function mapToObject<T>(map: Map<string, T>, mapper: (value: T) => unknown): Record<string, unknown> {
   return Object.fromEntries([...map.entries()].map(([key, value]) => [key, mapper(value)]));
@@ -58,6 +58,7 @@ function hydrateType(value: unknown): OntologyType {
     excludes: Array.isArray(record['excludes']) ? record['excludes'].map(String) : [],
     extends: Array.isArray(record['extends']) ? record['extends'].map(String) : [],
     fields: hydrateMap<PropertyDefinition>(record['fields'], (item) => item as PropertyDefinition),
+    implementableBy: Array.isArray(record['implementableBy']) ? record['implementableBy'].map(String) : [],
     implements: Array.isArray(record['implements']) ? record['implements'].map(String) : [],
     replaces: Array.isArray(record['replaces']) ? record['replaces'].flatMap((r: unknown): TypeReplacement[] => {
       if (typeof r === 'string') {
@@ -74,6 +75,20 @@ function hydrateType(value: unknown): OntologyType {
     name: stringValue(record['name']),
     path: stringValue(record['path']),
     relations: hydrateMap<RelationDefinition>(record['relations'], (item) => item as RelationDefinition),
+    scales: hydrateMap<Scale>(record['scales'], (item) => {
+      const raw = asRecord(item);
+      const stepsRaw = asRecord(raw['steps']);
+      const steps: Record<string, string[]> = {};
+      for (const [k, v] of Object.entries(stepsRaw)) {
+        steps[k] = Array.isArray(v) ? v.map(String) : [String(v)];
+      }
+      const scale: Scale = { steps };
+      if (typeof raw['min'] === 'number') scale.min = raw['min'];
+      if (typeof raw['max'] === 'number') scale.max = raw['max'];
+      if (typeof raw['neutral'] === 'number') scale.neutral = raw['neutral'];
+      if (Array.isArray(raw['normalize'])) scale.normalize = raw['normalize'].map(String);
+      return scale;
+    }),
     template: typeof record['template'] === 'string' ? record['template'] : undefined,
     typeKind: typeof record['typeKind'] === 'string' ? record['typeKind'] : undefined,
     values: Array.isArray(record['values']) ? record['values'].map(String) : [],
@@ -104,6 +119,13 @@ export async function readOntologyCache(app: App, cachePath: string): Promise<On
 
     const entities = hydrateMap<OntologyEntity>(payload['entities'], hydrateEntity);
     const settings = asRecord(payload['settings']);
+    const types = hydrateMap<OntologyType>(payload['types'], hydrateType);
+    const scales = new Map<string, Scale>();
+    for (const type of types.values()) {
+      for (const [name, scale] of type.scales) {
+        scales.set(name, scale);
+      }
+    }
     return {
       ambiguousEntityNames: new Set(Array.isArray(payload['ambiguousEntityNames']) ? payload['ambiguousEntityNames'].map(String) : []),
       ancestorsByType: hydrateMap<Set<string>>(payload['ancestorsByType'], (item) => new Set(Array.isArray(item) ? item.map(String) : [])),
@@ -117,6 +139,7 @@ export async function readOntologyCache(app: App, cachePath: string): Promise<On
       generatedAt: stringValue(payload['generatedAt']),
       issues: Array.isArray(payload['issues']) ? payload['issues'] as OntologyIssue[] : [],
       relationDefinitions: hydrateMap<RelationDefinition>(payload['relationDefinitions'], (item) => item as RelationDefinition),
+      scales,
       schemaIssues: Array.isArray(payload['schemaIssues']) ? payload['schemaIssues'] as OntologyIssue[] : [],
       settings: {
         autoApplyBlockPrefix: stringValue(settings['autoApplyBlockPrefix'], 'condition-'),
@@ -127,7 +150,7 @@ export async function readOntologyCache(app: App, cachePath: string): Promise<On
         schemaPath: stringValue(settings['schemaPath']),
         typeFolder: stringValue(settings['typeFolder'], '_types'),
       },
-      types: hydrateMap<OntologyType>(payload['types'], hydrateType),
+      types,
     };
   } catch {
     return null;
@@ -158,6 +181,7 @@ export async function writeOntologyCache(app: App, cachePath: string, index: Ont
       isInterface: value.isInterface,
       mustHave: Object.fromEntries(value.mustHave),
       relations: Object.fromEntries(value.relations),
+      scales: Object.fromEntries(value.scales),
     })),
   };
 

@@ -3,15 +3,14 @@ import type { App } from 'obsidian';
 import { Modal, Notice, Setting } from 'obsidian';
 
 import type { TypeEditorField, TypeEditorModel, TypeEditorRelation } from './ontology/type-editor.ts';
+import { TagInput } from './TagInput.ts';
 
-interface OntologyTypeEditorModalOptions {
+export interface OntologyTypeEditorModalOptions {
   editing: boolean;
+  interfaceNames: string[];
   model: TypeEditorModel;
   onSave: (model: TypeEditorModel) => Promise<boolean>;
-}
-
-function splitNames(value: string): string[] {
-  return value.split(/[\n,]/).map((item) => item.trim()).filter(Boolean);
+  typeNames: string[];
 }
 
 function emptyField(): TypeEditorField {
@@ -48,7 +47,6 @@ export class OntologyTypeEditorModal extends Modal {
     contentEl.addClass('ontology-type-editor-modal');
     contentEl.createEl('h2', { text: this.options.editing ? `Edit ${model.name}` : 'Create Ontology Type' });
 
-    // Tab bar
     const tabs = contentEl.createEl('div', { cls: 'ontology-editor-tabs' });
     const tabDefs: { id: TabId; label: string }[] = [
       { id: 'general', label: 'General' },
@@ -70,40 +68,63 @@ export class OntologyTypeEditorModal extends Modal {
     const panel = contentEl.createEl('div', { cls: 'ontology-editor-panel' });
 
     if (this.activeTab === 'general') {
-      new Setting(panel)
-        .setName('Type name')
-        .setDesc(this.options.editing ? 'The file name determines the type name.' : 'Creates a Markdown constructor file in the configured type folder.')
-        .addText((text) => {
-          text.setPlaceholder('journal-entry').setValue(model.name).onChange((value) => { model.name = value.trim(); });
-          if (this.options.editing) text.setDisabled(true);
-        });
-
-      new Setting(panel).setName('Locked').setDesc('Valid instances participate in locked queries.').addToggle((t) => t.setValue(model.lock).onChange((v) => { model.lock = v; }));
-      new Setting(panel).setName('Abstract').setDesc('This type cannot be instantiated directly.').addToggle((t) => t.setValue(model.abstract).onChange((v) => { model.abstract = v; }));
-      new Setting(panel).setName('Interface').setDesc('This constructor is composed through implements.').addToggle((t) => t.setValue(model.isInterface).onChange((v) => { model.isInterface = v; }));
-
-      new Setting(panel).setName('Extends').setDesc('Parent types, separated by commas or lines.').addTextArea((text) => text.setPlaceholder('person').setValue(model.extends.join('\n')).onChange((v) => { model.extends = splitNames(v); }));
-      new Setting(panel).setName('Implements').setDesc('Interfaces, separated by commas or lines.').addTextArea((text) => text.setPlaceholder('observable').setValue(model.implements.join('\n')).onChange((v) => { model.implements = splitNames(v); }));
-      new Setting(panel).setName('Requires').setDesc('Classes an entity must already belong to before this class can apply.').addTextArea((text) => text.setPlaceholder('person').setValue(model.requires.join('\n')).onChange((v) => { model.requires = splitNames(v); }));
-      new Setting(panel).setName('Excludes').setDesc('Classes that cannot coexist with this one on the same entity.').addTextArea((text) => text.setPlaceholder('building').setValue(model.excludes.join('\n')).onChange((v) => { model.excludes = splitNames(v); }));
-      new Setting(panel).setName('Replaces').setDesc('Classes removed from the entity when this class is applied.').addTextArea((text) => text.setPlaceholder('friend').setValue(model.replaces.join('\n')).onChange((v) => { model.replaces = splitNames(v); }));
-      new Setting(panel).setName('Template').setDesc('Templater template applied when this type is first assigned.').addText((text) => text.setPlaceholder('My Template').setValue(model.template).onChange((v) => { model.template = v.trim(); }));
+      this.renderGeneral(panel);
     }
-
     if (this.activeTab === 'fields') {
       this.renderFieldSection(panel, 'Required fields', model.mustHave, 'must-have');
       this.renderFieldSection(panel, 'Optional fields', model.canHave, 'can-have');
     }
-
     if (this.activeTab === 'relations') {
       this.renderRelations(panel);
     }
-
     if (this.activeTab === 'automation') {
       this.renderAutoApply(panel);
     }
 
     this.renderActions(contentEl);
+  }
+
+  private addTagSetting(
+    container: HTMLElement,
+    name: string,
+    desc: string,
+    values: string[],
+    suggestions: string[],
+    onChange: (values: string[]) => void,
+    placeholder?: string,
+  ): void {
+    const setting = new Setting(container).setName(name).setDesc(desc);
+    setting.controlEl.empty();
+    new TagInput(setting.controlEl, values, { onChange, placeholder, suggestions });
+  }
+
+  private renderGeneral(panel: HTMLElement): void {
+    const { model } = this.options;
+    const { typeNames, interfaceNames } = this.options;
+
+    new Setting(panel)
+      .setName('Type name')
+      .setDesc(this.options.editing ? 'The file name determines the type name.' : 'Creates a Markdown constructor file in the configured type folder.')
+      .addText((text) => {
+        text.setPlaceholder('journal-entry').setValue(model.name).onChange((value) => { model.name = value.trim(); });
+        if (this.options.editing) text.setDisabled(true);
+      });
+
+    new Setting(panel).setName('Locked').setDesc('Valid instances participate in locked queries.').addToggle((t) => t.setValue(model.lock).onChange((v) => { model.lock = v; }));
+    new Setting(panel).setName('Abstract').setDesc('This type cannot be instantiated directly.').addToggle((t) => t.setValue(model.abstract).onChange((v) => { model.abstract = v; }));
+    new Setting(panel).setName('Interface').setDesc('This constructor is composed through implements.').addToggle((t) => t.setValue(model.isInterface).onChange((v) => { model.isInterface = v; }));
+
+    this.addTagSetting(panel, 'Extends', 'Parent types.', model.extends, typeNames, (v) => { model.extends = v; });
+    this.addTagSetting(panel, 'Implements', 'Interfaces this type composes.', model.implements, interfaceNames, (v) => { model.implements = v; });
+    this.addTagSetting(panel, 'Requires', 'Classes an entity must already belong to before this class can apply.', model.requires, typeNames, (v) => { model.requires = v; });
+    this.addTagSetting(panel, 'Excludes', 'Classes that cannot coexist with this one on the same entity.', model.excludes, typeNames, (v) => { model.excludes = v; });
+    this.addTagSetting(panel, 'Replaces', 'Classes removed from the entity when this class is applied.', model.replaces, typeNames, (v) => { model.replaces = v; });
+
+    if (model.isInterface) {
+      this.addTagSetting(panel, 'Implementable by', 'Only these types (and their subtypes) may implement this interface.', model.implementableBy, typeNames, (v) => { model.implementableBy = v; });
+    }
+
+    new Setting(panel).setName('Template').setDesc('Templater template applied when this type is first assigned.').addText((text) => text.setPlaceholder('My Template').setValue(model.template).onChange((v) => { model.template = v.trim(); }));
   }
 
   private renderAutoApply(containerEl: HTMLElement): void {
@@ -158,6 +179,7 @@ export class OntologyTypeEditorModal extends Modal {
   }
 
   private renderFieldSection(containerEl: HTMLElement, title: string, fields: TypeEditorField[], kind: string): void {
+    const { typeNames } = this.options;
     const section = containerEl.createEl('section', { cls: 'ontology-type-editor-section' });
     const header = section.createEl('div', { cls: 'ontology-type-editor-header' });
     header.createEl('h3', { text: title });
@@ -185,16 +207,35 @@ export class OntologyTypeEditorModal extends Modal {
           fields.splice(index, 1);
           this.render();
         }));
-      new Setting(row)
-        .setName('Advanced constraints')
-        .addText((text) => text.setPlaceholder('frontmatter-key').setValue(field.frontmatterKey).onChange((value) => { field.frontmatterKey = value.trim(); }))
-        .addText((text) => text.setPlaceholder('included types').setValue(field.includedTypes.join(', ')).onChange((value) => { field.includedTypes = splitNames(value); }))
-        .addText((text) => text.setPlaceholder('excluded types').setValue(field.excludedTypes.join(', ')).onChange((value) => { field.excludedTypes = splitNames(value); }))
-        .addText((text) => text.setPlaceholder('possible values').setValue(field.possibleValues.join(', ')).onChange((value) => { field.possibleValues = splitNames(value); }));
+
+      const advanced = new Setting(row).setName('Advanced constraints');
+      advanced.addText((text) => text.setPlaceholder('frontmatter-key').setValue(field.frontmatterKey).onChange((value) => { field.frontmatterKey = value.trim(); }));
+
+      // Tag inputs for type-name lists
+      const constraintEl = advanced.controlEl.createEl('div', { cls: 'ontology-field-tag-group' });
+
+      const incLabel = constraintEl.createEl('span', { cls: 'ontology-field-tag-label', text: 'included types' });
+      const incWrap = constraintEl.createEl('div');
+      new TagInput(incWrap, field.includedTypes, { onChange: (v) => { field.includedTypes = v; }, placeholder: 'included types', suggestions: typeNames });
+      constraintEl.appendChild(incLabel);
+      constraintEl.appendChild(incWrap);
+
+      const excLabel = constraintEl.createEl('span', { cls: 'ontology-field-tag-label', text: 'excluded types' });
+      const excWrap = constraintEl.createEl('div');
+      new TagInput(excWrap, field.excludedTypes, { onChange: (v) => { field.excludedTypes = v; }, placeholder: 'excluded types', suggestions: typeNames });
+      constraintEl.appendChild(excLabel);
+      constraintEl.appendChild(excWrap);
+
+      const valLabel = constraintEl.createEl('span', { cls: 'ontology-field-tag-label', text: 'possible values' });
+      const valWrap = constraintEl.createEl('div');
+      new TagInput(valWrap, field.possibleValues, { onChange: (v) => { field.possibleValues = v; }, placeholder: 'possible values' });
+      constraintEl.appendChild(valLabel);
+      constraintEl.appendChild(valWrap);
     }
   }
 
   private renderRelations(containerEl: HTMLElement): void {
+    const { typeNames } = this.options;
     const section = containerEl.createEl('section', { cls: 'ontology-type-editor-section' });
     const header = section.createEl('div', { cls: 'ontology-type-editor-header' });
     header.createEl('h3', { text: 'Relations' });
@@ -210,12 +251,20 @@ export class OntologyTypeEditorModal extends Modal {
         .addText((text) => text.setPlaceholder('relation-name').setValue(relation.name).onChange((value) => { relation.name = value.trim(); }))
         .addText((text) => text.setPlaceholder('uses').setValue(relation.uses).onChange((value) => { relation.uses = value.trim(); }))
         .addText((text) => text.setPlaceholder('value type').setValue(relation.valueType).onChange((value) => { relation.valueType = value; }))
-        .addText((text) => text.setPlaceholder('range').setValue(relation.range).onChange((value) => { relation.range = value; }))
         .addText((text) => text.setPlaceholder('inverse').setValue(relation.inverse).onChange((value) => { relation.inverse = value.trim(); }))
         .addButton((button) => button.setIcon('trash-2').setTooltip('Remove relation').onClick(() => {
           this.options.model.relations.splice(index, 1);
           this.render();
         }));
+
+      const rangeSetting = new Setting(row).setName('Range');
+      rangeSetting.controlEl.empty();
+      new TagInput(rangeSetting.controlEl, relation.range ? [relation.range] : [], {
+        onChange: (v) => { relation.range = v[0] ?? ''; },
+        placeholder: 'range type',
+        suggestions: typeNames,
+      });
+
       new Setting(row)
         .setName('Relation behavior')
         .addDropdown((dropdown) => dropdown.addOption('', 'Any cardinality').addOption('one', 'One').addOption('one-to-one', 'One-to-one').setValue(relation.cardinality).onChange((value) => { relation.cardinality = value; }))

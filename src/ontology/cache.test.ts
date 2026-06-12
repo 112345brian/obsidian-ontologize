@@ -58,6 +58,7 @@ function makeIndex(): OntologyIndex {
     relationDefinitions: new Map([
       ['influenced_by', { autoUpdate: true, inverse: 'influenced', range: 'Person', valueType: 'wikilink' }],
     ]),
+    scales: new Map(),
     schemaIssues: [
       { file: '_types/Broken.md', message: 'Unknown type field typo', severity: 'warning' as const },
     ],
@@ -83,6 +84,7 @@ function makeIndex(): OntologyIndex {
         requires: ['Person'],
         template: 'Templates/Philosopher',
         fields: new Map([['birth-year', { frontmatterKey: 'birth_year', type: 'number' }]]),
+        implementableBy: [],
         implements: ['Influenceable'],
         isInterface: false,
         lockIntent: true,
@@ -90,6 +92,7 @@ function makeIndex(): OntologyIndex {
         name: 'Philosopher',
         path: '_types/Philosopher.md',
         relations: new Map([['influenced_by', { uses: 'influenced_by' }]]),
+        scales: new Map(),
         typeKind: undefined,
         values: [],
       }],

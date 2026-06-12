@@ -94,10 +94,10 @@ describe('schema linter', () => {
     const issues = lintOntologyTypeSource('_types/Legacy.md', '---\nunderscore-names\n---');
 
     expect(issues.map((entry) => entry.message)).toEqual(expect.arrayContaining([
-      'Property name birth_year should use kebab-case',
-      'Property birth_year.frontmatter-key birth_year should use kebab-case',
-      'Relation name influenced_by should use kebab-case',
-      'Relation influenced_by.inverse influences_person should use kebab-case',
+      'Property name "birth_year" is not kebab-case and will be auto-normalized',
+      'Property birth_year.frontmatter-key "birth_year" is not kebab-case and will be auto-normalized',
+      'Relation name "influenced_by" is not kebab-case and will be auto-normalized',
+      'Relation influenced_by.inverse "influences_person" is not kebab-case and will be auto-normalized',
     ]));
   });
 

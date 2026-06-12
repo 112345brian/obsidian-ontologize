@@ -14,6 +14,7 @@ export function makeOntologyType(overrides: Partial<OntologyType> & { name: stri
     excludes: [],
     extends: [],
     fields: new Map(),
+    implementableBy: [],
     implements: [],
     isInterface: false,
     lockIntent: false,
@@ -22,6 +23,7 @@ export function makeOntologyType(overrides: Partial<OntologyType> & { name: stri
     relations: new Map(),
     replaces: [],
     requires: [],
+    scales: new Map(),
     values: [],
     ...overrides,
   };

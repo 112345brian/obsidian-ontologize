@@ -12,7 +12,7 @@ The fundamental problem this solves: **you should not have to repeat yourself**.
 
 If you declare a note as `is-instance: [[Friend]]`, you should never also have to tag it `people`, `friends-and-family`, or any other parent type. The system resolves the full inheritance chain automatically. Querying `type: Person` returns your friend. You said it once.
 `is-instance` is the default membership field; vaults can configure different frontmatter fields for ontology membership.
-Schema-facing frontmatter identifiers use kebab-case, including property and relation names such as `birth-year` and `influenced-by`.
+Schema-facing frontmatter identifiers must use kebab-case — hyphens only, lowercase only, no underscores, no dots, no camelCase. Examples: `birth-year`, `influenced-by`, `thought-kind`. Subfield relationships are expressed through YAML nesting, not dot-notation keys. The plugin auto-normalizes malformed keys on read; the diagnostics panel offers one-click fixes for entity files with non-conforming keys.
 
 Everything else in this system — validation, relations, queries, migrations — exists to make that inheritance trustworthy at scale. The consistency checker exists not as an end in itself but so that when you query "philosophers who didn't influence Nietzsche who were women" you can trust the answer.
 
@@ -153,6 +153,19 @@ implements:
 An instance of `Philosopher` is treated as a `Person` through inheritance and as `Influenceable` through composition.
 Queries such as `type: Influenceable` include philosophers that implement that interface.
 Validation flattens both `extends` and `implements`.
+
+An interface can restrict which types are permitted to implement it with `implementable-by`:
+
+```markdown
+# Influenceable
+interface: true
+implementable-by:
+  - "[[Person]]"
+  - "[[Thought]]"
+```
+
+A type outside this list (or not a subtype of a listed type) that attempts to implement the interface is a schema error.
+Omitting `implementable-by` leaves the interface open to any type.
 
 When multiple inherited or implemented contracts define the same frontmatter key, the composed schema follows these rules:
 
@@ -388,6 +401,54 @@ Generated inserts initialize empty fields only and never overwrite or append to 
 Validation checks the generated value against the field contract without requiring it to equal the template source text.
 Template evaluation is whitelist-based and does not execute arbitrary JavaScript.
 
+### Weighted Properties
+
+Many relationships are gradients, not binaries. `weight-scale` attaches a named scale to any link field, making it queryable by intensity rather than just by target.
+
+```markdown
+# influence.md
+can-have:
+  influenced-by:
+    type: wikilink
+    weight-scale: influence-weight
+```
+
+The companion weight map is a plain frontmatter object on entity notes:
+
+```yaml
+influenced-by:
+  - "[[kant]]"
+influence-weight:
+  kant: 2
+```
+
+Scales define the numeric range, a neutral/baseline value, and named aliases per step:
+
+```yaml
+scales:
+  influence-weight:
+    min: -2
+    max: 2
+    neutral: 0
+    steps:
+      "2": [highly influenced, strongly influenced]
+      "0": [neutral]
+      "-2": [reacted against, opposed]
+```
+
+Aliases are matched after stripping prepositions and articles, so `"influenced by"` and `"influenced"` resolve to the same step without listing both.
+
+The `WEIGHTED` query token returns entities that have at least one non-neutral entry in the map:
+
+```
+influence-weight: WEIGHTED
+influence-weight: "highly influenced"
+influenced-by: "reacted against"
+```
+
+A built-in default scale (`−2` to `2`, neutral `0`) applies to any field declaring `weighted: true` without a named scale.
+Values outside a scale's declared range are flagged as validation errors.
+
 ### Constraint Inheritance
 
 Subtypes may tighten constraints from parent types. A `can-have` in a parent can be promoted to `must-have` in a subtype. Constraints may not be loosened going down the hierarchy.
@@ -618,6 +679,15 @@ AND NOT wrote.title == "Ethics"
 ```
 type: Person AND birth-date: EXISTS
 type: Person AND death-date: NOT EXISTS
+```
+
+### Weight Queries
+
+```
+influence-weight: "highly influenced"    → any map entry resolves to that step
+influence-weight: kant                   → kant is present as a key in the map
+influence-weight: WEIGHTED               → at least one entry with a non-neutral value
+influenced-by: "reacted against"         → checks the companion map via the declared scale
 ```
 
 ### Future: Bases Integration

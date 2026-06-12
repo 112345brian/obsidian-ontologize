@@ -1,7 +1,8 @@
-import type { OntologyEntity, OntologyIndex } from './types.ts';
+import type { OntologyEntity, OntologyIndex, Scale } from './types.ts';
 
 import { entityCompositionChain } from './compose.ts';
 import { extractAssertedLinkTargets, hasNegatedTarget, normalizeLinkTarget } from './links.ts';
+import { DEFAULT_SCALE, normalizeAlias, resolveScaleAlias, scaleNeutral } from './scale.ts';
 
 interface AndNode {
   left: QueryNode;
@@ -166,6 +167,33 @@ function matchesPredicate(index: OntologyIndex, entity: OntologyEntity, predicat
   const expectedTarget = normalizeLinkTarget(predicate.value);
   if (extractAssertedLinkTargets(value).includes(expectedTarget)) {
     return true;
+  }
+
+  // Handle object/map values (e.g. influence-weight: { kant: 2, bataille: -2 })
+  if (value !== null && typeof value === 'object' && !Array.isArray(value)) {
+    const mapValue = value as Record<string, unknown>;
+    const cleanValue = predicate.value.replace(/^"|"$/g, '');
+    const scale: Scale = index.scales.get(predicate.key) ?? DEFAULT_SCALE;
+
+    // WEIGHTED: has at least one entry that isn't at the neutral value
+    if (/^WEIGHTED$/i.test(cleanValue)) {
+      const neutral = scaleNeutral(scale);
+      return Object.values(mapValue).some((v) => v !== neutral);
+    }
+
+    // Key presence check (e.g. influence-weight: kant)
+    if (cleanValue in mapValue || normalizeLinkTarget(cleanValue) in mapValue) {
+      return true;
+    }
+
+    // Scale alias resolution with normalization (e.g. "influenced by kant" → "influenced" → 2)
+    const resolved = resolveScaleAlias(scale, cleanValue);
+    if (resolved !== undefined && Object.values(mapValue).some((v) => v === resolved)) {
+      return true;
+    }
+
+    // Direct value match against map values
+    return Object.values(mapValue).some((v) => String(v) === cleanValue);
   }
 
   const expectedScalar = predicate.value.replace(/^"|"$/g, '');
