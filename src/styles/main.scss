@@ -191,6 +191,34 @@
   max-width: 100%;
 }
 
+.ontology-editor-tabs {
+  border-bottom: 1px solid var(--background-modifier-border);
+  display: flex;
+  gap: 0.125em;
+  margin-bottom: 0.75em;
+  margin-top: 0.5em;
+}
+
+.ontology-editor-tab {
+  background: none;
+  border: none;
+  border-bottom: 2px solid transparent;
+  color: var(--text-muted);
+  cursor: pointer;
+  font-size: var(--font-ui-medium);
+  margin-bottom: -1px;
+  padding: 0.4em 0.85em;
+}
+
+.ontology-editor-tab.is-active {
+  border-bottom-color: var(--interactive-accent);
+  color: var(--text-normal);
+}
+
+.ontology-editor-panel {
+  min-height: 12em;
+}
+
 .ontology-type-editor-section {
   border-top: 1px solid var(--background-modifier-border);
   margin-top: 1em;

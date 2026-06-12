@@ -26,8 +26,11 @@ function emptyRelation(): TypeEditorRelation {
   };
 }
 
+type TabId = 'general' | 'fields' | 'relations' | 'automation';
+
 export class OntologyTypeEditorModal extends Modal {
   private saving = false;
+  private activeTab: TabId = 'general';
 
   public constructor(app: App, private readonly options: OntologyTypeEditorModalOptions) {
     super(app);
@@ -45,56 +48,61 @@ export class OntologyTypeEditorModal extends Modal {
     contentEl.addClass('ontology-type-editor-modal');
     contentEl.createEl('h2', { text: this.options.editing ? `Edit ${model.name}` : 'Create Ontology Type' });
 
-    new Setting(contentEl)
-      .setName('Type name')
-      .setDesc(this.options.editing ? 'The file name determines the type name.' : 'Creates a Markdown constructor file in the configured type folder.')
-      .addText((text) => {
-        text.setPlaceholder('journal-entry').setValue(model.name).onChange((value) => { model.name = value.trim(); });
-        if (this.options.editing) {
-          text.setDisabled(true);
-        }
+    // Tab bar
+    const tabs = contentEl.createEl('div', { cls: 'ontology-editor-tabs' });
+    const tabDefs: { id: TabId; label: string }[] = [
+      { id: 'general', label: 'General' },
+      { id: 'fields', label: 'Fields' },
+      { id: 'relations', label: 'Relations' },
+      { id: 'automation', label: 'Automation' },
+    ];
+    for (const tab of tabDefs) {
+      const btn = tabs.createEl('button', {
+        cls: `ontology-editor-tab${this.activeTab === tab.id ? ' is-active' : ''}`,
+        text: tab.label,
       });
+      btn.addEventListener('click', () => {
+        this.activeTab = tab.id;
+        this.render();
+      });
+    }
 
-    const behavior = contentEl.createEl('section', { cls: 'ontology-type-editor-section' });
-    behavior.createEl('h3', { text: 'Behavior' });
-    new Setting(behavior).setName('Locked').setDesc('Valid instances participate in locked queries.').addToggle((toggle) => toggle.setValue(model.lock).onChange((value) => { model.lock = value; }));
-    new Setting(behavior).setName('Abstract').setDesc('This type cannot be instantiated directly.').addToggle((toggle) => toggle.setValue(model.abstract).onChange((value) => { model.abstract = value; }));
-    new Setting(behavior).setName('Interface').setDesc('This constructor is composed through implements.').addToggle((toggle) => toggle.setValue(model.isInterface).onChange((value) => { model.isInterface = value; }));
+    const panel = contentEl.createEl('div', { cls: 'ontology-editor-panel' });
 
-    new Setting(contentEl)
-      .setName('Extends')
-      .setDesc('Parent types, separated by commas or lines.')
-      .addTextArea((text) => text.setPlaceholder('person').setValue(model.extends.join('\n')).onChange((value) => { model.extends = splitNames(value); }));
+    if (this.activeTab === 'general') {
+      new Setting(panel)
+        .setName('Type name')
+        .setDesc(this.options.editing ? 'The file name determines the type name.' : 'Creates a Markdown constructor file in the configured type folder.')
+        .addText((text) => {
+          text.setPlaceholder('journal-entry').setValue(model.name).onChange((value) => { model.name = value.trim(); });
+          if (this.options.editing) text.setDisabled(true);
+        });
 
-    new Setting(contentEl)
-      .setName('Implements')
-      .setDesc('Interfaces, separated by commas or lines.')
-      .addTextArea((text) => text.setPlaceholder('observable').setValue(model.implements.join('\n')).onChange((value) => { model.implements = splitNames(value); }));
+      new Setting(panel).setName('Locked').setDesc('Valid instances participate in locked queries.').addToggle((t) => t.setValue(model.lock).onChange((v) => { model.lock = v; }));
+      new Setting(panel).setName('Abstract').setDesc('This type cannot be instantiated directly.').addToggle((t) => t.setValue(model.abstract).onChange((v) => { model.abstract = v; }));
+      new Setting(panel).setName('Interface').setDesc('This constructor is composed through implements.').addToggle((t) => t.setValue(model.isInterface).onChange((v) => { model.isInterface = v; }));
 
-    new Setting(contentEl)
-      .setName('Requires')
-      .setDesc('Classes an entity must already belong to before this class can apply. One per line.')
-      .addTextArea((text) => text.setPlaceholder('person').setValue(model.requires.join('\n')).onChange((value) => { model.requires = splitNames(value); }));
+      new Setting(panel).setName('Extends').setDesc('Parent types, separated by commas or lines.').addTextArea((text) => text.setPlaceholder('person').setValue(model.extends.join('\n')).onChange((v) => { model.extends = splitNames(v); }));
+      new Setting(panel).setName('Implements').setDesc('Interfaces, separated by commas or lines.').addTextArea((text) => text.setPlaceholder('observable').setValue(model.implements.join('\n')).onChange((v) => { model.implements = splitNames(v); }));
+      new Setting(panel).setName('Requires').setDesc('Classes an entity must already belong to before this class can apply.').addTextArea((text) => text.setPlaceholder('person').setValue(model.requires.join('\n')).onChange((v) => { model.requires = splitNames(v); }));
+      new Setting(panel).setName('Excludes').setDesc('Classes that cannot coexist with this one on the same entity.').addTextArea((text) => text.setPlaceholder('building').setValue(model.excludes.join('\n')).onChange((v) => { model.excludes = splitNames(v); }));
+      new Setting(panel).setName('Replaces').setDesc('Classes removed from the entity when this class is applied.').addTextArea((text) => text.setPlaceholder('friend').setValue(model.replaces.join('\n')).onChange((v) => { model.replaces = splitNames(v); }));
+      new Setting(panel).setName('Template').setDesc('Templater template applied when this type is first assigned.').addText((text) => text.setPlaceholder('My Template').setValue(model.template).onChange((v) => { model.template = v.trim(); }));
+    }
 
-    new Setting(contentEl)
-      .setName('Excludes')
-      .setDesc('Classes that cannot coexist with this one on the same entity. One per line.')
-      .addTextArea((text) => text.setPlaceholder('building').setValue(model.excludes.join('\n')).onChange((value) => { model.excludes = splitNames(value); }));
+    if (this.activeTab === 'fields') {
+      this.renderFieldSection(panel, 'Required fields', model.mustHave, 'must-have');
+      this.renderFieldSection(panel, 'Optional fields', model.canHave, 'can-have');
+    }
 
-    new Setting(contentEl)
-      .setName('Replaces')
-      .setDesc('Classes removed from the entity when this class is applied. One per line.')
-      .addTextArea((text) => text.setPlaceholder('friend').setValue(model.replaces.join('\n')).onChange((value) => { model.replaces = splitNames(value); }));
+    if (this.activeTab === 'relations') {
+      this.renderRelations(panel);
+    }
 
-    new Setting(contentEl)
-      .setName('Template')
-      .setDesc('Templater template applied to a new entity when this type is first assigned. Leave blank for none.')
-      .addText((text) => text.setPlaceholder('My Template').setValue(model.template).onChange((value) => { model.template = value.trim(); }));
+    if (this.activeTab === 'automation') {
+      this.renderAutoApply(panel);
+    }
 
-    this.renderAutoApply(contentEl);
-    this.renderFieldSection(contentEl, 'Required fields', model.mustHave, 'must-have');
-    this.renderFieldSection(contentEl, 'Optional fields', model.canHave, 'can-have');
-    this.renderRelations(contentEl);
     this.renderActions(contentEl);
   }
 
