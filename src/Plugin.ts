@@ -101,12 +101,6 @@ export class Plugin extends ObsidianPlugin {
     });
 
     this.addCommand({
-      callback: () => { this.showValidationSummary(); },
-      id: 'check-consistency',
-      name: 'Check ontology consistency',
-    });
-
-    this.addCommand({
       callback: () => { void this.openIssuesModal(); },
       id: 'open-issues',
       name: 'Open ontology issues',
@@ -116,14 +110,6 @@ export class Plugin extends ObsidianPlugin {
       callback: () => { void this.openSchemaDiagnosticsModal(); },
       id: 'open-schema-diagnostics',
       name: 'Open ontology schema diagnostics',
-    });
-
-    this.addCommand({
-      callback: () => {
-        void this.rebuildIndex(false).then(() => this.openSchemaDiagnosticsModal());
-      },
-      id: 'lint-schema',
-      name: 'Lint ontology schema',
     });
 
     this.addCommand({
@@ -160,15 +146,9 @@ export class Plugin extends ObsidianPlugin {
     });
 
     this.addCommand({
-      callback: () => { void this.scaffoldAllEntities(); },
-      id: 'scaffold-all-entities',
-      name: 'Scaffold all ontology entities',
-    });
-
-    this.addCommand({
       callback: () => { void this.openBulkScaffoldModal(); },
       id: 'bulk-scaffold-type',
-      name: 'Bulk scaffold entities of type',
+      name: 'Bulk scaffold ontology entities',
     });
 
     this.addCommand({
@@ -384,23 +364,15 @@ export class Plugin extends ObsidianPlugin {
     return totalFields;
   }
 
-  private async scaffoldAllEntities(): Promise<void> {
-    const index = await this.ensureIndex();
-    new OntologyBulkScaffoldModal(this.app, index, async (diffs) => {
-      const totalFields = await this.applyBulkScaffoldDiffs(diffs);
-      this.pluginSettings.initialScaffoldComplete = true;
-      await this.saveData(this.pluginSettings);
-      if (totalFields === 0) {
-        new Notice('All entities are already fully scaffolded.');
-      }
-      return totalFields;
-    }).open();
-  }
-
   private async openBulkScaffoldModal(): Promise<void> {
     const index = await this.ensureIndex();
     new OntologyBulkScaffoldModal(this.app, index, async (diffs) => {
-      return this.applyBulkScaffoldDiffs(diffs);
+      const totalFields = await this.applyBulkScaffoldDiffs(diffs);
+      if (!this.pluginSettings.initialScaffoldComplete) {
+        this.pluginSettings.initialScaffoldComplete = true;
+        await this.saveData(this.pluginSettings);
+      }
+      return totalFields;
     }).open();
   }
 
@@ -858,14 +830,6 @@ export class Plugin extends ObsidianPlugin {
       cls: 'ontology-query-count',
       text: `${results.length} ${results.length === 1 ? 'note' : 'notes'}.`,
     });
-  }
-
-  private showValidationSummary(): void {
-    if (!this.index) {
-      new Notice('Ontology index is not ready yet.');
-      return;
-    }
-    void this.openIssuesModal();
   }
 
   private indexSettings(): {
