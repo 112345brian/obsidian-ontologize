@@ -26,7 +26,7 @@ interface PredicateNode {
   value: string;
 }
 
-export type QueryIncludeMode = 'all' | 'incomplete' | 'locked';
+export type QueryIncludeMode = 'all' | 'ignored' | 'incomplete' | 'locked';
 
 export interface RunQueryOptions {
   defaultInclude?: QueryIncludeMode;
@@ -122,13 +122,19 @@ function parseOr(tokens: string[], cursor: { index: number }): QueryNode {
   return node;
 }
 
-function parseQuery(source: string, defaultInclude: QueryIncludeMode): { node: QueryNode; options: QueryOptions } {
+function parseQuery(source: string, defaultInclude: QueryIncludeMode): { node: QueryNode; options: QueryOptions; warnings: string[] } {
   const { options, sourceWithoutOptions } = extractOptions(source, defaultInclude);
   const tokens = tokenize(sourceWithoutOptions);
-  return {
-    node: tokens.length === 0 ? TRUE_NODE : parseOr(tokens, { index: 0 }),
-    options,
-  };
+  const cursor = { index: 0 };
+  const node = tokens.length === 0 ? TRUE_NODE : parseOr(tokens, cursor);
+  const warnings: string[] = [];
+  // A clause the grammar cannot consume (e.g. a bare word without `key:`)
+  // stops the parser cold; everything from that point on has no effect on the
+  // results, which silently widens or narrows them. Surface it instead.
+  if (tokens.length > 0 && cursor.index < tokens.length) {
+    warnings.push(`Ignored query content starting at "${tokens.slice(cursor.index).join(' ')}": clauses must look like "key: value".`);
+  }
+  return { node, options, warnings };
 }
 
 function scalarValues(value: unknown): string[] {
@@ -186,10 +192,24 @@ function evaluateNode(index: OntologyIndex, entity: OntologyEntity, node: QueryN
   }
 }
 
+export interface OntologyQueryResult {
+  entities: OntologyEntity[];
+  warnings: string[];
+}
+
 export function runOntologyQuery(index: OntologyIndex, source: string, runOptions: RunQueryOptions = {}): OntologyEntity[] {
-  const { node, options } = parseQuery(source, runOptions.defaultInclude ?? 'locked');
-  return [...index.entities.values()]
+  return runOntologyQueryDetailed(index, source, runOptions).entities;
+}
+
+export function runOntologyQueryDetailed(index: OntologyIndex, source: string, runOptions: RunQueryOptions = {}): OntologyQueryResult {
+  const { node, options, warnings } = parseQuery(source, runOptions.defaultInclude ?? 'locked');
+  const entities = [...index.entities.values()]
     .filter((entity) => {
+      // Ignored entities are fully indexed and validated but excluded from
+      // query results unless the query opts in with include: ignored/all.
+      if (entity.ignored && options.include !== 'ignored' && options.include !== 'all') {
+        return false;
+      }
       const lock = index.effectiveEntityLocks.get(entity.path)?.state ?? 'unlocked';
       if (options.include === 'locked' && lock !== 'locked') {
         return false;
@@ -200,4 +220,5 @@ export function runOntologyQuery(index: OntologyIndex, source: string, runOption
       return evaluateNode(index, entity, node);
     })
     .sort((a, b) => a.name.localeCompare(b.name));
+  return { entities, warnings };
 }

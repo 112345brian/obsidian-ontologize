@@ -16,6 +16,12 @@
   color: var(--text-muted);
 }
 
+.ontology-query-warning {
+  color: var(--text-warning);
+  font-size: var(--font-ui-smaller);
+  margin: 0.35em 0;
+}
+
 .ontology-query-count {
   font-size: var(--font-ui-smaller);
   margin: 0.35em 0 0;
@@ -28,10 +34,16 @@
 .ontology-fix-empty,
 .ontology-fix-meta,
 .ontology-fix-summary,
+.ontology-issue-blame,
 .ontology-issue-meta,
 .ontology-scaffold-empty,
 .ontology-scaffold-summary {
   color: var(--text-muted);
+}
+
+.ontology-issue-blame {
+  font-family: var(--font-monospace);
+  font-size: var(--font-ui-smaller);
 }
 
 .ontology-fix-list,

@@ -1,8 +1,11 @@
 ---
-is-instance: "[[person]]"
+is-instance: "[[historical-figure]]"
 lock: true
+up: "[[person]]"
 full-name: Charles Darwin
 birth-year: 1809
+known-for: Theory of evolution by natural selection
+era: Victorian
 observed:
   - "[[Ada the Dog]]"
 ---

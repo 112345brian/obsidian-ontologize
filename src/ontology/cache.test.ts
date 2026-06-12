@@ -40,6 +40,7 @@ function makeIndex(): OntologyIndex {
     entities: new Map([
       ['Ada.md', {
         frontmatter: { 'birth-year': 1815, instance_of: '[[Philosopher]]', lock: true },
+        ignored: false,
         instanceOf: ['Philosopher'],
         lockIntent: true,
         name: 'Ada',
@@ -72,13 +73,15 @@ function makeIndex(): OntologyIndex {
     types: new Map([
       ['Philosopher', {
         abstract: false,
+        autoApply: { blocks: {}, conditions: { era: 'modern' }, match: 'all' as const },
         canHave: new Map([['magnum-opus', { type: 'Work' }]]),
         cannotHave: new Set(['tag']),
         disjoint: ['Musician'],
-        excludes: [],
+        excludes: ['Sophist'],
         extends: ['Person'],
-        replaces: [],
-        requires: [],
+        replaces: [{ value: 'Thinker' }, { field: 'category', value: 'Sage' }],
+        requires: ['Person'],
+        template: 'Templates/Philosopher',
         fields: new Map([['birth-year', { frontmatterKey: 'birth_year', type: 'number' }]]),
         implements: ['Influenceable'],
         isInterface: false,

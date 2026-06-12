@@ -64,6 +64,10 @@ vi.mock('obsidian', () => {
       // not exercised
     }
 
+    public registerInterval(id: ReturnType<typeof setInterval>): ReturnType<typeof setInterval> {
+      return id;
+    }
+
     public registerMarkdownCodeBlockProcessor(): void {
       // not exercised
     }
@@ -189,7 +193,7 @@ async function loadPlugin(fake: FakeVault, savedSettings: Record<string, unknown
 beforeEach(() => {
   hoisted.openedModals.length = 0;
   layoutCallbacks = [];
-  (globalThis as Record<string, unknown>)['window'] ??= { clearTimeout, setTimeout };
+  (globalThis as Record<string, unknown>)['window'] ??= { clearTimeout, setInterval, setTimeout };
 });
 
 describe('Plugin orchestration', () => {

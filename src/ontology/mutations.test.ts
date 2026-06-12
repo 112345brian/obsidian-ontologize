@@ -8,21 +8,12 @@ vi.mock('obsidian', () => ({
 }));
 
 import { applyScaffoldPlan, planMissingInverses, planScaffoldEntity, shouldAutoApplyScaffold } from './mutations.ts';
+import { makeIndexSettings, makeOntologyType } from './test-support.ts';
 
 function makeType(): OntologyType {
-  return {
-    abstract: false,
-    canHave: new Map(),
-    cannotHave: new Set(),
-    disjoint: [],
-    extends: [],
-    fields: new Map(),
-    implements: [],
-    isInterface: false,
+  return makeOntologyType({
     lockIntent: true,
-    mustHave: new Map(),
     name: 'Philosopher',
-    path: '_types/Philosopher.md',
     relations: new Map([
       ['influenced', {
         autoUpdate: true,
@@ -30,25 +21,13 @@ function makeType(): OntologyType {
         range: 'Philosopher',
       }],
     ]),
-    values: [],
-  };
+  });
 }
 
 function makeInterfaceRelationIndex(): OntologyIndex {
   const index = makeIndex();
-  index.types.set('_relations', {
-    abstract: false,
-    canHave: new Map(),
-    cannotHave: new Set(),
-    disjoint: [],
-    extends: [],
-    fields: new Map(),
-    implements: [],
-    isInterface: false,
-    lockIntent: false,
-    mustHave: new Map(),
+  index.types.set('_relations', makeOntologyType({
     name: '_relations',
-    path: '_types/_relations.md',
     relations: new Map([
       ['influenced_by', {
         inverse: 'influenced',
@@ -57,26 +36,15 @@ function makeInterfaceRelationIndex(): OntologyIndex {
       }],
     ]),
     typeKind: 'relation-definitions',
-    values: [],
-  });
-  index.types.set('Influenceable', {
-    abstract: false,
-    canHave: new Map(),
-    cannotHave: new Set(),
-    disjoint: [],
-    extends: [],
-    fields: new Map(),
-    implements: [],
+  }));
+  index.types.set('Influenceable', makeOntologyType({
     isInterface: true,
     lockIntent: true,
-    mustHave: new Map(),
     name: 'Influenceable',
-    path: '_types/Influenceable.md',
     relations: new Map([
       ['influenced_by', { uses: 'influenced_by' }],
     ]),
-    values: [],
-  });
+  }));
   index.relationDefinitions.set('influenced_by', {
     inverse: 'influenced',
     range: 'Philosopher',
@@ -152,14 +120,7 @@ function makeIndex(): OntologyIndex {
       },
     ],
     relationDefinitions: new Map(),
-    settings: {
-      entityTypeFields: ['instance_of', 'type'],
-      filesToIgnore: [],
-      foldersToIgnore: [],
-      frontmatterIgnoreRules: [],
-      schemaPath: '',
-      typeFolder: '_types',
-    },
+    settings: makeIndexSettings({ entityTypeFields: ['instance_of', 'type'] }),
     types: new Map([
       ['Philosopher', makeType()],
     ]),

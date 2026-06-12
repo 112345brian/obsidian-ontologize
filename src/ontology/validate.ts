@@ -185,96 +185,109 @@ function validatePropertyDefinition(
   }
 }
 
+/**
+ * Validates a single entity against the current index state, appending any
+ * new issues to `index.issues`. Callers are responsible for stripping the
+ * entity's existing issues before calling this so they are not duplicated.
+ * Exported so incremental batch revalidation can call it without a full sweep.
+ */
+export function validateSingleEntity(index: OntologyIndex, entity: OntologyEntity): void {
+  const chain = entityCompositionChain(entity, index);
+
+  for (const typeName of entity.instanceOf) {
+    const type = index.types.get(typeName);
+    if (!type) {
+      pushIssueOnce(index.issues, { file: entity.path, message: `Unknown type ${typeName}`, severity: 'error' });
+      continue;
+    }
+    if (type.abstract) {
+      pushIssueOnce(index.issues, { file: entity.path, message: `Cannot instantiate abstract type ${typeName}`, severity: 'error' });
+    }
+    if (type.isInterface) {
+      pushIssueOnce(index.issues, { file: entity.path, message: `Cannot instantiate interface ${typeName}`, severity: 'error' });
+    }
+  }
+
+  for (const typeName of chain) {
+    const type = index.types.get(typeName);
+    if (!type) {
+      continue;
+    }
+    for (const disjoint of type.disjoint) {
+      if (chain.has(disjoint)) {
+        pushIssueOnce(index.issues, {
+          file: entity.path,
+          kind: 'coherence',
+          message: `Entity is both ${typeName} and disjoint type ${disjoint}`,
+          severity: 'error',
+        });
+      }
+    }
+    for (const required of type.requires) {
+      if (!chain.has(required)) {
+        pushIssueOnce(index.issues, {
+          file: entity.path,
+          kind: 'coherence',
+          message: `${typeName} requires class membership: ${required}`,
+          severity: 'error',
+        });
+      }
+    }
+    for (const excluded of type.excludes) {
+      if (chain.has(excluded)) {
+        pushIssueOnce(index.issues, {
+          file: entity.path,
+          kind: 'coherence',
+          message: `${typeName} excludes class membership: ${excluded}`,
+          severity: 'error',
+        });
+      }
+    }
+  }
+
+  // Contracts are merged across every declared type before validating, so an
+  // entity with two types sharing an ancestor reports each problem exactly once.
+  const mustHave = getInheritedMustHave(index, entity);
+  for (const [property, definition] of mustHave) {
+    if (!hasValue(entity.frontmatter, property)) {
+      pushIssueOnce(index.issues, {
+        file: entity.path,
+        message: `Missing required property ${property}`,
+        property,
+        severity: 'error',
+      });
+    } else {
+      validatePropertyDefinition(index, entity, property, definition);
+    }
+  }
+
+  for (const [property, definition] of getInheritedCanHave(index, entity)) {
+    if (!mustHave.has(property) && hasValue(entity.frontmatter, property)) {
+      validatePropertyDefinition(index, entity, property, definition);
+    }
+  }
+
+  for (const property of collectInheritedCannotHave(index, entity)) {
+    const frontmatterKey = forbiddenFrontmatterKey(index, property);
+    const presentKey = [frontmatterKey, property].find((key) => hasValue(entity.frontmatter, key));
+    if (presentKey) {
+      pushIssueOnce(index.issues, {
+        file: entity.path,
+        message: `Forbidden property ${presentKey} is present`,
+        property: presentKey,
+        severity: 'error',
+      });
+    }
+  }
+
+  for (const [property, relation] of resolveEntityRelations(index, entity.instanceOf)) {
+    validateRelation(index, entity, property, relation);
+  }
+}
+
 export function validateIndex(index: OntologyIndex): void {
   for (const entity of index.entities.values()) {
-    const chain = entityCompositionChain(entity, index);
-
-    for (const typeName of entity.instanceOf) {
-      const type = index.types.get(typeName);
-      if (!type) {
-        pushIssueOnce(index.issues, { file: entity.path, message: `Unknown type ${typeName}`, severity: 'error' });
-        continue;
-      }
-      if (type.abstract) {
-        pushIssueOnce(index.issues, { file: entity.path, message: `Cannot instantiate abstract type ${typeName}`, severity: 'error' });
-      }
-      if (type.isInterface) {
-        pushIssueOnce(index.issues, { file: entity.path, message: `Cannot instantiate interface ${typeName}`, severity: 'error' });
-      }
-    }
-
-    for (const typeName of chain) {
-      const type = index.types.get(typeName);
-      if (!type) {
-        continue;
-      }
-      for (const disjoint of type.disjoint) {
-        if (chain.has(disjoint)) {
-          pushIssueOnce(index.issues, {
-            file: entity.path,
-            message: `Entity is both ${typeName} and disjoint type ${disjoint}`,
-            severity: 'error',
-          });
-        }
-      }
-      for (const required of type.requires) {
-        if (!chain.has(required)) {
-          pushIssueOnce(index.issues, {
-            file: entity.path,
-            message: `${typeName} requires class membership: ${required}`,
-            severity: 'error',
-          });
-        }
-      }
-      for (const excluded of type.excludes) {
-        if (chain.has(excluded)) {
-          pushIssueOnce(index.issues, {
-            file: entity.path,
-            message: `${typeName} excludes class membership: ${excluded}`,
-            severity: 'error',
-          });
-        }
-      }
-    }
-
-    // Contracts are merged across every declared type before validating, so an
-    // entity with two types sharing an ancestor reports each problem exactly once.
-    const mustHave = getInheritedMustHave(index, entity);
-    for (const [property, definition] of mustHave) {
-      if (!hasValue(entity.frontmatter, property)) {
-        pushIssueOnce(index.issues, {
-          file: entity.path,
-          message: `Missing required property ${property}`,
-          property,
-          severity: 'error',
-        });
-      } else {
-        validatePropertyDefinition(index, entity, property, definition);
-      }
-    }
-
-    for (const [property, definition] of getInheritedCanHave(index, entity)) {
-      if (!mustHave.has(property) && hasValue(entity.frontmatter, property)) {
-        validatePropertyDefinition(index, entity, property, definition);
-      }
-    }
-
-    for (const property of collectInheritedCannotHave(index, entity)) {
-      const frontmatterKey = forbiddenFrontmatterKey(index, property);
-      const presentKey = [frontmatterKey, property].find((key) => hasValue(entity.frontmatter, key));
-      if (presentKey) {
-        pushIssueOnce(index.issues, {
-          file: entity.path,
-          message: `Forbidden property ${presentKey} is present`,
-          property: presentKey,
-          severity: 'error',
-        });
-      }
-    }
-
-    for (const [property, relation] of resolveEntityRelations(index, entity.instanceOf)) {
-      validateRelation(index, entity, property, relation);
-    }
+    validateSingleEntity(index, entity);
   }
 }
 

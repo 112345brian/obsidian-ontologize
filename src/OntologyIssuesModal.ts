@@ -10,12 +10,15 @@ import { filterIssues, summarizeIssues } from './ontology/issues.ts';
 interface OntologyIssuesModalOptions {
   getIssues: () => OntologyIssue[];
   initialFilter?: IssueFilter | undefined;
+  /** Returns true if the given file path belongs to an ignored entity. */
+  isIgnoredFile?: (filePath: string) => boolean;
   onFixInverses: () => Promise<void>;
   onRebuild: () => Promise<void>;
+  onRepair?: () => void;
 }
 
 export class OntologyIssuesModal extends Modal {
-  private filter: IssueFilter;
+  private filter: IssueFilter & { showIgnored?: boolean | undefined };
 
   public constructor(app: App, private readonly options: OntologyIssuesModalOptions) {
     super(app);
@@ -34,13 +37,17 @@ export class OntologyIssuesModal extends Modal {
     contentEl.createEl('h2', { text: 'Ontology Issues' });
 
     const allIssues = this.options.getIssues();
-    const visibleIssues = filterIssues(allIssues, this.filter);
+    const activeIssues = this.filter.showIgnored
+      ? allIssues
+      : allIssues.filter((i) => !this.options.isIgnoredFile?.(i.file));
+    const visibleIssues = filterIssues(activeIssues, this.filter);
     const allSummary = summarizeIssues(allIssues);
     const visibleSummary = summarizeIssues(visibleIssues);
+    const ignoredCount = allIssues.length - activeIssues.length;
 
     contentEl.createEl('p', {
       cls: 'ontology-issues-summary',
-      text: `${visibleSummary.total} shown (${visibleSummary.errors} errors, ${visibleSummary.warnings} warnings). Vault total: ${allSummary.total}.`,
+      text: `${visibleSummary.total} shown (${visibleSummary.errors} errors, ${visibleSummary.warnings} warnings). Vault total: ${allSummary.total}.${ignoredCount > 0 ? ` ${ignoredCount} suppressed (ignored entities).` : ''}`,
     });
 
     this.renderControls(contentEl);
@@ -81,6 +88,20 @@ export class OntologyIssuesModal extends Modal {
           });
       });
 
+    if (this.options.isIgnoredFile) {
+      new Setting(containerEl)
+        .setName('Show ignored')
+        .setDesc('Include issues from entities marked ignored.')
+        .addToggle((toggle) => {
+          toggle
+            .setValue(this.filter.showIgnored === true)
+            .onChange((value) => {
+              this.filter.showIgnored = value ? true : undefined;
+              this.render();
+            });
+        });
+    }
+
     new Setting(containerEl)
       .setName('Actions')
       .addButton((button) => {
@@ -99,6 +120,17 @@ export class OntologyIssuesModal extends Modal {
             this.render();
           });
       });
+
+    if (this.options.onRepair) {
+      new Setting(containerEl)
+        .setName('Ignored entities')
+        .setDesc('View and restore entities you have marked ignored.')
+        .addButton((button) => {
+          button.setButtonText('Open repair').onClick(() => {
+            this.options.onRepair!();
+          });
+        });
+    }
   }
 
   private renderIssues(containerEl: HTMLElement, issues: OntologyIssue[]): void {
@@ -119,6 +151,14 @@ export class OntologyIssuesModal extends Modal {
       const meta = [issue.property, issue.target, issue.autofixable ? 'autofixable' : ''].filter(Boolean).join(' | ');
       if (meta) {
         item.createEl('div', { cls: 'ontology-issue-meta', text: meta });
+      }
+
+      if (issue.blame) {
+        const { shortHash, author, date, message } = issue.blame;
+        item.createEl('div', {
+          cls: 'ontology-issue-blame',
+          text: `Last changed: ${shortHash} · ${author} · ${date} — ${message}`,
+        });
       }
 
       new Setting(item)

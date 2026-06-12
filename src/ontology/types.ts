@@ -64,6 +64,7 @@ export interface OntologyType {
 
 export interface OntologyEntity {
   frontmatter: Record<string, unknown>;
+  ignored?: boolean | undefined;
   instanceOf: string[];
   lockIntent: boolean;
   name: string;
@@ -80,10 +81,22 @@ export interface FrontmatterIgnoreRule {
   value?: string;
 }
 
+export interface GitBlame {
+  hash: string;
+  shortHash: string;
+  author: string;
+  date: string;
+  message: string;
+}
+
 export interface OntologyIssue {
   autoUpdate?: boolean;
   autofixable?: boolean;
+  blame?: GitBlame | undefined;
   file: string;
+  /** 'coherence' = disjoint/excludes/requires violation; type membership is self-contradictory.
+   *  'schema'    = missing field, bad value, cardinality error; membership is fine but incomplete. */
+  kind?: 'coherence' | 'schema' | undefined;
   message: string;
   property?: string;
   severity: 'error' | 'warning';

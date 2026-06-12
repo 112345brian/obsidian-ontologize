@@ -14,3 +14,13 @@ include: all
 type: observable AND observed-by: [[Charles Darwin]]
 include: all
 ```
+
+```ontology-query
+type: person
+include: all
+```
+
+```ontology-query
+type: historical-figure
+include: all
+```

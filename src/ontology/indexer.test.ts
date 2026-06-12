@@ -7,7 +7,8 @@ vi.mock('obsidian', () => ({
   parseYaml: () => ({}),
 }));
 
-import { buildOntologyIndex, isIgnoredByFrontmatter, recomputeOntologyDerivedState, removeOntologyFile } from './indexer.ts';
+import { buildOntologyIndex, isIgnoredByFrontmatter, recomputeOntologyDerivedState, removeOntologyFile, revalidateEntityBatch } from './indexer.ts';
+import { makeIndexSettings } from './test-support.ts';
 
 function makeType(
   name: string,
@@ -66,14 +67,7 @@ function makeIndex(): OntologyIndex {
     generatedAt: '2026-06-09T00:00:00.000Z',
     issues: [],
     relationDefinitions: new Map(),
-    settings: {
-      entityTypeFields: ['instance_of', 'type'],
-      filesToIgnore: [],
-      foldersToIgnore: [],
-      frontmatterIgnoreRules: [],
-      schemaPath: '',
-      typeFolder: '_types',
-    },
+    settings: makeIndexSettings({ entityTypeFields: ['instance_of', 'type'] }),
     types: new Map([
       ['Person', makeType('Person', '_types/Person.md', true)],
       ['Philosopher', makeType('Philosopher', '_types/Philosopher.md', true, ['Person'])],
@@ -680,6 +674,104 @@ describe('incremental ontology index state', () => {
     expect(index.issues).toContainEqual(expect.objectContaining({
       message: 'types must be a map of named definitions',
     }));
+  });
+
+  it('background sweep clears stale validation issues without a full rebuild', () => {
+    // Ada has `influenced_by: [[Leibniz]]`. Leibniz is missing the inverse
+    // `influenced: [[Ada]]`, so an autofixable issue is raised against Ada.
+    // A live event later writes the inverse to Leibniz and updates the in-memory
+    // index. The sweep should re-validate Ada and clear the now-stale issue.
+    const index = makeIndex();
+    const philType = index.types.get('Philosopher')!;
+    philType.relations.set('influenced_by', { autoUpdate: true, inverse: 'influenced', range: 'Person' });
+    index.entities.set('Leibniz.md', {
+      frontmatter: { instance_of: '[[Philosopher]]' }, // no inverse yet
+      instanceOf: ['Philosopher'],
+      lockIntent: true,
+      name: 'Leibniz',
+      path: 'Leibniz.md',
+    });
+    index.entities.get('Ada.md')!.frontmatter['influenced_by'] = ['[[Leibniz]]'];
+
+    recomputeOntologyDerivedState(index);
+
+    // Sanity: Ada should have a missing-inverse issue against Leibniz.
+    expect(index.issues.some((issue) => issue.file === 'Ada.md' && issue.autofixable && issue.target === 'Leibniz')).toBe(true);
+
+    // Simulate the live event that wrote the inverse onto Leibniz — update the
+    // in-memory entity to include it.
+    index.entities.get('Leibniz.md')!.frontmatter['influenced'] = ['[[Ada]]'];
+
+    // metadataCache reflects the already-updated in-memory state.
+    const app = {
+      metadataCache: {
+        getFileCache: (file: TFile) => ({
+          frontmatter: index.entities.get(file.path)?.frontmatter ?? {},
+        }),
+      },
+      vault: {
+        getAbstractFileByPath: (path: string) => {
+          if (index.entities.has(path)) {
+            return { extension: 'md', path } as TFile;
+          }
+          return null;
+        },
+      },
+    } as unknown as App;
+
+    const result = revalidateEntityBatch(app, index, ['Ada.md']);
+
+    expect(result.staleCount).toBe(0); // Ada's own frontmatter didn't change
+    expect(result.removedCount).toBe(0);
+    // The issue on Ada should have been cleared: Leibniz now has the inverse.
+    expect(index.issues.some((issue) => issue.file === 'Ada.md' && issue.autofixable && issue.target === 'Leibniz')).toBe(false);
+  });
+
+  it('background sweep detects frontmatter drift and updates stale records', () => {
+    const index = makeIndex();
+    index.types.get('Philosopher')!.mustHave.set('school', { type: 'string' });
+    recomputeOntologyDerivedState(index);
+    expect(index.issues.some((issue) => issue.file === 'Ada.md' && issue.property === 'school')).toBe(true);
+
+    // metadataCache now reflects that Ada has the property filled in.
+    const freshFm = { ...index.entities.get('Ada.md')!.frontmatter, school: 'Empiricism' };
+    const app = {
+      metadataCache: {
+        getFileCache: (file: TFile) => ({
+          frontmatter: file.path === 'Ada.md' ? freshFm : index.entities.get(file.path)?.frontmatter ?? {},
+        }),
+      },
+      vault: {
+        getAbstractFileByPath: (path: string) => {
+          if (index.entities.has(path)) {
+            return { extension: 'md', path } as TFile;
+          }
+          return null;
+        },
+      },
+    } as unknown as App;
+
+    const result = revalidateEntityBatch(app, index, ['Ada.md']);
+
+    expect(result.staleCount).toBe(1);
+    expect(index.entities.get('Ada.md')!.frontmatter['school']).toBe('Empiricism');
+    expect(index.issues.some((issue) => issue.file === 'Ada.md' && issue.property === 'school')).toBe(false);
+  });
+
+  it('background sweep removes entities whose files were silently deleted', () => {
+    const index = makeIndex();
+    recomputeOntologyDerivedState(index);
+
+    const app = {
+      metadataCache: { getFileCache: () => null },
+      vault: { getAbstractFileByPath: () => null },
+    } as unknown as App;
+
+    expect(index.entities.has('Ada.md')).toBe(true);
+    const result = revalidateEntityBatch(app, index, ['Ada.md']);
+
+    expect(result.removedCount).toBe(1);
+    expect(index.entities.has('Ada.md')).toBe(false);
   });
 
   it('uses configured entity type frontmatter fields', async () => {

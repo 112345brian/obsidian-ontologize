@@ -1,6 +1,6 @@
 import type { App, TFile } from 'obsidian';
 
-import type { AutoApplyBlock, FrontmatterValue, OntologyEntity, OntologyIndex, OntologyIssue, PropertyDefinition } from './types.ts';
+import type { AutoApplyBlock, FrontmatterValue, OntologyEntity, OntologyIndex, OntologyIssue, PropertyDefinition, RelationDefinition } from './types.ts';
 
 import { getInheritedCanHave, getInheritedMustHave, resolveEntityRelations } from './compose.ts';
 import { containsFrontmatterValue, extractAssertedLinkTargets, normalizeLinkTarget, toWikiLink } from './links.ts';
@@ -100,10 +100,11 @@ function evalConditionValue(actual: unknown, expected: unknown): boolean {
   }
   if (typeof expected === 'string') {
     const m = COMPARISON_RE.exec(expected);
-    if (m) {
-      const [, op, rhs] = m;
+    const op = m?.[1];
+    const rhs = m?.[2];
+    if (op !== undefined && rhs !== undefined) {
       const numRhs = Number(rhs);
-      const numActual = Number(actual);
+      const numActual = typeof actual === 'number' || typeof actual === 'string' ? Number(actual) : Number.NaN;
       if (!Number.isNaN(numRhs) && !Number.isNaN(numActual)) {
         if (op === '>') { return numActual > numRhs; }
         if (op === '<') { return numActual < numRhs; }
@@ -112,7 +113,7 @@ function evalConditionValue(actual: unknown, expected: unknown): boolean {
         if (op === '!=') { return numActual !== numRhs; }
         if (op === '==') { return numActual === numRhs; }
       }
-      const strActual = String(actual);
+      const strActual = typeof actual === 'string' || typeof actual === 'number' || typeof actual === 'boolean' ? String(actual) : undefined;
       const strRhs = rhs.trim();
       if (op === '!=') { return strActual !== strRhs; }
       if (op === '==') { return strActual === strRhs; }

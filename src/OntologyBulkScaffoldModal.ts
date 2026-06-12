@@ -2,7 +2,7 @@ import type { App } from 'obsidian';
 
 import { Modal, Setting } from 'obsidian';
 
-import type { FrontmatterValue, OntologyEntity, OntologyIndex, OntologyType } from './ontology/types.ts';
+import type { FrontmatterValue, OntologyEntity, OntologyIndex } from './ontology/types.ts';
 import type { ScaffoldFieldPlan } from './ontology/mutations.ts';
 
 import { planScaffoldEntity } from './ontology/mutations.ts';

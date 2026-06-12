@@ -1,5 +1,7 @@
 import type { App, TFile } from 'obsidian';
 
+type MaybeFile = { extension: string } | null | undefined;
+
 import type { EffectiveLockState, FrontmatterIgnoreRule, OntologyEntity, OntologyIndex, OntologyIssue, OntologyType, PropertyDefinition, RelationDefinition } from './types.ts';
 
 import {
@@ -11,7 +13,7 @@ import {
 import { normalizeLinkTarget } from './links.ts';
 import { parseOntologyEntity, parseOntologySchema, parseOntologyType } from './parser.ts';
 import { lintOntologySchemaSource, lintOntologyTypeSource } from './schema-linter.ts';
-import { validateIndex, validateSchemaCompositionConflicts } from './validate.ts';
+import { validateIndex, validateSchemaCompositionConflicts, validateSingleEntity } from './validate.ts';
 
 export interface BuildIndexSettings {
   autoApplyBlockPrefix?: string;
@@ -32,12 +34,22 @@ function normalizedEntityTypeFields(fields: string[] | undefined): string[] {
   return normalized.length > 0 ? normalized : ['is-instance', 'type'];
 }
 
+// Compiled once per pattern string; ignore patterns are checked against every
+// vault file on every rebuild, so recompiling per call is wasted work and a
+// permanently invalid pattern would be re-parsed forever.
+const compiledIgnorePatterns = new Map<string, null | RegExp>();
+
 function safePatternMatches(pattern: string, path: string): boolean {
-  try {
-    return new RegExp(pattern).test(path);
-  } catch {
-    return false;
+  let compiled = compiledIgnorePatterns.get(pattern);
+  if (compiled === undefined) {
+    try {
+      compiled = new RegExp(pattern);
+    } catch {
+      compiled = null;
+    }
+    compiledIgnorePatterns.set(pattern, compiled);
   }
+  return compiled?.test(path) ?? false;
 }
 
 export function isIgnoredOntologyPath(path: string, settings: BuildIndexSettings): boolean {
@@ -337,6 +349,95 @@ export async function upsertOntologyFile(app: App, index: OntologyIndex, file: T
     index.entities.set(entity.path, entity);
   }
   return recomputeOntologyDerivedState(index);
+}
+
+export interface BatchRevalidationResult {
+  /** Entity paths whose frontmatter diverged from the in-memory record. */
+  staleCount: number;
+  /** Entity paths that were present in the batch but no longer exist or are now ignored. */
+  removedCount: number;
+}
+
+/**
+ * Re-checks a batch of entity paths against the current `metadataCache`
+ * (synchronous — no disk I/O) and re-runs entity-level validation for each.
+ *
+ * This is the hot path for background sweeps: the type graph and derived state
+ * (ancestors, locks, field/relation definitions) are assumed stable. Only
+ * entity frontmatter staleness and per-entity validation issues are refreshed.
+ *
+ * Callers must strip and re-add issues for the batch paths (done here), and
+ * should schedule a debounced cache write if the result shows any changes.
+ */
+export function revalidateEntityBatch(app: App, index: OntologyIndex, paths: string[]): BatchRevalidationResult {
+  if (paths.length === 0) {
+    return { removedCount: 0, staleCount: 0 };
+  }
+
+  const pathSet = new Set(paths);
+  const typeFields = normalizedEntityTypeFields(index.settings.entityTypeFields);
+  let staleCount = 0;
+  let removedCount = 0;
+
+  for (const path of paths) {
+    const abstractFile = app.vault.getAbstractFileByPath(path) as MaybeFile;
+    const tfile = abstractFile && 'extension' in abstractFile ? abstractFile as TFile : null;
+
+    if (!tfile) {
+      // File was deleted but the delete event was missed.
+      index.entities.delete(path);
+      removedCount++;
+      continue;
+    }
+
+    const frontmatter = app.metadataCache.getFileCache(tfile)?.frontmatter ?? {};
+
+    if (isIgnoredByFrontmatter(frontmatter, index.settings)) {
+      index.entities.delete(path);
+      removedCount++;
+      continue;
+    }
+
+    const fresh = parseOntologyEntity(path, frontmatter, typeFields);
+    if (!fresh) {
+      index.entities.delete(path);
+      removedCount++;
+      continue;
+    }
+
+    const existing = index.entities.get(path);
+    // Compare frontmatter by value — only update if something actually changed
+    // to avoid unnecessary cache writes when the vault is quiet.
+    if (!existing || JSON.stringify(existing.frontmatter) !== JSON.stringify(fresh.frontmatter)
+        || existing.lockIntent !== fresh.lockIntent
+        || existing.instanceOf.join('\0') !== fresh.instanceOf.join('\0')) {
+      index.entities.set(path, fresh);
+      staleCount++;
+    }
+  }
+
+  // Rebuild entity name index so ambiguity detection is current for the batch.
+  const byName = new Map<string, OntologyEntity>();
+  const counts = new Map<string, number>();
+  for (const entity of index.entities.values()) {
+    byName.set(entity.name, entity);
+    counts.set(entity.name, (counts.get(entity.name) ?? 0) + 1);
+  }
+  index.entitiesByName = byName;
+  index.ambiguousEntityNames = new Set([...counts].filter(([, count]) => count > 1).map(([name]) => name));
+
+  // Strip batch issues, then re-run per-entity validation for them.
+  // Issues belonging to other entities are preserved — they will be refreshed
+  // when their own batch sweep runs.
+  index.issues = index.issues.filter((issue) => !pathSet.has(issue.file));
+  for (const path of paths) {
+    const entity = index.entities.get(path);
+    if (entity) {
+      validateSingleEntity(index, entity);
+    }
+  }
+
+  return { removedCount, staleCount };
 }
 
 export async function buildOntologyIndex(app: App, settings: BuildIndexSettings): Promise<OntologyIndex> {

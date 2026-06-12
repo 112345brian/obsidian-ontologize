@@ -245,6 +245,7 @@ export function parseOntologyEntity(path: string, frontmatter: Record<string, un
 
   return {
     frontmatter,
+    ignored: frontmatter['ignored'] === true,
     instanceOf,
     lockIntent: frontmatter['lock'] === true,
     name: basenameWithoutExtension(path),

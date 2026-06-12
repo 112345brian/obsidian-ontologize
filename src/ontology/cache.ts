@@ -1,6 +1,6 @@
 import type { App } from 'obsidian';
 
-import type { EffectiveLockState, FrontmatterIgnoreRule, OntologyEntity, OntologyIndex, OntologyIssue, OntologyType, PropertyDefinition, RelationDefinition, TypeReplacement } from './types.ts';
+import type { AutoApplyBlock, EffectiveLockState, FrontmatterIgnoreRule, OntologyEntity, OntologyIndex, OntologyIssue, OntologyType, PropertyDefinition, RelationDefinition, TypeReplacement } from './types.ts';
 
 function mapToObject<T>(map: Map<string, T>, mapper: (value: T) => unknown): Record<string, unknown> {
   return Object.fromEntries([...map.entries()].map(([key, value]) => [key, mapper(value)]));
@@ -40,10 +40,18 @@ function hydrateMap<T>(value: unknown, mapper: (value: unknown) => T): Map<strin
   return new Map(Object.entries(asRecord(value)).map(([key, item]) => [key, mapper(item)]));
 }
 
+function hydrateAutoApply(value: unknown): OntologyType['autoApply'] {
+  if (value === true) {
+    return true;
+  }
+  return value && typeof value === 'object' && !Array.isArray(value) ? value as AutoApplyBlock : undefined;
+}
+
 function hydrateType(value: unknown): OntologyType {
   const record = asRecord(value);
   return {
     abstract: record['abstract'] === true,
+    autoApply: hydrateAutoApply(record['autoApply']),
     canHave: hydrateMap<PropertyDefinition>(record['canHave'], (item) => item as PropertyDefinition),
     cannotHave: new Set(Array.isArray(record['cannotHave']) ? record['cannotHave'].map(String) : []),
     disjoint: Array.isArray(record['disjoint']) ? record['disjoint'].map(String) : [],
@@ -76,6 +84,7 @@ function hydrateEntity(value: unknown): OntologyEntity {
   const record = asRecord(value);
   return {
     frontmatter: asRecord(record['frontmatter']),
+    ignored: record['ignored'] === true,
     instanceOf: Array.isArray(record['instanceOf']) ? record['instanceOf'].map(String) : [],
     lockIntent: record['lockIntent'] === true,
     name: stringValue(record['name']),

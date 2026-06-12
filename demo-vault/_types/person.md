@@ -2,6 +2,10 @@
 lock: true
 must-have:
   full-name: string
+  up:
+    type: wikilink
+    cardinality: one
+    insert: "[[person]]"
 can-have:
   birth-year:
     type: number

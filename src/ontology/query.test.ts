@@ -2,25 +2,11 @@ import { describe, expect, it } from 'vitest';
 
 import type { OntologyIndex, OntologyType } from './types.ts';
 
-import { runOntologyQuery } from './query.ts';
+import { runOntologyQuery, runOntologyQueryDetailed } from './query.ts';
+import { makeIndexSettings, makeOntologyType } from './test-support.ts';
 
 function makeType(name: string, implementsTypes: string[] = []): OntologyType {
-  return {
-    abstract: false,
-    canHave: new Map(),
-    cannotHave: new Set(),
-    disjoint: [],
-    extends: [],
-    fields: new Map(),
-    implements: implementsTypes,
-    isInterface: false,
-    lockIntent: true,
-    mustHave: new Map(),
-    name,
-    path: `_types/${name}.md`,
-    relations: new Map(),
-    values: [],
-  };
+  return makeOntologyType({ implements: implementsTypes, lockIntent: true, name });
 }
 
 function makeIndex(): OntologyIndex {
@@ -76,14 +62,7 @@ function makeIndex(): OntologyIndex {
     generatedAt: '2026-06-09T00:00:00.000Z',
     issues: [],
     relationDefinitions: new Map(),
-    settings: {
-      entityTypeFields: ['instance_of', 'type'],
-      filesToIgnore: [],
-      foldersToIgnore: [],
-      frontmatterIgnoreRules: [],
-      schemaPath: '',
-      typeFolder: '_types',
-    },
+    settings: makeIndexSettings({ entityTypeFields: ['instance_of', 'type'] }),
     types: new Map([
       ['Person', makeType('Person')],
       ['Philosopher', makeType('Philosopher')],
@@ -137,5 +116,23 @@ describe('runOntologyQuery', () => {
 
     const negatedRelationResults = runOntologyQuery(makeIndex(), 'type: Person AND NOT influenced: [[Nietzsche]]');
     expect(negatedRelationResults.map((entity) => entity.name)).toEqual(['Ada', 'Spinoza']);
+  });
+
+  it('warns when query content cannot be parsed instead of silently ignoring it', () => {
+    const bareWord = runOntologyQueryDetailed(makeIndex(), 'Philosopher');
+    expect(bareWord.warnings).toEqual([
+      'Ignored query content starting at "Philosopher": clauses must look like "key: value".',
+    ]);
+
+    const trailingGarbage = runOntologyQueryDetailed(makeIndex(), 'type: Person stray-token');
+    expect(trailingGarbage.warnings).toHaveLength(1);
+    expect(trailingGarbage.warnings[0]).toContain('stray-token');
+    // The valid prefix still evaluates.
+    expect(trailingGarbage.entities.map((entity) => entity.name)).toEqual(['Ada', 'Spinoza']);
+  });
+
+  it('reports no warnings for well-formed queries', () => {
+    const result = runOntologyQueryDetailed(makeIndex(), '(type: Rationalist OR type: Person) AND NOT influenced_by: [[Kant]] AND include: all');
+    expect(result.warnings).toEqual([]);
   });
 });

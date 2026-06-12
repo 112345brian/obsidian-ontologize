@@ -3,24 +3,10 @@ import { describe, expect, it } from 'vitest';
 import type { OntologyIndex, OntologyType } from './types.ts';
 
 import { buildSchemaDiagnostics, isSchemaIssue } from './diagnostics.ts';
+import { makeIndexSettings, makeOntologyType } from './test-support.ts';
 
 function makeType(name: string, path = `_types/${name}.md`): OntologyType {
-  return {
-    abstract: false,
-    canHave: new Map(),
-    cannotHave: new Set(),
-    disjoint: [],
-    extends: [],
-    fields: new Map(),
-    implements: [],
-    isInterface: false,
-    lockIntent: true,
-    mustHave: new Map(),
-    name,
-    path,
-    relations: new Map(),
-    values: [],
-  };
+  return makeOntologyType({ lockIntent: true, name, path });
 }
 
 function makeIndex(): OntologyIndex {
@@ -41,14 +27,10 @@ function makeIndex(): OntologyIndex {
     relationDefinitions: new Map([
       ['influenced_by', { inverse: 'influenced' }],
     ]),
-    settings: {
+    settings: makeIndexSettings({
       entityTypeFields: ['instance_of'],
-      filesToIgnore: [],
-      foldersToIgnore: [],
-      frontmatterIgnoreRules: [],
       schemaPath: '_types/ontology.schema.yaml',
-      typeFolder: '_types',
-    },
+    }),
     types: new Map([
       ['Person', makeType('Person')],
       ['Thinker', { ...makeType('Thinker'), isInterface: true }],

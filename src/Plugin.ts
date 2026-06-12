@@ -11,29 +11,42 @@ import {
   isIgnoredOntologyPath,
   isOntologySchemaFile,
   isOntologyTypeFile,
+  revalidateEntityBatch,
   removeOntologyFile,
   upsertOntologyFile
 } from './ontology/indexer.ts';
 import { applyMissingInversePlans, applyScaffoldPlan, fixMissingInverses, planMissingInverses, planScaffoldEntity, shouldAutoApplyScaffold } from './ontology/mutations.ts';
 import type { TypeReplacement } from './ontology/types.ts';
 import { normalizeLinkTarget } from './ontology/links.ts';
-import { runOntologyQuery } from './ontology/query.ts';
+import { runOntologyQueryDetailed } from './ontology/query.ts';
 import { summarizeIssues } from './ontology/issues.ts';
 import { OntologyIssuesModal } from './OntologyIssuesModal.ts';
 import { OntologyRelationFixModal } from './OntologyRelationFixModal.ts';
 import { OntologyScaffoldReviewModal } from './OntologyScaffoldReviewModal.ts';
 import { OntologySchemaDiagnosticsModal } from './OntologySchemaDiagnosticsModal.ts';
 import { OntologyTypeEditorModal } from './OntologyTypeEditorModal.ts';
+import type { BulkScaffoldEntityDiff } from './OntologyBulkScaffoldModal.ts';
+
 import { OntologyBulkScaffoldModal } from './OntologyBulkScaffoldModal.ts';
 import { OntologyTypeLibraryModal } from './OntologyTypeLibraryModal.ts';
-import { OntologyTypePickerModal, OntologyTypeWizardModal } from './OntologyTypeWizardModal.ts';
+import { OntologyTypeWizardModal } from './OntologyTypeWizardModal.ts';
 import { emptyTypeEditorModel, TYPE_EDITOR_KEYS, typeEditorFrontmatter, typeEditorModelFromType } from './ontology/type-editor.ts';
 import type { TypeEditorModel } from './ontology/type-editor.ts';
 import { applyTypeTemplate } from './templater.ts';
+import { getLastCommit, getRepoRoot } from './git.ts';
+import { analyzeTypeChange } from './ontology/impact.ts';
+import { parseOntologyType } from './ontology/parser.ts';
+import { OntologyTypeImpactModal } from './OntologyTypeImpactModal.ts';
+import type { ImpactResolution } from './OntologyTypeImpactModal.ts';
+import { OntologyRepairModal } from './OntologyRepairModal.ts';
 import { PluginSettings as PluginSettingsClass } from './PluginSettings.ts';
 import { PluginSettingsTab } from './PluginSettingsTab.ts';
 
 const CACHE_WRITE_DEBOUNCE_MS = 800;
+// Sweep 10% of entities every 20 minutes; full vault cycles in ~3.5 hours.
+const SWEEP_INTERVAL_MS = 20 * 60 * 1000;
+const SWEEP_BATCH_FRACTION = 0.1;
+const SWEEP_MIN_BATCH = 5;
 
 export class Plugin extends ObsidianPlugin {
   public index: null | OntologyIndex = null;
@@ -47,6 +60,14 @@ export class Plugin extends ObsidianPlugin {
   // since; auto-scaffold stays quiet for them until the entity's types change.
   private scaffoldDismissedPaths = new Set<string>();
   private scaffoldReviewOpenPaths = new Set<string>();
+  // Cursor into the sorted entity-path list; advances by the batch size each sweep
+  // so every entity gets revalidated once per full cycle regardless of vault size.
+  private sweepCursor = 0;
+  // Resolved lazily; null means "checked and not in a git repo"
+  private repoRoot: string | null | undefined = undefined;
+  // Paths currently being written by the type editor modal; suppresses the
+  // raw-edit lock warning for writes the plugin itself initiates.
+  private modalWritingPaths = new Set<string>();
 
   public override async onload(): Promise<void> {
     this.pluginSettings = Object.assign(new PluginSettingsClass(), await this.loadData());
@@ -165,15 +186,29 @@ export class Plugin extends ObsidianPlugin {
       name: 'Edit active ontology type',
     });
 
-    this.registerEvent(this.app.metadataCache.on('changed', (file) => { void this.handleMetadataChanged(file); }));
-    this.registerEvent(this.app.vault.on('create', (file) => { void this.handleVaultCreate(file); }));
-    this.registerEvent(this.app.vault.on('delete', (file) => { void this.handleVaultDelete(file); }));
-    this.registerEvent(this.app.vault.on('modify', (file) => { void this.handleVaultModify(file); }));
-    this.registerEvent(this.app.vault.on('rename', (file, oldPath) => { void this.handleVaultRename(file, oldPath); }));
+    this.registerEvent(this.app.metadataCache.on('changed', (file) => { this.runEventTask(this.handleMetadataChanged(file)); }));
+    this.registerEvent(this.app.vault.on('create', (file) => { this.runEventTask(this.handleVaultCreate(file)); }));
+    this.registerEvent(this.app.vault.on('delete', (file) => { this.runEventTask(this.handleVaultDelete(file)); }));
+    this.registerEvent(this.app.vault.on('modify', (file) => { this.runEventTask(this.handleVaultModify(file)); }));
+    this.registerEvent(this.app.vault.on('rename', (file, oldPath) => { this.runEventTask(this.handleVaultRename(file, oldPath)); }));
     this.addSettingTab(new PluginSettingsTab(this.app, this));
 
     this.app.workspace.onLayoutReady(() => {
-      void this.rebuildIndex(false).finally(() => { this.indexReady = true; });
+      void this.rebuildIndex(false).finally(() => {
+        this.indexReady = true;
+        this.registerInterval(window.setInterval(() => {
+          this.runEventTask(this.runBackgroundSweep());
+        }, SWEEP_INTERVAL_MS));
+      });
+    });
+  }
+
+  // Vault event handlers have no caller to surface a rejection to; without
+  // this, a failed incremental update dies as an unhandled rejection and the
+  // index silently stops tracking the vault.
+  private runEventTask(task: Promise<unknown>): void {
+    task.catch((error: unknown) => {
+      console.error('Ontologize: incremental index update failed', error);
     });
   }
 
@@ -214,7 +249,9 @@ export class Plugin extends ObsidianPlugin {
 
     if (showNotice) {
       const autoFixText = autoFixedInverses > 0 ? `, ${autoFixedInverses} inverse updates` : '';
-      new Notice(`Ontology index rebuilt: ${this.index.types.size} types, ${this.index.entities.size} entities, ${this.index.issues.length} issues${autoFixText}.`);
+      const ignoredCount = [...this.index.entities.values()].filter((e) => e.ignored).length;
+      const ignoredText = ignoredCount > 0 ? `, ${ignoredCount} ignored` : '';
+      new Notice(`Ontology index rebuilt: ${this.index.types.size} types, ${this.index.entities.size} entities, ${this.index.issues.length} issues${autoFixText}${ignoredText}.`);
     }
   }
 
@@ -227,11 +264,24 @@ export class Plugin extends ObsidianPlugin {
     new OntologyIssuesModal(this.app, {
       getIssues: () => this.index?.issues ?? [],
       initialFilter: file ? { file } : undefined,
+      isIgnoredFile: (filePath) => this.index?.entities.get(filePath)?.ignored === true,
       onFixInverses: async () => {
         await this.openRelationFixModal();
       },
       onRebuild: async () => {
         await this.rebuildIndex(true);
+      },
+      onRepair: () => { void this.openRepairModal(); },
+    }).open();
+  }
+
+  public async openRepairModal(): Promise<void> {
+    await this.ensureIndex();
+    new OntologyRepairModal(this.app, {
+      getIndex: () => this.index ?? null,
+      onUnignore: async (paths) => {
+        await this.setEntitiesIgnored(paths, false);
+        await this.rebuildIndex(false);
       },
     }).open();
   }
@@ -389,18 +439,75 @@ export class Plugin extends ObsidianPlugin {
       editing: true,
       model: typeEditorModelFromType(type),
       onSave: async (model) => {
+        // Build the proposed OntologyType by round-tripping through the
+        // frontmatter serializer and parser so the shadow exactly matches
+        // what the file write would produce.
         const generated = typeEditorFrontmatter(model);
-        await this.app.fileManager.processFrontMatter(file, (frontmatter) => {
-          for (const key of TYPE_EDITOR_KEYS) {
-            delete frontmatter[key];
+        const previewMarkdown = `---\n${stringifyYaml(generated)}---\n`;
+        const proposedType = parseOntologyType(file.path, previewMarkdown, this.pluginSettings.autoApplyBlockPrefix);
+
+        const currentIndex = this.index ?? index;
+        const impact = analyzeTypeChange(currentIndex, model.name, proposedType);
+        const hasImpact =
+          impact.coherenceViolations.length > 0 ||
+          impact.softBreaking.length > 0 ||
+          impact.softFixed.length > 0;
+
+        if (hasImpact) {
+          const resolution = await new Promise<ImpactResolution>((resolve) => {
+            new OntologyTypeImpactModal(this.app, {
+              impact,
+              onResolve: resolve,
+              typeName: model.name,
+            }).open();
+          });
+
+          if (resolution === 'cancel') {
+            return false;
           }
-          Object.assign(frontmatter, generated);
-        });
+
+          if (resolution === 'ignore-affected') {
+            const filesToIgnore = new Set([
+              ...impact.coherenceViolations.map((i) => i.file),
+              ...impact.softBreaking.map((i) => i.file),
+            ]);
+            await this.setEntitiesIgnored([...filesToIgnore], true);
+          }
+        }
+
+        this.modalWritingPaths.add(file.path);
+        try {
+          await this.app.fileManager.processFrontMatter(file, (frontmatter) => {
+            for (const key of TYPE_EDITOR_KEYS) {
+              delete frontmatter[key];
+            }
+            Object.assign(frontmatter, generated);
+          });
+        } finally {
+          this.modalWritingPaths.delete(file.path);
+        }
         await this.rebuildIndex(false);
         new Notice(`Updated ontology type ${model.name}.`);
         return true;
       },
     }).open();
+  }
+
+  private async setEntitiesIgnored(paths: string[], ignored: boolean): Promise<void> {
+    await Promise.all(
+      paths.map(async (path) => {
+        const file = this.app.vault.getFileByPath(path);
+        if (file instanceof TFile) {
+          await this.app.fileManager.processFrontMatter(file, (fm) => {
+            if (ignored) {
+              fm['ignored'] = true;
+            } else {
+              delete fm['ignored'];
+            }
+          });
+        }
+      }),
+    );
   }
 
   /**
@@ -461,6 +568,92 @@ export class Plugin extends ObsidianPlugin {
     }
     new Notice(`Ontology scaffold available: ${plans.length} fields.`);
     this.openScaffoldReviewModal(file, plans);
+  }
+
+  /**
+   * Rotates through the entity roster in batches, refreshing frontmatter from
+   * the in-memory metadataCache and re-running per-entity validation without a
+   * full rebuild. Runs inside the enqueue queue so it never races a live event.
+   * After the sync phase, blame info is attached to any new issues found in the
+   * batch so the issues modal can show which commit introduced each problem.
+   */
+  private async runBackgroundSweep(): Promise<void> {
+    let batch: string[] = [];
+    await this.enqueue(async () => { batch = this.backgroundSweepCore(); });
+    if (batch.length > 0) {
+      await this.attachBlameForBatch(batch);
+    }
+  }
+
+  private backgroundSweepCore(): string[] {
+    if (!this.index || !this.indexReady) {
+      return [];
+    }
+
+    const paths = [...this.index.entities.keys()].sort();
+    if (paths.length === 0) {
+      return [];
+    }
+
+    const batchSize = Math.max(SWEEP_MIN_BATCH, Math.ceil(paths.length * SWEEP_BATCH_FRACTION));
+    const start = this.sweepCursor % paths.length;
+    const end = start + batchSize;
+
+    const batch = end <= paths.length
+      ? paths.slice(start, end)
+      : [...paths.slice(start), ...paths.slice(0, end - paths.length)];
+
+    this.sweepCursor = end % paths.length;
+
+    const { staleCount, removedCount } = revalidateEntityBatch(this.app, this.index, batch);
+    if (staleCount > 0 || removedCount > 0) {
+      this.scheduleCacheWrite();
+    }
+
+    return batch;
+  }
+
+  private async attachBlameForBatch(batch: string[]): Promise<void> {
+    if (!this.index) {
+      return;
+    }
+
+    // Resolve repo root once; skip if vault is not tracked by git
+    if (this.repoRoot === undefined) {
+      const adapter = this.app.vault.adapter;
+      const vaultPath = 'basePath' in adapter ? (adapter as { basePath: string }).basePath : null;
+      this.repoRoot = vaultPath ? await getRepoRoot(vaultPath) : null;
+    }
+    if (!this.repoRoot) {
+      return;
+    }
+
+    const root = this.repoRoot;
+    const batchSet = new Set(batch);
+    const unblamed = this.index.issues.filter((i) => batchSet.has(i.file) && !i.blame);
+
+    // Deduplicate by file so we only run one git invocation per file
+    const filesSeen = new Set<string>();
+    const blameByFile = new Map<string, Awaited<ReturnType<typeof getLastCommit>>>();
+    await Promise.all(
+      unblamed
+        .filter((i) => {
+          if (filesSeen.has(i.file)) return false;
+          filesSeen.add(i.file);
+          return true;
+        })
+        .map(async (i) => {
+          const blame = await getLastCommit(root, i.file);
+          blameByFile.set(i.file, blame);
+        }),
+    );
+
+    for (const issue of unblamed) {
+      const blame = blameByFile.get(issue.file);
+      if (blame) {
+        issue.blame = blame;
+      }
+    }
   }
 
   private async runAutoInverseFix(): Promise<number> {
@@ -540,6 +733,16 @@ export class Plugin extends ObsidianPlugin {
         return;
       }
       if (file instanceof TFile && isOntologyTypeFile(file, this.pluginSettings.typeFolder)) {
+        // Warn when a locked type is edited directly rather than through the type editor modal.
+        if (!this.modalWritingPaths.has(file.path)) {
+          const typeName = file.basename;
+          const type = this.index?.types.get(typeName);
+          if (type?.lockIntent) {
+            new Notice(
+              `"${typeName}" is a locked type. Use the type editor (right-click → Edit type) to validate impact before saving changes.`,
+            );
+          }
+        }
         await this.upsertFileCore(file);
       }
     });
@@ -599,12 +802,16 @@ export class Plugin extends ObsidianPlugin {
             toReplace.push(r);
           }
           if (type?.template && !appliedTemplate) {
-            void applyTypeTemplate(this.app, type.template, file);
+            // Awaited so the template body lands before the inverse pass and
+            // cache write below read the file; the vault events these writes
+            // emit are enqueued behind the current task, not awaited, so this
+            // cannot deadlock the queue.
+            await applyTypeTemplate(this.app, type.template, file);
             appliedTemplate = true;
           }
         }
         if (toReplace.length > 0) {
-          void this.removeTypeMemberships(file, toReplace);
+          await this.removeTypeMemberships(file, toReplace);
         }
       }
     }
@@ -616,12 +823,16 @@ export class Plugin extends ObsidianPlugin {
   private async renderQueryBlock(source: string, el: HTMLElement, ctx: MarkdownPostProcessorContext): Promise<void> {
     const index = await this.ensureIndex();
     // An explicit `include:` in the block always wins; the setting only moves the default.
-    const results = runOntologyQuery(index, source, {
+    const { entities: results, warnings } = runOntologyQueryDetailed(index, source, {
       defaultInclude: this.pluginSettings.queryOnlyLocked ? 'locked' : 'all',
     });
 
     el.empty();
     el.addClass('ontology-query-results');
+
+    for (const warning of warnings) {
+      el.createEl('p', { cls: 'ontology-query-warning', text: `⚠ ${warning}` });
+    }
 
     if (results.length === 0) {
       el.createEl('p', { cls: 'ontology-query-empty', text: 'No matching ontology notes.' });
