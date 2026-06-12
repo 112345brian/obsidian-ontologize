@@ -4,6 +4,10 @@ import { MarkdownRenderer, normalizePath, Notice, Plugin as ObsidianPlugin, stri
 
 import type { OntologyIndex } from './ontology/types.ts';
 import type { PluginSettings } from './PluginSettings.ts';
+import type { OntologizeAPI } from './ontology/scripting.ts';
+import { ScriptHookRegistry } from './ontology/scripting.ts';
+import { ScriptLoader } from './ScriptLoader.ts';
+import { OntologyEntityActionsModal } from './OntologyEntityActionsModal.ts';
 
 import { readOntologyCache, writeOntologyCache } from './ontology/cache.ts';
 import {
@@ -18,7 +22,7 @@ import {
 import { applyMissingInversePlans, applyScaffoldPlan, detectAutoApplyType, fixMissingInverses, planMissingInverses, planScaffoldEntity, shouldAutoApplyScaffold } from './ontology/mutations.ts';
 import type { TypeReplacement } from './ontology/types.ts';
 import { extractAssertedLinkTargets, normalizeLinkTarget } from './ontology/links.ts';
-import { runOntologyQueryDetailed } from './ontology/query.ts';
+import { runOntologyQuery, runOntologyQueryDetailed } from './ontology/query.ts';
 import { summarizeIssues } from './ontology/issues.ts';
 import { OntologyIssuesModal } from './OntologyIssuesModal.ts';
 import { OntologyRelationFixModal } from './OntologyRelationFixModal.ts';
@@ -51,6 +55,10 @@ const SWEEP_MIN_BATCH = 5;
 export class Plugin extends ObsidianPlugin {
   public index: null | OntologyIndex = null;
   public pluginSettings: PluginSettings = new PluginSettingsClass();
+
+  private readonly scriptRegistry = new ScriptHookRegistry();
+  private readonly scriptLoader = new ScriptLoader();
+  private scriptApi: OntologizeAPI | null = null;
 
   private cacheWriteTimer: null | number = null;
   private indexReady = false;
@@ -166,6 +174,21 @@ export class Plugin extends ObsidianPlugin {
       name: 'Edit active ontology type',
     });
 
+    this.addCommand({
+      checkCallback: (checking) => {
+        const file = this.app.workspace.getActiveFile();
+        if (!file || !this.index?.entities.has(file.path) || this.scriptRegistry.entityActions.length === 0) {
+          return false;
+        }
+        if (!checking) {
+          void this.openEntityActionsModal(file);
+        }
+        return true;
+      },
+      id: 'open-entity-actions',
+      name: 'Open script actions for active note',
+    });
+
     this.registerEvent(this.app.metadataCache.on('changed', (file) => { this.runEventTask(this.handleMetadataChanged(file)); }));
     this.registerEvent(this.app.vault.on('create', (file) => { this.runEventTask(this.handleVaultCreate(file)); }));
     this.registerEvent(this.app.vault.on('delete', (file) => { this.runEventTask(this.handleVaultDelete(file)); }));
@@ -181,6 +204,23 @@ export class Plugin extends ObsidianPlugin {
         }, SWEEP_INTERVAL_MS));
       });
     });
+
+    this.scriptApi = this.makeScriptApi();
+    this.registerEvent(this.app.vault.on('create', (file) => {
+      if (file instanceof TFile && this.pluginSettings.scriptsFolder && this.scriptLoader.isScriptFile(file.path, this.pluginSettings.scriptsFolder)) {
+        this.runEventTask(this.reloadScripts());
+      }
+    }));
+    this.registerEvent(this.app.vault.on('modify', (file) => {
+      if (file instanceof TFile && this.pluginSettings.scriptsFolder && this.scriptLoader.isScriptFile(file.path, this.pluginSettings.scriptsFolder)) {
+        this.runEventTask(this.reloadScripts());
+      }
+    }));
+    this.registerEvent(this.app.vault.on('delete', (file) => {
+      if (this.pluginSettings.scriptsFolder && 'path' in file && this.scriptLoader.isScriptFile(file.path as string, this.pluginSettings.scriptsFolder)) {
+        this.runEventTask(this.reloadScripts());
+      }
+    }));
   }
 
   // Vault event handlers have no caller to surface a rejection to; without
@@ -221,6 +261,9 @@ export class Plugin extends ObsidianPlugin {
   private async buildAndStore(showNotice: boolean): Promise<void> {
     this.index = await buildOntologyIndex(this.app, this.indexSettings());
     await writeOntologyCache(this.app, this.pluginSettings.cachePath, this.index);
+    // Reload scripts on full rebuild so they see the fresh index, then run validate hooks.
+    await this.reloadScripts();
+    await this.fireEntityValidateHooks();
 
     let autoFixedInverses = 0;
     if (this.pluginSettings.autoUpdateInverses) {
@@ -769,6 +812,18 @@ export class Plugin extends ObsidianPlugin {
     this.index = await upsertOntologyFile(this.app, index, file, this.indexSettings());
     const membershipAfter = this.index.entities.get(file.path)?.instanceOf ?? [];
 
+    if (this.scriptApi) {
+      const entity = this.index.entities.get(file.path);
+      if (entity) {
+        for (const handler of this.scriptRegistry.entitySaveHandlers) {
+          try { await handler(entity, this.scriptApi); } catch (e) { console.error('Ontologize script entity:save error', e); }
+        }
+        for (const handler of this.scriptRegistry.entityValidateHandlers) {
+          try { handler(entity, this.scriptApi); } catch (e) { console.error('Ontologize script entity:validate error', e); }
+        }
+      }
+    }
+
     // Auto-apply detection: if the file is not yet typed, scan all types with
     // conditional auto-apply to see if any match the file's frontmatter.  When
     // one matches, stamp is-instance and reconcile `up` for Breadcrumbs:
@@ -881,6 +936,73 @@ export class Plugin extends ObsidianPlugin {
       cls: 'ontology-query-count',
       text: `${results.length} ${results.length === 1 ? 'note' : 'notes'}.`,
     });
+  }
+
+  private makeScriptApi(): OntologizeAPI {
+    const registry = this.scriptRegistry;
+    const plugin = this;
+    return {
+      get index() { return plugin.index!; },
+      query(queryString) { return plugin.index ? runOntologyQuery(plugin.index, queryString) : []; },
+      issue(path, message, severity = 'warning') {
+        if (plugin.index) {
+          plugin.index.issues.push({ file: path, message, severity });
+        }
+      },
+      async updateFrontmatter(path, update) {
+        const file = plugin.app.vault.getAbstractFileByPath(path);
+        if (file instanceof TFile) {
+          await plugin.app.fileManager.processFrontMatter(file, (fm) => { Object.assign(fm, update); });
+        }
+      },
+      on(event: string, handler: (...args: unknown[]) => unknown) {
+        if (event === 'index:ready') registry.indexReadyHandlers.push(handler as typeof registry.indexReadyHandlers[number]);
+        else if (event === 'entity:save') registry.entitySaveHandlers.push(handler as typeof registry.entitySaveHandlers[number]);
+        else if (event === 'entity:validate') registry.entityValidateHandlers.push(handler as typeof registry.entityValidateHandlers[number]);
+      },
+      ui: {
+        registerEntityAction(label, options) { registry.entityActions.push({ label, options }); },
+      },
+    } as OntologizeAPI;
+  }
+
+  private async loadScripts(): Promise<void> {
+    const { scriptsFolder } = this.pluginSettings;
+    if (!scriptsFolder || !this.scriptApi) {
+      return;
+    }
+    await this.scriptLoader.loadAll(this.app, scriptsFolder, this.scriptApi);
+    if (this.index) {
+      for (const handler of this.scriptRegistry.indexReadyHandlers) {
+        try { await handler(this.scriptApi); } catch (e) { console.error('Ontologize script index:ready error', e); }
+      }
+    }
+  }
+
+  private async reloadScripts(): Promise<void> {
+    this.scriptRegistry.clear();
+    await this.loadScripts();
+  }
+
+  public async fireEntityValidateHooks(): Promise<void> {
+    if (!this.index || !this.scriptApi || this.scriptRegistry.entityValidateHandlers.length === 0) {
+      return;
+    }
+    for (const entity of this.index.entities.values()) {
+      for (const handler of this.scriptRegistry.entityValidateHandlers) {
+        try { handler(entity, this.scriptApi); } catch (e) { console.error('Ontologize script entity:validate error', e); }
+      }
+    }
+  }
+
+  private async openEntityActionsModal(file: TFile): Promise<void> {
+    if (!this.scriptApi) return;
+    const entity = this.index?.entities.get(file.path);
+    if (!entity) {
+      new Notice('This note is not an indexed ontology entity.');
+      return;
+    }
+    new OntologyEntityActionsModal(this.app, entity, this.scriptRegistry.entityActions, this.scriptApi).open();
   }
 
   private indexSettings(): {

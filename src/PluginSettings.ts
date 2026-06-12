@@ -14,4 +14,5 @@ export class PluginSettings {
   public frontmatterIgnoreRules: FrontmatterIgnoreRule[] = [];
   public autoApplyBlockPrefix = DEFAULT_BLOCK_PREFIX;
   public initialScaffoldComplete = false;
+  public scriptsFolder = '';
 }

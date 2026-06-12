@@ -57,6 +57,19 @@ export class PluginSettingsTab extends PluginSettingTab {
       );
 
     new Setting(containerEl)
+      .setName('Scripts folder')
+      .setDesc('Vault-relative folder of .js extension scripts loaded on startup. Leave blank to disable scripting.')
+      .addText((text) =>
+        text
+          .setPlaceholder('_ontologize/scripts')
+          .setValue(this.plugin.pluginSettings.scriptsFolder)
+          .onChange(async (value) => {
+            this.plugin.pluginSettings.scriptsFolder = value.trim();
+            await this.plugin.savePluginSettings();
+          })
+      );
+
+    new Setting(containerEl)
       .setName('Type folder')
       .setDesc('Markdown folder containing ontology type definitions.')
       .addText((text) =>
