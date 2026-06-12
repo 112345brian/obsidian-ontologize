@@ -91,10 +91,62 @@ export class OntologyTypeEditorModal extends Modal {
       .setDesc('Templater template applied to a new entity when this type is first assigned. Leave blank for none.')
       .addText((text) => text.setPlaceholder('My Template').setValue(model.template).onChange((value) => { model.template = value.trim(); }));
 
+    this.renderAutoApply(contentEl);
     this.renderFieldSection(contentEl, 'Required fields', model.mustHave, 'must-have');
     this.renderFieldSection(contentEl, 'Optional fields', model.canHave, 'can-have');
     this.renderRelations(contentEl);
     this.renderActions(contentEl);
+  }
+
+  private renderAutoApply(containerEl: HTMLElement): void {
+    const { model } = this.options;
+    const section = containerEl.createEl('section', { cls: 'ontology-type-editor-section' });
+    section.createEl('h3', { text: 'Auto-apply scaffold' });
+
+    new Setting(section)
+      .setName('When to apply')
+      .setDesc('Automatically scaffold new entities of this type.')
+      .addDropdown((dropdown) => {
+        dropdown
+          .addOption('never', 'Never')
+          .addOption('always', 'Always')
+          .addOption('conditional', 'When conditions match')
+          .setValue(model.autoApplyMode)
+          .onChange((value) => {
+            model.autoApplyMode = value as TypeEditorModel['autoApplyMode'];
+            this.render();
+          });
+      });
+
+    if (model.autoApplyMode === 'conditional') {
+      new Setting(section)
+        .setName('Match')
+        .addDropdown((dropdown) => {
+          dropdown
+            .addOption('all', 'All conditions')
+            .addOption('any', 'Any condition')
+            .setValue(model.autoApplyMatch)
+            .onChange((value) => { model.autoApplyMatch = value as 'all' | 'any'; });
+        });
+
+      const condHeader = section.createEl('div', { cls: 'ontology-type-editor-header' });
+      condHeader.createEl('span', { cls: 'ontology-type-editor-sublabel', text: 'Conditions' });
+      const addBtn = condHeader.createEl('button', { cls: 'clickable-icon', attr: { 'aria-label': 'Add condition' }, text: '+' });
+      addBtn.addEventListener('click', () => {
+        model.autoApplyConditions.push({ key: '', value: '' });
+        this.render();
+      });
+
+      for (const [index, condition] of model.autoApplyConditions.entries()) {
+        new Setting(section)
+          .addText((text) => text.setPlaceholder('frontmatter-key').setValue(condition.key).onChange((v) => { condition.key = v.trim(); }))
+          .addText((text) => text.setPlaceholder('expected value').setValue(condition.value).onChange((v) => { condition.value = v; }))
+          .addButton((btn) => btn.setIcon('trash-2').setTooltip('Remove').onClick(() => {
+            model.autoApplyConditions.splice(index, 1);
+            this.render();
+          }));
+      }
+    }
   }
 
   private renderFieldSection(containerEl: HTMLElement, title: string, fields: TypeEditorField[], kind: string): void {

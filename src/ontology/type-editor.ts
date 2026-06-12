@@ -24,8 +24,16 @@ export interface TypeEditorRelation {
   valueType: string;
 }
 
+export interface TypeEditorAutoApplyCondition {
+  key: string;
+  value: string;
+}
+
 export interface TypeEditorModel {
   abstract: boolean;
+  autoApplyConditions: TypeEditorAutoApplyCondition[];
+  autoApplyMatch: 'all' | 'any';
+  autoApplyMode: 'never' | 'always' | 'conditional';
   canHave: TypeEditorField[];
   excludes: string[];
   extends: string[];
@@ -43,6 +51,9 @@ export interface TypeEditorModel {
 export function emptyTypeEditorModel(): TypeEditorModel {
   return {
     abstract: false,
+    autoApplyConditions: [],
+    autoApplyMatch: 'all',
+    autoApplyMode: 'never',
     canHave: [],
     excludes: [],
     extends: [],
@@ -79,9 +90,24 @@ function fieldFromDefinition(name: string, definition: PropertyDefinition): Type
   };
 }
 
+function autoApplyToModel(autoApply: OntologyType['autoApply']): Pick<TypeEditorModel, 'autoApplyMode' | 'autoApplyMatch' | 'autoApplyConditions'> {
+  if (!autoApply) {
+    return { autoApplyConditions: [], autoApplyMatch: 'all', autoApplyMode: 'never' };
+  }
+  if (autoApply === true) {
+    return { autoApplyConditions: [], autoApplyMatch: 'all', autoApplyMode: 'always' };
+  }
+  return {
+    autoApplyConditions: Object.entries(autoApply.conditions).map(([key, value]) => ({ key, value: String(value) })),
+    autoApplyMatch: autoApply.match,
+    autoApplyMode: 'conditional',
+  };
+}
+
 export function typeEditorModelFromType(type: OntologyType): TypeEditorModel {
   return {
     abstract: type.abstract,
+    ...autoApplyToModel(type.autoApply),
     canHave: [...type.canHave].map(([name, definition]) => fieldFromDefinition(name, definition)),
     excludes: [...type.excludes],
     extends: [...type.extends],
@@ -191,6 +217,17 @@ export function typeEditorFrontmatter(model: TypeEditorModel): Record<string, un
   if (canHave) {
     frontmatter['can-have'] = canHave;
   }
+  if (model.autoApplyMode === 'always') {
+    frontmatter['auto-apply'] = true;
+  } else if (model.autoApplyMode === 'conditional' && model.autoApplyConditions.some((c) => c.key.trim())) {
+    const conditions: Record<string, unknown> = {};
+    for (const { key, value } of model.autoApplyConditions) {
+      if (key.trim()) {
+        conditions[key.trim()] = value;
+      }
+    }
+    frontmatter['auto-apply'] = { match: model.autoApplyMatch, ...conditions };
+  }
   if (model.template.trim()) {
     frontmatter['template'] = `[[${model.template.trim()}]]`;
   }
@@ -213,6 +250,7 @@ export function typeEditorFrontmatter(model: TypeEditorModel): Record<string, un
 
 export const TYPE_EDITOR_KEYS = [
   'abstract',
+  'auto-apply',
   'can-have',
   'excludes',
   'extends',
