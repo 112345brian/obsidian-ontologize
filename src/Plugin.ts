@@ -393,6 +393,26 @@ export class Plugin extends ObsidianPlugin {
     return totalFields;
   }
 
+  private offerScaffoldAfterTypeChange(): void {
+    if (!this.index || !this.indexReady) return;
+    const affected = [...this.index.entities.values()].filter(
+      (e) => !e.ignored && planScaffoldEntity(this.index!, e.path).length > 0,
+    );
+    if (affected.length === 0) return;
+
+    const notice = new Notice('', 0);
+    const frag = notice.noticeEl;
+    frag.createEl('span', { text: `Type change affects ${affected.length} ${affected.length === 1 ? 'note' : 'notes'} with missing fields. ` });
+    const btn = frag.createEl('a', { text: 'Scaffold now', href: '#' });
+    btn.style.textDecoration = 'underline';
+    btn.style.cursor = 'pointer';
+    btn.addEventListener('click', (e) => {
+      e.preventDefault();
+      notice.hide();
+      void this.openBulkScaffoldModal();
+    });
+  }
+
   private async openBulkScaffoldModal(): Promise<void> {
     const index = await this.ensureIndex();
     new OntologyBulkScaffoldModal(this.app, index, async (diffs) => {
@@ -572,7 +592,10 @@ export class Plugin extends ObsidianPlugin {
 
     const entity = this.index.entities.get(file.path);
     if (entity && shouldAutoApplyScaffold(this.index, entity)) {
-      void applyScaffoldPlan(this.app, file, plans);
+      const silentPlans = plans.filter((p) => p.kind !== 'optional');
+      if (silentPlans.length > 0) {
+        void applyScaffoldPlan(this.app, file, silentPlans);
+      }
       return;
     }
 
@@ -743,6 +766,7 @@ export class Plugin extends ObsidianPlugin {
     return this.enqueue(async () => {
       if (file instanceof TFile && isOntologySchemaFile(file, this.pluginSettings.schemaPath)) {
         await this.buildAndStore(false);
+        this.offerScaffoldAfterTypeChange();
         return;
       }
       if (file instanceof TFile && isOntologyTypeFile(file, this.pluginSettings.typeFolder)) {
@@ -757,6 +781,7 @@ export class Plugin extends ObsidianPlugin {
           }
         }
         await this.upsertFileCore(file);
+        this.offerScaffoldAfterTypeChange();
       }
     });
   }

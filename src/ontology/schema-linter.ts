@@ -38,6 +38,7 @@ const PROPERTY_KEYS = new Set([
   'included-types',
   'insert',
   'possible-values',
+  'scaffold',
   'type',
   'uses',
   'weight-scale',

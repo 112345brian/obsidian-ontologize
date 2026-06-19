@@ -12,7 +12,7 @@ function main(): void {
     process.exit(1);
   }
 
-  execSync(`npm version ${versionUpdateType} --no-git-tag-version`, { stdio: 'inherit' });
+  execSync(`npm version ${versionUpdateType} --no-git-tag-version --allow-same-version`, { stdio: 'inherit' });
 
   const packageJson = JSON.parse(readFileSync('package.json', 'utf-8')) as { version: string };
   const newVersion = packageJson.version;

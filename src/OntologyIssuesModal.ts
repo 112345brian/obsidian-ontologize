@@ -1,4 +1,4 @@
-import type { App } from 'obsidian';
+import type { App, TFile } from 'obsidian';
 
 import { Modal, Notice, Setting } from 'obsidian';
 
@@ -19,6 +19,7 @@ interface OntologyIssuesModalOptions {
 
 export class OntologyIssuesModal extends Modal {
   private filter: IssueFilter & { showIgnored?: boolean | undefined };
+  private expandedFix = new Set<string>();
 
   public constructor(app: App, private readonly options: OntologyIssuesModalOptions) {
     super(app);
@@ -161,18 +162,64 @@ export class OntologyIssuesModal extends Modal {
         });
       }
 
-      new Setting(item)
+      const actions = new Setting(item)
         .addButton((button) => {
-          button
-            .setButtonText('Open')
-            .onClick(async () => {
-              try {
-                await this.app.workspace.openLinkText(issue.file, '', false);
-              } catch {
-                new Notice(`Could not open ${issue.file}`);
-              }
-            });
+          button.setButtonText('Open').onClick(async () => {
+            try {
+              await this.app.workspace.openLinkText(issue.file, '', false);
+            } catch {
+              new Notice(`Could not open ${issue.file}`);
+            }
+          });
         });
+
+      const fixKey = `${issue.file}\0${issue.property ?? ''}`;
+      if (issue.property && !issue.autofixable) {
+        actions.addButton((button) => {
+          button.setButtonText('Fix').setCta().onClick(() => {
+            if (this.expandedFix.has(fixKey)) {
+              this.expandedFix.delete(fixKey);
+            } else {
+              this.expandedFix.add(fixKey);
+            }
+            this.render();
+          });
+        });
+
+        if (this.expandedFix.has(fixKey)) {
+          const row = item.createEl('div', { cls: 'ontology-issue-fix-row' });
+          const input = row.createEl('input', {
+            attr: { placeholder: issue.property, type: 'text' },
+            cls: 'ontology-issue-fix-input',
+          }) as HTMLInputElement;
+
+          const apply = async (): Promise<void> => {
+            const value = input.value.trim();
+            if (!value) return;
+            const abstract = this.app.vault.getAbstractFileByPath(issue.file);
+            if (!abstract || !('extension' in abstract)) {
+              new Notice(`File not found: ${issue.file}`);
+              return;
+            }
+            await this.app.fileManager.processFrontMatter(abstract as TFile, (fm) => {
+              fm[issue.property!] = value;
+            });
+            this.expandedFix.delete(fixKey);
+            new Notice(`Set ${issue.property} on ${issue.file}`);
+            this.render();
+          };
+
+          input.addEventListener('keydown', (e) => {
+            if (e.key === 'Enter') { void apply(); }
+            if (e.key === 'Escape') { this.expandedFix.delete(fixKey); this.render(); }
+          });
+
+          row.createEl('button', { cls: 'ontology-issue-fix-apply', text: 'Apply' })
+            .addEventListener('click', () => { void apply(); });
+
+          setTimeout(() => input.focus(), 0);
+        }
+      }
     }
   }
 }

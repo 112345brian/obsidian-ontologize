@@ -76,7 +76,8 @@ function parsePropertyDefinition(value: unknown): PropertyDefinition {
   const values = Array.isArray(record['possible-values']) ? record['possible-values'].map(String) : undefined;
   const weighted = record['weighted'] === true ? true : undefined;
   const weightScale = typeof record['weight-scale'] === 'string' ? record['weight-scale'] : undefined;
-  return { cardinality, excludedTypes, frontmatterKey, includedTypes, insert, type, uses, values, weighted, weightScale };
+  const scaffold = record['scaffold'] === true ? true : undefined;
+  return { cardinality, excludedTypes, frontmatterKey, includedTypes, insert, scaffold, type, uses, values, weighted, weightScale };
 }
 
 function parsePropertyMap(value: unknown): Map<string, PropertyDefinition> {

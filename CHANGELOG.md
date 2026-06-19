@@ -1,5 +1,18 @@
 # CHANGELOG
 
+## 0.4.0
+
+### Features
+
+- **`scaffold: true` on `can-have` fields.** Marks an optional field as a strong suggestion. It appears pre-checked in the scaffold review modal and is written silently during automatic scaffold for `ingest-from` and `auto-apply: true` types. Plain `can-have` fields without the flag appear in the modal unchecked and are never written silently.
+- **Scaffold prompt on type file save.** When a type file is saved and the schema change leaves entities with missing fields, a persistent notification appears with a "Scaffold now" link that opens the bulk scaffold modal for the affected notes. The rebuild itself remains read-only; scaffold only runs if confirmed.
+- **Inline property fix in issues modal.** Schema issues with a known `property` now show a **Fix** button. Clicking it expands an inline input pre-labelled with the property name — type the value, press Enter or click Apply, and it is written to the note's frontmatter immediately.
+- **Two-pass index rebuild.** The full rebuild now processes all type files in a first pass before resolving entity files, so `ingest-from` detection has the complete type map available regardless of filesystem order. Previously, entity files encountered before their type files were silently missed.
+
+### Bug fixes
+
+- **`normalizePath` missing from Obsidian mock.** Plugin orchestration tests failed with a missing export error after `normalizePath` was added to `Plugin.ts`. Added to the test mock alongside `stringifyYaml`.
+
 ## 0.3.0
 
 ### Features

@@ -501,31 +501,35 @@ export async function buildOntologyIndex(app: App, settings: BuildIndexSettings)
   const index = createEmptyOntologyIndex(settings);
   await loadSchemaTypes(app, index, settings);
 
-  for (const file of app.vault.getMarkdownFiles()) {
-    if (isOntologySchemaFile(file, settings.schemaPath)) {
-      continue;
-    }
-    if (isIgnoredOntologyPath(file.path, settings)) {
-      continue;
-    }
+  const allFiles = app.vault.getMarkdownFiles();
+  const entityFiles = [];
 
+  // Pass 1: load all type files so ingest-from detection has the full type map.
+  for (const file of allFiles) {
+    if (isOntologySchemaFile(file, settings.schemaPath) || isIgnoredOntologyPath(file.path, settings)) {
+      continue;
+    }
     if (isOntologyTypeFile(file, settings.typeFolder)) {
       const source = await app.vault.read(file);
       const lintIssues = lintOntologyTypeSource(file.path, source, settings.autoApplyBlockPrefix);
       index.schemaIssues?.push(...lintIssues);
-      if (lintIssues.some((item) => item.severity === 'error')) {
-        continue;
+      if (!lintIssues.some((item) => item.severity === 'error')) {
+        const type = parseOntologyType(file.path, source, settings.autoApplyBlockPrefix);
+        index.types.set(type.name, type);
       }
-      const type = parseOntologyType(file.path, source, settings.autoApplyBlockPrefix);
-      index.types.set(type.name, type);
-      continue;
+    } else {
+      entityFiles.push(file);
     }
+  }
 
+  // Pass 2: resolve entities with the complete type map available.
+  const typeFields = normalizedEntityTypeFields(settings.entityTypeFields);
+  for (const file of entityFiles) {
     const frontmatter = app.metadataCache.getFileCache(file)?.frontmatter;
     if (isIgnoredByFrontmatter(frontmatter ?? {}, settings)) {
       continue;
     }
-    const entity = resolveEntityFromFile(file.path, frontmatter ?? {}, normalizedEntityTypeFields(settings.entityTypeFields), index);
+    const entity = resolveEntityFromFile(file.path, frontmatter ?? {}, typeFields, index);
     if (entity) {
       index.entities.set(entity.path, entity);
     }

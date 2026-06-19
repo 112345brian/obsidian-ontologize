@@ -30,7 +30,9 @@ export class OntologyScaffoldReviewModal extends Modal {
     super(app);
     for (const plan of options.plans) {
       if (!plan.candidates?.length) {
-        this.selected.add(plan.property);
+        if (plan.kind !== 'optional') {
+          this.selected.add(plan.property);
+        }
       } else {
         const preChecked = new Set<string>();
         if (plan.existingValue != null) {

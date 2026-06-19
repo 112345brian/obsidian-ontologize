@@ -117,7 +117,9 @@ vi.mock('obsidian', () => {
     PluginSettingTab,
     Setting,
     TFile,
+    normalizePath: (p: string) => p,
     parseYaml: () => ({}),
+    stringifyYaml: (obj: unknown) => JSON.stringify(obj),
   };
 });
 

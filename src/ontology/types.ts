@@ -20,6 +20,7 @@ export interface PropertyDefinition {
   frontmatterKey?: string | undefined;
   includedTypes?: string[] | undefined;
   insert?: FrontmatterValue | undefined;
+  scaffold?: boolean | undefined;
   type?: string | undefined;
   uses?: string | undefined;
   values?: string[] | undefined;

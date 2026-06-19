@@ -152,6 +152,34 @@
   margin-bottom: 0.35em;
 }
 
+.ontology-issue-fix-row {
+  align-items: center;
+  display: flex;
+  gap: 0.5em;
+  margin-bottom: 0.5em;
+  margin-top: 0.25em;
+}
+
+.ontology-issue-fix-input {
+  background: var(--background-primary);
+  border: 1px solid var(--background-modifier-border-focus);
+  border-radius: 4px;
+  color: var(--text-normal);
+  flex: 1;
+  font-size: var(--font-ui-small);
+  padding: 0.25em 0.5em;
+}
+
+.ontology-issue-fix-apply {
+  background: var(--interactive-accent);
+  border: none;
+  border-radius: 4px;
+  color: var(--text-on-accent);
+  cursor: pointer;
+  font-size: var(--font-ui-small);
+  padding: 0.25em 0.75em;
+}
+
 .ontology-fix-plan-header {
   align-items: center;
   display: flex;

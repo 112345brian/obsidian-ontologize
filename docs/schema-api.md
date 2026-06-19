@@ -449,6 +449,7 @@ Recognized property definition fields:
 | `cardinality` | Currently validates `one` and `one-to-one` as single-value constraints. |
 | `insert` | Literal required member, or registered template used to initialize an empty field. |
 | `possible-values` | Inline allowed values for this property. |
+| `scaffold` | `true` on a `can-have` field to include it in scaffold as a pre-checked suggestion. See [Scaffold Behaviour](#scaffold-behaviour). |
 | `weighted` | `true` to attach the built-in default weight scale to this field. The companion weight map field is named `{field-key}-weight`. |
 | `weight-scale` | Name of a scale defined in a `scales` block. Attaches a named weight scale to this field. The companion weight map field is named after the scale. |
 
@@ -710,3 +711,28 @@ For an automatic scaffold to run, the note must also have valid ontology members
 - No direct type is abstract.
 - No direct type is an interface.
 - No direct type is in a circular inheritance chain.
+
+### Scaffold Behaviour
+
+`must-have`, `can-have`, and relation fields each have different default behaviour in the scaffold modal and during silent scaffold:
+
+| Source | Modal | Pre-checked | Silent scaffold |
+|---|---|---|---|
+| `must-have` | shown | yes | yes |
+| `can-have` + `scaffold: true` | shown | yes | yes |
+| `can-have` (no flag) | shown | no | no |
+| relation | shown | yes | yes |
+
+`scaffold: true` on a `can-have` field marks it as a strong suggestion: it appears pre-checked in the review modal and is written silently for types detected via `ingest-from` or `auto-apply: true`. Without the flag, the field appears in the modal unchecked — the user can add it manually but it is never written automatically.
+
+```yaml
+# person.md
+can-have:
+  birth-year:
+    uses: birth-year
+    scaffold: true    # offered pre-checked; written silently for ingest-from entities
+  notes:
+    type: string      # shown in modal unchecked; never written silently
+```
+
+When a type file is saved and the resulting schema change leaves entities with missing fields, the plugin shows a notification with a **Scaffold now** link that opens the bulk scaffold modal for those entities.

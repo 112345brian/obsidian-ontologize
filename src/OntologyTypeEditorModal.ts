@@ -210,29 +210,38 @@ export class OntologyTypeEditorModal extends Modal {
 
     let yaml = '';
 
+    // Track keys already shown so inherited/own fields don't repeat them.
+    const shownKeys = new Set<string>();
+
     // Show ingest-from triggers as the type declaration mechanism.
     // If none are defined, fall back to showing is-instance so the user
     // knows they'll need an explicit declaration.
     if (model.ingestFrom.length > 0) {
       for (const { field, target } of model.ingestFrom) {
-        yaml += `${field}: "[[${target}]]"\n`;
+        const link = target.startsWith('[[') ? target : `[[${target}]]`;
+        yaml += `${field}: "${link}"\n`;
+        shownKeys.add(field);
       }
     } else if (model.name) {
       yaml += `is-instance: "[[${model.name}]]"\n`;
+      shownKeys.add('is-instance');
     }
 
     for (const { name, fields } of chain) {
-      if (fields.length === 0) continue;
+      const visible = fields.filter((f) => !shownKeys.has(f.key));
+      if (visible.length === 0) continue;
       yaml += `\n# ↑ inherited from ${name}\n`;
-      for (const f of fields) {
+      for (const f of visible) {
         const val = f.insert || (f.value ? `# ${f.value}` : f.required ? '# required' : '# optional');
         yaml += `${f.key}: ${val}\n`;
+        shownKeys.add(f.key);
       }
     }
 
-    if (ownFields.length > 0) {
+    const visibleOwn = ownFields.filter((f) => !shownKeys.has(f.key));
+    if (visibleOwn.length > 0) {
       yaml += chain.length > 0 ? '\n# ── this type ──\n' : '';
-      for (const f of ownFields) {
+      for (const f of visibleOwn) {
         const val = f.insert || (f.value ? `# ${f.value}` : f.required ? '# required' : '# optional');
         yaml += `${f.key}: ${val}\n`;
       }
@@ -415,20 +424,26 @@ export class OntologyTypeEditorModal extends Modal {
     const section = containerEl.createEl('section', { cls: 'ontology-type-editor-section' });
     section.createEl('span', { cls: 'ontology-type-editor-sublabel', text: 'Scaffold' });
 
-    new Setting(section)
-      .setName('When to scaffold')
-      .setDesc('Automatically fill in missing fields when an entity of this type is saved. Use "Always" if you use ingest rules for detection — the type is already known at that point.')
-      .addDropdown((dropdown) => {
-        dropdown
-          .addOption('never', 'Never')
-          .addOption('always', 'Always')
-          .addOption('conditional', 'When extra conditions match')
-          .setValue(model.autoApplyMode)
-          .onChange((value) => {
-            model.autoApplyMode = value as TypeEditorModel['autoApplyMode'];
-            this.render();
-          });
-      });
+    if (model.ingestFrom.length > 0) {
+      new Setting(section)
+        .setName('When to scaffold')
+        .setDesc('Scaffold runs automatically on detection because this type uses ingest-from rules — membership is certain as soon as the trigger field is set.');
+    } else {
+      new Setting(section)
+        .setName('When to scaffold')
+        .setDesc('Automatically fill in missing fields when an entity of this type is saved.')
+        .addDropdown((dropdown) => {
+          dropdown
+            .addOption('never', 'Never')
+            .addOption('always', 'Always')
+            .addOption('conditional', 'When extra conditions match')
+            .setValue(model.autoApplyMode)
+            .onChange((value) => {
+              model.autoApplyMode = value as TypeEditorModel['autoApplyMode'];
+              this.render();
+            });
+        });
+    }
 
     if (model.autoApplyMode === 'conditional') {
       new Setting(section)

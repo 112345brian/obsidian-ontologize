@@ -26,7 +26,7 @@ export interface ScaffoldFieldPlan {
   candidates?: string[] | undefined;
   existingValue?: unknown;
   insert?: FrontmatterValue | undefined;
-  kind: 'optional' | 'relation' | 'required';
+  kind: 'optional' | 'relation' | 'required' | 'suggested';
   property: string;
 }
 
@@ -205,12 +205,11 @@ function evalAutoApplyBlock(frontmatter: Record<string, unknown>, block: AutoApp
 export function shouldAutoApplyScaffold(index: OntologyIndex, entity: OntologyEntity): boolean {
   return entity.instanceOf.some((typeName) => {
     const type = index.types.get(typeName);
-    if (!type?.autoApply) {
-      return false;
-    }
-    if (type.autoApply === true) {
-      return true;
-    }
+    if (!type) return false;
+    // Ingest-from detection is sufficient — membership is already certain.
+    if (type.ingestFrom.size > 0) return true;
+    if (!type.autoApply) return false;
+    if (type.autoApply === true) return true;
     return evalAutoApplyBlock(entity.frontmatter, type.autoApply);
   });
 }
@@ -299,7 +298,8 @@ export function planScaffoldEntity(index: OntologyIndex, path: string): Scaffold
   for (const [property, definition] of getInheritedCanHave(index, entity)) {
     if (needsScaffold(entity.frontmatter, property, definition) && !plans.has(property)) {
       const existing = entity.frontmatter[property];
-      const plan = scaffoldPlan(property, 'optional', index, definition);
+      const kind = definition.scaffold ? 'suggested' : 'optional';
+      const plan = scaffoldPlan(property, kind, index, definition);
       plans.set(property, existing != null ? { ...plan, existingValue: existing } : plan);
     }
   }
