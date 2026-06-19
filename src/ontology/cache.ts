@@ -1,6 +1,7 @@
 import type { App } from 'obsidian';
 
 import type { AutoApplyBlock, EffectiveLockState, FrontmatterIgnoreRule, OntologyEntity, OntologyIndex, OntologyIssue, OntologyType, PropertyDefinition, RelationDefinition, Scale, TypeReplacement } from './types.ts';
+import { resolveGlobalType } from './compose.ts';
 
 function mapToObject<T>(map: Map<string, T>, mapper: (value: T) => unknown): Record<string, unknown> {
   return Object.fromEntries([...map.entries()].map(([key, value]) => [key, mapper(value)]));
@@ -51,6 +52,7 @@ function hydrateType(value: unknown): OntologyType {
   const record = asRecord(value);
   return {
     abstract: record['abstract'] === true,
+    alsoApply: Array.isArray(record['alsoApply']) ? record['alsoApply'].map(String) : [],
     autoApply: hydrateAutoApply(record['autoApply']),
     canHave: hydrateMap<PropertyDefinition>(record['canHave'], (item) => item as PropertyDefinition),
     cannotHave: new Set(Array.isArray(record['cannotHave']) ? record['cannotHave'].map(String) : []),
@@ -60,6 +62,11 @@ function hydrateType(value: unknown): OntologyType {
     fields: hydrateMap<PropertyDefinition>(record['fields'], (item) => item as PropertyDefinition),
     implementableBy: Array.isArray(record['implementableBy']) ? record['implementableBy'].map(String) : [],
     implements: Array.isArray(record['implements']) ? record['implements'].map(String) : [],
+    ingestFrom: new Map(Object.entries(
+      record['ingestFrom'] && typeof record['ingestFrom'] === 'object' && !Array.isArray(record['ingestFrom'])
+        ? record['ingestFrom'] as Record<string, string>
+        : {}
+    ).filter(([, v]) => typeof v === 'string')),
     replaces: Array.isArray(record['replaces']) ? record['replaces'].flatMap((r: unknown): TypeReplacement[] => {
       if (typeof r === 'string') {
         return r ? [{ value: r }] : [];
@@ -131,7 +138,7 @@ export async function readOntologyCache(app: App, cachePath: string): Promise<On
         scales.set(name, scale);
       }
     }
-    return {
+    const result: OntologyIndex = {
       ambiguousEntityNames: new Set(Array.isArray(payload['ambiguousEntityNames']) ? payload['ambiguousEntityNames'].map(String) : []),
       ancestorsByType: hydrateMap<Set<string>>(payload['ancestorsByType'], (item) => new Set(Array.isArray(item) ? item.map(String) : [])),
       cacheVersion: 1,
@@ -152,11 +159,14 @@ export async function readOntologyCache(app: App, cachePath: string): Promise<On
         filesToIgnore: stringArrayValue(settings['filesToIgnore']),
         foldersToIgnore: stringArrayValue(settings['foldersToIgnore']),
         frontmatterIgnoreRules: frontmatterIgnoreRulesValue(settings['frontmatterIgnoreRules']),
+        globalTypePath: stringValue(settings['globalTypePath']),
         schemaPath: stringValue(settings['schemaPath']),
         typeFolder: stringValue(settings['typeFolder'], '_types'),
       },
       types,
     };
+    resolveGlobalType(result);
+    return result;
   } catch {
     return null;
   }
@@ -183,6 +193,7 @@ export async function writeOntologyCache(app: App, cachePath: string, index: Ont
       cannotHave: [...value.cannotHave],
       fields: Object.fromEntries(value.fields),
       implements: value.implements,
+      ingestFrom: Object.fromEntries(value.ingestFrom),
       isInterface: value.isInterface,
       mustHave: Object.fromEntries(value.mustHave),
       relations: Object.fromEntries(value.relations),

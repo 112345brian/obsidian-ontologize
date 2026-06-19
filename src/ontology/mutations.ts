@@ -3,7 +3,7 @@ import type { App, TFile } from 'obsidian';
 import type { AutoApplyBlock, FrontmatterValue, OntologyEntity, OntologyIndex, OntologyIssue, PropertyDefinition, RelationDefinition, TypeReplacement } from './types.ts';
 
 import { getInheritedCanHave, getInheritedMustHave, resolveEntityRelations } from './compose.ts';
-import { containsFrontmatterValue, extractAssertedLinkTargets, normalizeLinkTarget, toWikiLink } from './links.ts';
+import { containsFrontmatterValue, extractAssertedLinkTargets, extractLinkTargets, normalizeLinkTarget, toWikiLink } from './links.ts';
 import { isInsertTemplate, resolveInsertTemplate } from './templates.ts';
 
 export interface FixMissingInversesOptions {
@@ -230,6 +230,56 @@ export function detectAutoApplyType(index: OntologyIndex, frontmatter: Record<st
     }
   }
   return null;
+}
+
+/**
+ * Checks all types that declare `ingest-from` field names. If the given
+ * frontmatter contains a link to a type's own name in one of those fields,
+ * returns that type name. Abstract types and interfaces are skipped.
+ *
+ * This is the per-type counterpart to the global `infer-type-from-field`
+ * flag: rather than opting in per-entity, the type itself declares which
+ * fields can signal membership.
+ */
+export function detectTypeFromIngestFields(index: OntologyIndex, frontmatter: Record<string, unknown>): string | null {
+  for (const [typeName, type] of index.types) {
+    if (!type.ingestFrom.size || type.abstract || type.isInterface) {
+      continue;
+    }
+    if (index.circularTypes?.has(typeName)) {
+      continue;
+    }
+    for (const [field, target] of type.ingestFrom) {
+      const targets = extractLinkTargets(frontmatter[field]);
+      if (targets.includes(normalizeLinkTarget(target))) {
+        return typeName;
+      }
+    }
+  }
+  return null;
+}
+
+/**
+ * If the given frontmatter field links to a known concrete type, return that
+ * type name. This lets any configured field act as an ingest layer: writing
+ * e.g. `up: [[philosopher]]` automatically assigns the note as an instance of
+ * `philosopher` and triggers scaffold/template without an explicit `is-instance`.
+ * Abstract types and interfaces are skipped — only instantiable types match.
+ */
+export function detectTypeFromField(index: OntologyIndex, frontmatter: Record<string, unknown>, field: string): string | null {
+  const targets = extractLinkTargets(frontmatter[field]);
+  let matched: string | null = null;
+  for (const target of targets) {
+    const type = index.types.get(target);
+    if (type && !type.abstract && !type.isInterface && !index.circularTypes?.has(target)) {
+      if (matched !== null) {
+        // Multiple type links in the field — ambiguous, skip auto-detection entirely.
+        return null;
+      }
+      matched = target;
+    }
+  }
+  return matched;
 }
 
 export function planScaffoldEntity(index: OntologyIndex, path: string): ScaffoldFieldPlan[] {

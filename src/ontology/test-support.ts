@@ -8,6 +8,7 @@ import type { OntologyEntity, OntologyIndex, OntologyType } from './types.ts';
 export function makeOntologyType(overrides: Partial<OntologyType> & { name: string }): OntologyType {
   return {
     abstract: false,
+    alsoApply: [],
     canHave: new Map(),
     cannotHave: new Set(),
     disjoint: [],
@@ -16,6 +17,7 @@ export function makeOntologyType(overrides: Partial<OntologyType> & { name: stri
     fields: new Map(),
     implementableBy: [],
     implements: [],
+    ingestFrom: new Map(),
     isInterface: false,
     lockIntent: false,
     mustHave: new Map(),
@@ -49,6 +51,7 @@ export function makeIndexSettings(overrides: Partial<OntologyIndex['settings']> 
     filesToIgnore: [],
     foldersToIgnore: [],
     frontmatterIgnoreRules: [],
+    globalTypePath: '',
     schemaPath: '',
     typeFolder: '_types',
     ...overrides,

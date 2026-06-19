@@ -1,6 +1,23 @@
 # CHANGELOG
 
-## Unreleased
+## 0.3.0
+
+### Features
+
+- **`ingest-from` detection.** Types can declare `ingest-from` as a map of `field: target` pairs. Any entity note whose frontmatter field links to the named target is automatically indexed as that type — no `is-instance` field is written or required. The link to the MOC is the type declaration. Detection runs on every incremental update and full rebuild.
+- **`extends` cascade for entity membership.** When the indexer resolves an entity as type X, it now automatically also resolves it as every type in X's `extends` chain. A philosopher entity is also a person entity with no extra configuration. Queries, validation, and scaffolding all see the full resolved membership.
+- **`also-apply` field on types.** Lists additional types to co-apply whenever this type is applied. Covers non-hierarchical co-application not expressed through `extends`.
+- **Type editor modal reorganised into tabs.** The type editor now has five tabs — Definition, Properties, Constraints, Recognition, Formatting — matching the logical order of type construction. Each tab is focused; unrelated fields do not appear.
+- **Two-panel instance preview on Properties and Constraints tabs.** A live frontmatter preview renders alongside the editor on tabs where schema decisions affect what an instance looks like. The preview shows ingest-from triggers as the type declaration, then inherited fields from the full `extends` chain labeled by source type, then own fields, then constraint annotations.
+- **"Apply on construction" toggle on `requires` constraints.** A requires rule in the Constraints tab can be toggled to also add the required type to `also-apply`. This links validation (the type must be present) with construction (it is stamped automatically), in a single place.
+- **Instance preview reflects ingest-from, not `is-instance`.** The preview no longer shows `is-instance` as a field the user should write. For types with `ingest-from` rules it shows those field-target pairs instead — matching what the entity note actually needs to contain.
+
+### Bug fixes
+
+- **`detectTypeFromIngestFields` normalizes link targets before comparing.** Stored paths such as `archive/philosophers` are now normalized to their basename before comparison against extracted link targets, so ingest-from detection works regardless of whether the target was stored as a full path or a bare name.
+- **`revalidateEntityBatch` compares expanded `instanceOf` consistently.** The background sweep now expands the fresh entity's `instanceOf` through the `extends` chain before comparing against the stored entity, preventing spurious stale-count increments caused by the stored entity already having its ancestors expanded.
+
+## Unreleased (rolled into 0.3.0)
 
 ### Features
 

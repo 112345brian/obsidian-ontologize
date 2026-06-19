@@ -1,5 +1,9 @@
 import type { OntologyEntity, OntologyIndex, OntologyIssue, OntologyType, PropertyDefinition, RelationDefinition } from './types.ts';
 
+function globalTypeBasename(path: string): string {
+  return path.split('/').pop()?.replace(/\.md$/i, '') ?? '';
+}
+
 /**
  * Single home for composition-chain resolution and definition merging.
  * The indexer, validator, query engine, and mutation planner all resolve
@@ -192,13 +196,39 @@ export function collectRelations(typeName: string, index: OntologyIndex): Map<st
  * fix that gets written always matches the issue that was reported.
  */
 export function resolveEntityRelations(index: OntologyIndex, instanceOf: string[]): Map<string, RelationDefinition> {
-  const result = new Map<string, RelationDefinition>();
+  const result = new Map(index.globalTypeRelations ?? []);
   for (const typeName of instanceOf) {
     for (const [property, definition] of collectRelations(typeName, index)) {
       result.set(property, definition);
     }
   }
   return result;
+}
+
+/**
+ * Resolves and caches the global type and its pre-computed field/relation maps
+ * on the index. Called after lock computation in both full rebuilds and cache
+ * hydration so globalType-dependent features are always consistent.
+ */
+export function resolveGlobalType(index: OntologyIndex): void {
+  const globalTypePath = (index.settings.globalTypePath ?? '').trim();
+  const globalTypeName = globalTypePath ? globalTypeBasename(globalTypePath) : '';
+  const candidate = globalTypeName ? index.types.get(globalTypeName) : undefined;
+  const isLocked = Boolean(
+    candidate &&
+    candidate.path === globalTypePath &&
+    index.effectiveTypeLocks.get(globalTypeName)?.state === 'locked'
+  );
+  index.globalType = isLocked ? candidate : undefined;
+  index.globalTypeMustHave = index.globalType
+    ? collectInheritedPropertyMap(index.globalType.name, index, (t) => t.mustHave)
+    : undefined;
+  index.globalTypeCanHave = index.globalType
+    ? collectInheritedPropertyMap(index.globalType.name, index, (t) => t.canHave)
+    : undefined;
+  index.globalTypeRelations = index.globalType
+    ? collectRelations(index.globalType.name, index)
+    : undefined;
 }
 
 export function collectInheritedPropertyMap(
@@ -221,7 +251,7 @@ export function collectInheritedPropertyMap(
 }
 
 export function getInheritedMustHave(index: OntologyIndex, entity: OntologyEntity): Map<string, PropertyDefinition> {
-  const result = new Map<string, PropertyDefinition>();
+  const result = new Map(index.globalTypeMustHave ?? []);
   for (const typeName of entity.instanceOf) {
     for (const [property, definition] of collectInheritedPropertyMap(typeName, index, (type) => type.mustHave)) {
       result.set(property, definition);
@@ -231,7 +261,7 @@ export function getInheritedMustHave(index: OntologyIndex, entity: OntologyEntit
 }
 
 export function getInheritedCanHave(index: OntologyIndex, entity: OntologyEntity): Map<string, PropertyDefinition> {
-  const result = new Map<string, PropertyDefinition>();
+  const result = new Map(index.globalTypeCanHave ?? []);
   for (const typeName of entity.instanceOf) {
     for (const [property, definition] of collectInheritedPropertyMap(typeName, index, (type) => type.canHave)) {
       result.set(property, definition);

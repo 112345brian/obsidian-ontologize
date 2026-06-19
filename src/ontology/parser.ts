@@ -182,6 +182,17 @@ function parseReplacement(item: unknown): TypeReplacement | null {
   };
 }
 
+function parseIngestFrom(raw: unknown): Map<string, string> {
+  const result = new Map<string, string>();
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return result;
+  for (const [field, target] of Object.entries(raw as Record<string, unknown>)) {
+    if (typeof target === 'string' && target) {
+      result.set(field, normalizeLinkTarget(target));
+    }
+  }
+  return result;
+}
+
 function parseReplaces(raw: unknown): TypeReplacement[] {
   if (typeof raw === 'string') {
     const value = normalizeLinkTarget(raw);
@@ -235,6 +246,7 @@ function parseOntologyTypeRecord(name: string, path: string, yaml: Record<string
   return {
     abstract: yaml['abstract'] === true,
     autoApply: parseAutoApply(yaml['auto-apply'], prefix),
+    alsoApply: extractLinkTargets(yaml['also-apply']),
     canHave: parsePropertyMap(yaml['can-have']),
     cannotHave: parseCannotHave(yaml['cannot-have']),
     disjoint: extractLinkTargets(yaml['disjoint']),
@@ -242,6 +254,7 @@ function parseOntologyTypeRecord(name: string, path: string, yaml: Record<string
     extends: extractLinkTargets(yaml['extends']),
     implementableBy: extractLinkTargets(yaml['implementable-by']),
     implements: extractLinkTargets(yaml['implements']),
+    ingestFrom: parseIngestFrom(yaml['ingest-from']),
     replaces: parseReplaces(yaml['replaces']),
     requires: extractLinkTargets(yaml['requires']),
     isInterface: yaml['interface'] === true || yaml['type'] === 'interface',

@@ -62,6 +62,7 @@ function makeIndex(): OntologyIndex {
     generatedAt: '2026-06-09T00:00:00.000Z',
     issues: [],
     relationDefinitions: new Map(),
+    scales: new Map(),
     settings: makeIndexSettings({ entityTypeFields: ['instance_of', 'type'] }),
     types: new Map([
       ['Person', makeType('Person')],

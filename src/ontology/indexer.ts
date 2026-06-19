@@ -8,9 +8,11 @@ import {
   collectGlobalFieldDefinitions,
   collectGlobalRelationDefinitions,
   pushIssueOnce,
+  resolveGlobalType,
   typeCompositionChain
 } from './compose.ts';
-import { normalizeLinkTarget } from './links.ts';
+import { basenameWithoutExtension, normalizeLinkTarget } from './links.ts';
+import { detectTypeFromIngestFields } from './mutations.ts';
 import { parseOntologyEntity, parseOntologySchema, parseOntologyType } from './parser.ts';
 import { lintOntologySchemaSource, lintOntologyTypeSource } from './schema-linter.ts';
 import { validateIndex, validateSchemaCompositionConflicts, validateSingleEntity } from './validate.ts';
@@ -21,6 +23,7 @@ export interface BuildIndexSettings {
   filesToIgnore?: string[];
   foldersToIgnore?: string[];
   frontmatterIgnoreRules?: FrontmatterIgnoreRule[];
+  globalTypePath?: string;
   schemaPath?: string;
   typeFolder: string;
 }
@@ -123,6 +126,7 @@ function createEmptyOntologyIndex(settings: BuildIndexSettings): OntologyIndex {
       filesToIgnore: settings.filesToIgnore ?? [],
       foldersToIgnore: settings.foldersToIgnore ?? [],
       frontmatterIgnoreRules: settings.frontmatterIgnoreRules ?? [],
+      globalTypePath: settings.globalTypePath ?? '',
       schemaPath: settings.schemaPath ?? '',
       typeFolder: settings.typeFolder,
     },
@@ -279,14 +283,50 @@ export function recomputeOntologyDerivedState(index: OntologyIndex): OntologyInd
     index.effectiveTypeLocks.set(name, computeTypeLock(name, index.types, index.ancestorsByType, circularTypes));
   }
 
+  // Expand each entity's instanceOf to include all ancestors implied by extends.
+  // e.g. if philosopher extends person, a philosopher entity is also a person.
+  for (const entity of index.entities.values()) {
+    const expanded = new Set(entity.instanceOf);
+    for (const typeName of entity.instanceOf) {
+      for (const ancestor of index.ancestorsByType.get(typeName) ?? []) {
+        expanded.add(ancestor);
+      }
+    }
+    entity.instanceOf = [...expanded];
+  }
+
   index.effectiveEntityLocks = new Map<string, EffectiveLockState>();
   for (const entity of index.entities.values()) {
     index.effectiveEntityLocks.set(entity.path, computeEntityLock(entity, index.effectiveTypeLocks));
   }
 
+  resolveGlobalType(index);
+
   index.generatedAt = new Date().toISOString();
   validateIndex(index);
   return index;
+}
+
+function resolveEntityFromFile(
+  path: string,
+  frontmatter: Record<string, unknown>,
+  typeFields: string[],
+  index: OntologyIndex,
+): OntologyEntity | null {
+  const explicit = parseOntologyEntity(path, frontmatter, typeFields);
+  if (explicit) return explicit;
+
+  const detected = detectTypeFromIngestFields(index, frontmatter);
+  if (!detected) return null;
+
+  return {
+    frontmatter: frontmatter as Record<string, unknown>,
+    ignored: false,
+    instanceOf: [detected],
+    lockIntent: frontmatter['lock'] === true,
+    name: basenameWithoutExtension(path),
+    path,
+  };
 }
 
 function removeOntologyRecords(index: OntologyIndex, path: string): void {
@@ -351,7 +391,7 @@ export async function upsertOntologyFile(app: App, index: OntologyIndex, file: T
   if (isIgnoredByFrontmatter(frontmatter ?? {}, settings)) {
     return recomputeOntologyDerivedState(index);
   }
-  const entity = parseOntologyEntity(file.path, frontmatter ?? {}, normalizedEntityTypeFields(settings.entityTypeFields));
+  const entity = resolveEntityFromFile(file.path, frontmatter ?? {}, normalizedEntityTypeFields(settings.entityTypeFields), index);
   if (entity) {
     index.entities.set(entity.path, entity);
   }
@@ -405,19 +445,29 @@ export function revalidateEntityBatch(app: App, index: OntologyIndex, paths: str
       continue;
     }
 
-    const fresh = parseOntologyEntity(path, frontmatter, typeFields);
+    const fresh = resolveEntityFromFile(path, frontmatter, typeFields, index);
     if (!fresh) {
       index.entities.delete(path);
       removedCount++;
       continue;
     }
 
+    // Expand fresh instanceOf so the comparison is against the same expanded form
+    // that recomputeOntologyDerivedState produces for stored entities.
+    const expandedFresh = new Set(fresh.instanceOf);
+    for (const typeName of fresh.instanceOf) {
+      for (const ancestor of index.ancestorsByType.get(typeName) ?? []) {
+        expandedFresh.add(ancestor);
+      }
+    }
+    fresh.instanceOf = [...expandedFresh];
+
     const existing = index.entities.get(path);
     // Compare frontmatter by value — only update if something actually changed
     // to avoid unnecessary cache writes when the vault is quiet.
     if (!existing || JSON.stringify(existing.frontmatter) !== JSON.stringify(fresh.frontmatter)
         || existing.lockIntent !== fresh.lockIntent
-        || existing.instanceOf.join('\0') !== fresh.instanceOf.join('\0')) {
+        || [...existing.instanceOf].sort().join('\0') !== [...fresh.instanceOf].sort().join('\0')) {
       index.entities.set(path, fresh);
       staleCount++;
     }
@@ -475,7 +525,7 @@ export async function buildOntologyIndex(app: App, settings: BuildIndexSettings)
     if (isIgnoredByFrontmatter(frontmatter ?? {}, settings)) {
       continue;
     }
-    const entity = parseOntologyEntity(file.path, frontmatter ?? {}, normalizedEntityTypeFields(settings.entityTypeFields));
+    const entity = resolveEntityFromFile(file.path, frontmatter ?? {}, normalizedEntityTypeFields(settings.entityTypeFields), index);
     if (entity) {
       index.entities.set(entity.path, entity);
     }

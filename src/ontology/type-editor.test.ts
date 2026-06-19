@@ -89,6 +89,7 @@ describe('type editor frontmatter', () => {
       fields: new Map(),
       implementableBy: [],
       implements: [],
+      ingestFrom: new Map(),
       isInterface: false,
       lockIntent: true,
       mustHave: new Map(),

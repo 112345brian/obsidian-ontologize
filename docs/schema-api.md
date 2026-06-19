@@ -211,6 +211,9 @@ These fields are recognized in type, interface, and single-schema type definitio
 | `template` | link | A Markdown note to use as a body template when this type is first applied to an entity with an empty body. Templater is invoked if available; otherwise the body text is copied verbatim. |
 | `implementable-by` | link or array of links | Interfaces only. Restricts which types (or their subtypes) are allowed to implement this interface. A type that implements an interface outside this list is a schema error. |
 | `scales` | map | Named scale definitions for weighted property fields. See [Scales and Weighted Properties](#scales-and-weighted-properties). |
+| `ingest-from` | map of `field: target` pairs | Sufficient conditions for type membership. If a note's frontmatter field links to the named target, the note is indexed as this type — no explicit `is-instance` needed. |
+| `auto-apply` | condition map | Condition-based type detection. When the conditions match, the type is applied and scaffolded. See [Auto-Apply](#auto-apply). |
+| `also-apply` | link or array of links | Additional types to apply whenever this type is applied. Use for non-hierarchical co-application. Types in the `extends` chain are always applied automatically and do not need to be listed here. |
 
 ### Requires and Excludes
 
@@ -274,6 +277,78 @@ template: "[[_templates/Person]]"
 If the Templater plugin is installed, Templater processes the template against the entity file.
 Otherwise the raw body text is copied.
 The template is only applied once — if the entity already has body text, it is left untouched.
+
+### Extends and Membership Cascade
+
+When a type is applied to an entity, all types in its `extends` chain are also resolved as part of the entity's membership. A philosopher that extends person is automatically also indexed as a person — you do not need `also-apply` or any explicit declaration on the entity note.
+
+This means:
+- Queries for `person` return philosopher entities automatically.
+- Validation from `person`'s `must-have` and `can-have` applies to philosopher entities.
+- Scaffolding walks the full chain and offers inherited fields from every ancestor.
+
+### Ingest-From
+
+`ingest-from` defines **sufficient conditions** for type membership: when a note's frontmatter field contains a link to the named target, the indexer recognises it as this type without any explicit `is-instance` field on the note.
+
+```yaml
+# philosopher.md
+extends:
+  - "[[person]]"
+ingest-from:
+  up: Philosophers
+```
+
+Any note with `up: [[Philosophers]]` in its frontmatter is indexed as a philosopher. The link to the MOC (map of content) *is* the type declaration. The `up` field is a navigation link that also carries the ontological signal — no separate `is-instance` field is needed or written.
+
+Multiple field-target pairs can be listed. A note matching any one of them is indexed as this type:
+
+```yaml
+ingest-from:
+  up: Philosophers
+  member-of: Philosophers
+```
+
+`ingest-from` is the preferred detection mechanism for types whose membership is implied by an existing navigation link. Use it when the field that places a note in a context (its MOC link, its collection, its parent) is also the fact that makes it a member of this type.
+
+### Auto-Apply
+
+`auto-apply` defines conditions evaluated against a note's existing frontmatter. When the conditions match, the type is applied and scaffolded automatically.
+
+```yaml
+# philosopher.md
+auto-apply:
+  match: any
+  up: "[[Philosophers]]"
+```
+
+`match: any` means the type is applied when at least one condition matches. `match: all` requires all conditions to match simultaneously.
+
+**Ingest-from vs. auto-apply:** the two mechanisms overlap for simple cases but serve different roles.
+
+| | `ingest-from` | `auto-apply` |
+|---|---|---|
+| When it runs | Index build and incremental updates | Triggered when the plugin detects a membership opportunity |
+| Effect | Adds the entity to the index silently | Applies the type and may open a scaffold review |
+| Condition form | `field: target-note-name` (substring match on link targets) | Arbitrary frontmatter key/value conditions |
+| No `is-instance` written | Yes — detection only, nothing is stamped | No — `is-instance` may be written if scaffolding runs |
+
+In practice: use `ingest-from` when you want silent, always-on detection from a link that already exists for navigation purposes. Use `auto-apply` when you want the plugin to actively offer to stamp and scaffold the type when it sees the right conditions.
+
+You can use both on the same type. `ingest-from` ensures the entity is in the index; `auto-apply` triggers the scaffold workflow when conditions are met.
+
+### Also-Apply
+
+`also-apply` lists additional types that are applied whenever this type is applied. Use it for non-hierarchical co-application — types that should always come together but do not share an `extends` ancestor.
+
+```yaml
+# field-researcher.md
+also-apply:
+  - "[[person]]"
+  - "[[academic]]"
+```
+
+Types already in the `extends` chain do not need to be listed in `also-apply` — they are applied automatically. `also-apply` is for types that should co-apply for semantic reasons that are not expressed through inheritance.
 
 ### Composition Constraints
 

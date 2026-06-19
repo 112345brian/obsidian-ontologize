@@ -9,6 +9,7 @@ export class PluginSettings {
   public cachePath = '.obsidian/ontology-cache.json';
   public autoScaffoldEntities = false;
   public autoUpdateInverses = false;
+  public globalTypePath = '';
   public foldersToIgnore: string[] = [];
   public filesToIgnore: string[] = [];
   public frontmatterIgnoreRules: FrontmatterIgnoreRule[] = [];

@@ -61,6 +61,8 @@ export interface OntologyType {
   extends: string[];
   implementableBy: string[];
   implements: string[];
+  alsoApply: string[];
+  ingestFrom: Map<string, string>;
   isInterface: boolean;
   replaces: TypeReplacement[];
   requires: string[];
@@ -127,6 +129,10 @@ export interface OntologyIndex {
   entities: Map<string, OntologyEntity>;
   entitiesByName: Map<string, OntologyEntity>;
   fieldDefinitions: Map<string, PropertyDefinition>;
+  globalType?: OntologyType | undefined;
+  globalTypeCanHave?: Map<string, PropertyDefinition> | undefined;
+  globalTypeMustHave?: Map<string, PropertyDefinition> | undefined;
+  globalTypeRelations?: Map<string, RelationDefinition> | undefined;
   issues: OntologyIssue[];
   relationDefinitions: Map<string, RelationDefinition>;
   scales: Map<string, Scale>;
@@ -138,6 +144,7 @@ export interface OntologyIndex {
     filesToIgnore: string[];
     foldersToIgnore: string[];
     frontmatterIgnoreRules: FrontmatterIgnoreRule[];
+    globalTypePath: string;
     schemaPath: string;
     typeFolder: string;
   };

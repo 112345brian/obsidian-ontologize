@@ -27,6 +27,7 @@ function makeIndex(): OntologyIndex {
     relationDefinitions: new Map([
       ['influenced_by', { inverse: 'influenced' }],
     ]),
+    scales: new Map(),
     settings: makeIndexSettings({
       entityTypeFields: ['instance_of'],
       schemaPath: '_types/ontology.schema.yaml',

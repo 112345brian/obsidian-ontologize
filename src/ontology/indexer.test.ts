@@ -39,6 +39,7 @@ function makeType(
     name,
     path,
     implementableBy: [],
+    ingestFrom: new Map(),
     relations: options.relations ?? new Map<string, RelationDefinition>(),
     scales: new Map(),
     typeKind: options.typeKind,

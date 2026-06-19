@@ -8,6 +8,7 @@ import { isValidTypeExpression } from './type-expression.ts';
 
 const TYPE_KEYS = new Set([
   'abstract',
+  'also-apply',
   'auto-apply',
   'can-have',
   'cannot-have',
@@ -17,6 +18,7 @@ const TYPE_KEYS = new Set([
   'fields',
   'implementable-by',
   'implements',
+  'ingest-from',
   'requires',
   'interface',
   'lock',
@@ -232,6 +234,20 @@ function lintAutoApplyBlock(file: string, context: string, value: unknown, issue
   }
 }
 
+function lintIngestFrom(file: string, value: unknown, issues: OntologyIssue[]): void {
+  if (value === undefined) return;
+  const record = asRecord(value);
+  if (!record) {
+    issues.push(issue(file, 'ingest-from must be a map of field-name: target-note pairs'));
+    return;
+  }
+  for (const [field, target] of Object.entries(record)) {
+    if (typeof target !== 'string') {
+      issues.push(issue(file, `ingest-from.${field} must be a string (the note name or path to match)`));
+    }
+  }
+}
+
 function lintAutoApply(file: string, value: unknown, issues: OntologyIssue[], prefix: string): void {
   if (value === undefined || value === true) {
     return;
@@ -277,6 +293,7 @@ function lintTypeRecord(file: string, value: unknown, issues: OntologyIssue[], p
   lintUnknownKeys(file, 'type', record, TYPE_KEYS, issues);
   lintStringOrStringArray(file, 'extends', record['extends'], issues);
   lintStringOrStringArray(file, 'implements', record['implements'], issues);
+  lintIngestFrom(file, record['ingest-from'], issues);
   lintStringOrStringArray(file, 'disjoint', record['disjoint'], issues);
   lintStringOrStringArray(file, 'excludes', record['excludes'], issues);
   lintReplacesField(file, record['replaces'], issues);

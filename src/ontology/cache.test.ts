@@ -68,12 +68,14 @@ function makeIndex(): OntologyIndex {
       filesToIgnore: ['\\.canvas\\.md$'],
       foldersToIgnore: ['Archive'],
       frontmatterIgnoreRules: [{ key: 'status', value: 'private' }],
+      globalTypePath: '',
       schemaPath: '_types/ontology.schema.yaml',
       typeFolder: '_types',
     },
     types: new Map([
       ['Philosopher', {
         abstract: false,
+        alsoApply: [],
         autoApply: { blocks: {}, conditions: { era: 'modern' }, match: 'all' as const },
         canHave: new Map([['magnum-opus', { type: 'Work' }]]),
         cannotHave: new Set(['tag']),
@@ -86,6 +88,7 @@ function makeIndex(): OntologyIndex {
         fields: new Map([['birth-year', { frontmatterKey: 'birth_year', type: 'number' }]]),
         implementableBy: [],
         implements: ['Influenceable'],
+        ingestFrom: new Map(),
         isInterface: false,
         lockIntent: true,
         mustHave: new Map([['species', { type: 'string' }]]),

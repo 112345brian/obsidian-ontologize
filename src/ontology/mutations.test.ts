@@ -7,7 +7,7 @@ vi.mock('obsidian', () => ({
   Notice: vi.fn(),
 }));
 
-import { applyScaffoldPlan, applyTypeReplacements, planMissingInverses, planScaffoldEntity, shouldAutoApplyScaffold } from './mutations.ts';
+import { applyScaffoldPlan, applyTypeReplacements, detectTypeFromIngestFields, planMissingInverses, planScaffoldEntity, shouldAutoApplyScaffold } from './mutations.ts';
 import { makeIndexSettings, makeOntologyType } from './test-support.ts';
 
 function makeType(): OntologyType {
@@ -120,6 +120,7 @@ function makeIndex(): OntologyIndex {
       },
     ],
     relationDefinitions: new Map(),
+    scales: new Map(),
     settings: makeIndexSettings({ entityTypeFields: ['instance_of', 'type'] }),
     types: new Map([
       ['Philosopher', makeType()],
@@ -496,5 +497,60 @@ describe('applyTypeReplacements', () => {
     applyTypeReplacements(frontmatter, [{ value: 'friend' }], ['is-instance', 'type']);
 
     expect(frontmatter).toEqual({ 'is-instance': '[[person]]' });
+  });
+});
+
+describe('detectTypeFromIngestFields', () => {
+  function makeIngestIndex() {
+    return {
+      ancestorsByType: new Map([['philosopher', new Set<string>()]]),
+      cacheVersion: 1 as const,
+      circularTypes: new Set<string>(),
+      effectiveEntityLocks: new Map(),
+      effectiveTypeLocks: new Map(),
+      entities: new Map(),
+      entitiesByName: new Map(),
+      fieldDefinitions: new Map(),
+      generatedAt: '',
+      issues: [],
+      relationDefinitions: new Map(),
+      scales: new Map(),
+      settings: makeIndexSettings(),
+      types: new Map([
+        ['philosopher', makeOntologyType({ name: 'philosopher', ingestFrom: new Map([['up', 'archive/philosophers'], ['parent', 'archive/philosophers']]), lockIntent: true })],
+        ['abstract-concept', makeOntologyType({ name: 'abstract-concept', abstract: true, ingestFrom: new Map([['up', 'archive/abstract-concepts']]) })],
+        ['interface-type', makeOntologyType({ name: 'interface-type', isInterface: true, ingestFrom: new Map([['up', 'archive/interfaces']]) })],
+      ]),
+    };
+  }
+
+  it('returns the type when the field links to the configured target', () => {
+    const index = makeIngestIndex();
+    expect(detectTypeFromIngestFields(index, { up: '[[archive/philosophers]]' })).toBe('philosopher');
+  });
+
+  it('matches any of the declared ingest-from fields', () => {
+    const index = makeIngestIndex();
+    expect(detectTypeFromIngestFields(index, { parent: '[[archive/philosophers]]' })).toBe('philosopher');
+  });
+
+  it('returns null when the link target does not match', () => {
+    const index = makeIngestIndex();
+    expect(detectTypeFromIngestFields(index, { up: '[[philosopher]]' })).toBeNull();
+  });
+
+  it('skips abstract types', () => {
+    const index = makeIngestIndex();
+    expect(detectTypeFromIngestFields(index, { up: '[[archive/abstract-concepts]]' })).toBeNull();
+  });
+
+  it('skips interface types', () => {
+    const index = makeIngestIndex();
+    expect(detectTypeFromIngestFields(index, { up: '[[archive/interfaces]]' })).toBeNull();
+  });
+
+  it('returns null when no ingest-from fields match', () => {
+    const index = makeIngestIndex();
+    expect(detectTypeFromIngestFields(index, { 'is-instance': '[[philosopher]]' })).toBeNull();
   });
 });

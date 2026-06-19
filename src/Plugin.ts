@@ -19,7 +19,7 @@ import {
   removeOntologyFile,
   upsertOntologyFile
 } from './ontology/indexer.ts';
-import { applyMissingInversePlans, applyScaffoldPlan, applyTypeReplacements, detectAutoApplyType, fixMissingInverses, planMissingInverses, planScaffoldEntity, shouldAutoApplyScaffold } from './ontology/mutations.ts';
+import { applyMissingInversePlans, applyScaffoldPlan, applyTypeReplacements, detectAutoApplyType, detectTypeFromField, detectTypeFromIngestFields, fixMissingInverses, planMissingInverses, planScaffoldEntity, shouldAutoApplyScaffold } from './ontology/mutations.ts';
 import type { TypeReplacement } from './ontology/types.ts';
 import { extractAssertedLinkTargets, normalizeLinkTarget } from './ontology/links.ts';
 import { runOntologyQuery, runOntologyQueryDetailed } from './ontology/query.ts';
@@ -78,7 +78,14 @@ export class Plugin extends ObsidianPlugin {
   private modalWritingPaths = new Set<string>();
 
   public override async onload(): Promise<void> {
-    this.pluginSettings = Object.assign(new PluginSettingsClass(), await this.loadData());
+    const savedData = (await this.loadData()) as Record<string, unknown> | null ?? {};
+    this.pluginSettings = Object.assign(new PluginSettingsClass(), savedData);
+    if (!('globalTypePath' in savedData)) {
+      const candidate = normalizePath(`${this.pluginSettings.typeFolder}/_global.md`);
+      if (await this.app.vault.adapter.exists(candidate)) {
+        this.pluginSettings.globalTypePath = candidate;
+      }
+    }
     const cachedIndex = await readOntologyCache(this.app, this.pluginSettings.cachePath);
     // A cache built under different scoping settings describes a different graph;
     // hydrating it would let pre-rebuild reads see files the user has since
@@ -410,6 +417,7 @@ export class Plugin extends ObsidianPlugin {
     new OntologyTypeEditorModal(this.app, {
       ...this.typeEditorNames(),
       editing: false,
+      index: this.index,
       model: preset,
       onSave: async (model) => {
         const folder = normalizePath(this.pluginSettings.typeFolder);
@@ -433,7 +441,7 @@ export class Plugin extends ObsidianPlugin {
 
   private async openEditTypeModal(file: TFile): Promise<void> {
     const index = await this.ensureIndex();
-    const type = [...index.types.values()].find((candidate) => candidate.path === file.path);
+    const type = index.types.get(file.basename) ?? [...index.types.values()].find((candidate) => candidate.path === file.path);
     if (!type) {
       new Notice('The active file is not a parsed ontology type.');
       return;
@@ -441,6 +449,7 @@ export class Plugin extends ObsidianPlugin {
     new OntologyTypeEditorModal(this.app, {
       ...this.typeEditorNames(),
       editing: true,
+      index,
       model: typeEditorModelFromType(type),
       onSave: async (model) => {
         // Build the proposed OntologyType by round-tripping through the
@@ -811,11 +820,17 @@ export class Plugin extends ObsidianPlugin {
     //     type chain; non-type links like topic pages are left alone)
     if (membershipAfter.length === 0) {
       const rawFrontmatter = this.app.metadataCache.getFileCache(file)?.frontmatter ?? {};
-      const matched = detectAutoApplyType(this.index, rawFrontmatter);
+      const globalFm = this.index.globalType?.frontmatter ?? {};
+      const inferOverride = rawFrontmatter['infer-type-from-field'];
+      const inferFromField = typeof inferOverride === 'boolean' ? inferOverride : (typeof globalFm['infer-type-from-field'] === 'boolean' ? globalFm['infer-type-from-field'] as boolean : false);
+      const inferField = (typeof rawFrontmatter['infer-type-field'] === 'string' ? rawFrontmatter['infer-type-field'] : null)
+        ?? (typeof globalFm['infer-type-field'] === 'string' ? globalFm['infer-type-field'] : null)
+        ?? 'up';
+      // ingest-from detection is handled by the indexer — no stamp needed.
+      const matched = detectAutoApplyType(this.index, rawFrontmatter)
+        ?? (inferFromField ? detectTypeFromField(this.index, rawFrontmatter, inferField) : null);
       if (matched) {
         const ancestors = this.index.ancestorsByType.get(matched) ?? new Set<string>();
-        // Walk up extends chain to find the root known ancestor for `up`.
-        // e.g. philosopher → person (root), so up becomes [[person]].
         let rootAncestor = matched;
         for (const ancestor of ancestors) {
           const ancestorType = this.index.types.get(ancestor);
@@ -824,16 +839,23 @@ export class Plugin extends ObsidianPlugin {
             break;
           }
         }
+        const matchedType = this.index.types.get(matched);
+        const cascade = (matchedType?.alsoApply ?? []).filter((t) => this.index.types.has(t));
         await this.app.fileManager.processFrontMatter(file, (fm) => {
           const primaryField = this.pluginSettings.entityTypeFields?.[0] ?? 'is-instance';
-          fm[primaryField] = `[[${matched}]]`;
-          // Rebuild `up`: keep non-type links, drop all type names (matched and
-          // ancestors), set the root ancestor as the single type-derived up value.
+          const existing = fm[primaryField];
+          const currentTypes = new Set(
+            (Array.isArray(existing) ? existing : existing != null ? [existing] : [])
+              .map((v) => (typeof v === 'string' ? normalizeLinkTarget(v) : null))
+              .filter((v): v is string => v !== null),
+          );
+          const toStamp = [matched, ...cascade.filter((t) => !currentTypes.has(t))];
+          fm[primaryField] = toStamp.length === 1 ? `[[${toStamp[0]}]]` : toStamp.map((t) => `[[${t}]]`);
           const allTypeNames = new Set([matched, ...ancestors]);
-          const existing: unknown[] = Array.isArray(fm['up'])
+          const existingUp: unknown[] = Array.isArray(fm['up'])
             ? fm['up'] as unknown[]
             : fm['up'] != null ? [fm['up']] : [];
-          const kept = existing.filter((v) => {
+          const kept = existingUp.filter((v) => {
             const target = typeof v === 'string' ? normalizeLinkTarget(v) : null;
             return target === null || !allTypeNames.has(target);
           });
@@ -990,6 +1012,7 @@ export class Plugin extends ObsidianPlugin {
     filesToIgnore: string[];
     foldersToIgnore: string[];
     frontmatterIgnoreRules: PluginSettings['frontmatterIgnoreRules'];
+    globalTypePath: string;
     schemaPath: string;
     typeFolder: string;
   } {
@@ -999,6 +1022,7 @@ export class Plugin extends ObsidianPlugin {
       filesToIgnore: this.pluginSettings.filesToIgnore,
       foldersToIgnore: this.pluginSettings.foldersToIgnore,
       frontmatterIgnoreRules: this.pluginSettings.frontmatterIgnoreRules,
+      globalTypePath: this.pluginSettings.globalTypePath,
       schemaPath: this.pluginSettings.schemaPath,
       typeFolder: this.pluginSettings.typeFolder,
     };

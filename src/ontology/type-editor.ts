@@ -35,6 +35,7 @@ export type TypeEditorRule =
 
 export interface TypeEditorModel {
   abstract: boolean;
+  alsoApply: string[];
   autoApplyConditions: TypeEditorAutoApplyCondition[];
   autoApplyMatch: 'all' | 'any';
   autoApplyMode: 'never' | 'always' | 'conditional';
@@ -42,6 +43,7 @@ export interface TypeEditorModel {
   extends: string[];
   implementableBy: string[];
   implements: string[];
+  ingestFrom: Array<{ field: string; target: string }>;
   isInterface: boolean;
   lock: boolean;
   mustHave: TypeEditorField[];
@@ -54,6 +56,7 @@ export interface TypeEditorModel {
 export function emptyTypeEditorModel(): TypeEditorModel {
   return {
     abstract: false,
+    alsoApply: [],
     autoApplyConditions: [],
     autoApplyMatch: 'all',
     autoApplyMode: 'never',
@@ -61,6 +64,7 @@ export function emptyTypeEditorModel(): TypeEditorModel {
     extends: [],
     implementableBy: [],
     implements: [],
+    ingestFrom: [],
     isInterface: false,
     lock: false,
     mustHave: [],
@@ -109,11 +113,13 @@ function autoApplyToModel(autoApply: OntologyType['autoApply']): Pick<TypeEditor
 export function typeEditorModelFromType(type: OntologyType): TypeEditorModel {
   return {
     abstract: type.abstract,
+    alsoApply: [...(type.alsoApply ?? [])],
     ...autoApplyToModel(type.autoApply),
     canHave: [...type.canHave].map(([name, definition]) => fieldFromDefinition(name, definition)),
     extends: [...type.extends],
     implementableBy: [...(type.implementableBy ?? [])],
     implements: [...type.implements],
+    ingestFrom: [...(type.ingestFrom ?? new Map())].map(([field, target]) => ({ field, target })),
     isInterface: type.isInterface,
     lock: type.lockIntent,
     mustHave: [...type.mustHave].map(([name, definition]) => fieldFromDefinition(name, definition)),
@@ -205,6 +211,10 @@ export function typeEditorFrontmatter(model: TypeEditorModel): Record<string, un
   if (model.implementableBy.length > 0) {
     frontmatter['implementable-by'] = model.implementableBy.map((name) => `[[${name}]]`);
   }
+  const ingestFrom = model.ingestFrom.filter((e) => e.field.trim() && e.target.trim());
+  if (ingestFrom.length > 0) {
+    frontmatter['ingest-from'] = Object.fromEntries(ingestFrom.map((e) => [e.field.trim(), e.target.trim()]));
+  }
   if (model.implements.length > 0) {
     frontmatter['implements'] = model.implements.map((name) => `[[${name}]]`);
   }
@@ -265,6 +275,9 @@ export function typeEditorFrontmatter(model: TypeEditorModel): Record<string, un
   if (model.template.trim()) {
     frontmatter['template'] = `[[${model.template.trim()}]]`;
   }
+  if (model.alsoApply.length > 0) {
+    frontmatter['also-apply'] = model.alsoApply.map((name) => `[[${name}]]`);
+  }
   if (model.relations.length > 0) {
     frontmatter['relations'] = Object.fromEntries(model.relations.filter((relation) => relation.name.trim()).map((relation) => {
       const definition: Record<string, unknown> = {};
@@ -284,12 +297,14 @@ export function typeEditorFrontmatter(model: TypeEditorModel): Record<string, un
 
 export const TYPE_EDITOR_KEYS = [
   'abstract',
+  'also-apply',
   'auto-apply',
   'can-have',
   'excludes',
   'extends',
   'implementable-by',
   'implements',
+  'ingest-from',
   'interface',
   'lock',
   'must-have',

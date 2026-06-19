@@ -2,11 +2,13 @@ import type { App, TFile } from 'obsidian';
 
 import { AbstractInputSuggest, Modal, Notice, setIcon, Setting, ToggleComponent } from 'obsidian';
 
+import type { OntologyIndex } from './ontology/types.ts';
 import type { TypeEditorField, TypeEditorModel, TypeEditorRelation, TypeEditorRule } from './ontology/type-editor.ts';
 import { TagInput } from './TagInput.ts';
 
 export interface OntologyTypeEditorModalOptions {
   editing: boolean;
+  index: OntologyIndex;
   interfaceNames: string[];
   model: TypeEditorModel;
   onSave: (model: TypeEditorModel) => Promise<boolean>;
@@ -59,11 +61,11 @@ class TemplateFileSuggest extends AbstractInputSuggest<TFile> {
   }
 }
 
-type TabId = 'general' | 'fields' | 'relations' | 'automation';
+type TabId = 'definition' | 'properties' | 'constraints' | 'recognition' | 'formatting';
 
 export class OntologyTypeEditorModal extends Modal {
   private saving = false;
-  private activeTab: TabId = 'general';
+  private activeTab: TabId = 'definition';
   private templateSuggest: TemplateFileSuggest | null = null;
 
   public constructor(app: App, private readonly options: OntologyTypeEditorModalOptions) {
@@ -91,36 +93,37 @@ export class OntologyTypeEditorModal extends Modal {
 
     const tabs = contentEl.createEl('div', { cls: 'ontology-editor-tabs' });
     const tabDefs: { id: TabId; label: string }[] = [
-      { id: 'general', label: 'General' },
-      { id: 'fields', label: 'Fields' },
-      { id: 'relations', label: 'Relations' },
-      { id: 'automation', label: 'Automation' },
+      { id: 'definition', label: 'Definition' },
+      { id: 'properties', label: 'Properties' },
+      { id: 'constraints', label: 'Constraints' },
+      { id: 'recognition', label: 'Recognition' },
+      { id: 'formatting', label: 'Formatting' },
     ];
     for (const tab of tabDefs) {
       const btn = tabs.createEl('button', {
         cls: `ontology-editor-tab${this.activeTab === tab.id ? ' is-active' : ''}`,
         text: tab.label,
       });
-      btn.addEventListener('click', () => {
-        this.activeTab = tab.id;
-        this.render();
-      });
+      btn.addEventListener('click', () => { this.activeTab = tab.id; this.render(); });
     }
 
-    const panel = contentEl.createEl('div', { cls: 'ontology-editor-panel' });
+    const withPreview = this.activeTab === 'properties' || this.activeTab === 'constraints';
+    const body = contentEl.createEl('div', { cls: withPreview ? 'ontology-editor-body ontology-editor-body--split' : 'ontology-editor-body' });
+    const panel = body.createEl('div', { cls: 'ontology-editor-panel' });
 
-    if (this.activeTab === 'general') {
-      this.renderGeneral(panel);
-    }
-    if (this.activeTab === 'fields') {
+    if (this.activeTab === 'definition') { this.renderDefinition(panel); }
+    if (this.activeTab === 'properties') {
       this.renderFieldSection(panel, 'Required fields', model.mustHave, 'must-have');
       this.renderFieldSection(panel, 'Optional fields', model.canHave, 'can-have');
-    }
-    if (this.activeTab === 'relations') {
       this.renderRelations(panel);
     }
-    if (this.activeTab === 'automation') {
-      this.renderAutoApply(panel);
+    if (this.activeTab === 'constraints') { this.renderConstraints(panel); }
+    if (this.activeTab === 'recognition') { this.renderRecognition(panel); }
+    if (this.activeTab === 'formatting') { this.renderFormatting(panel); }
+
+    if (withPreview) {
+      const preview = body.createEl('div', { cls: 'ontology-editor-preview' });
+      this.renderFrontmatterPreview(preview);
     }
 
     this.renderActions(contentEl);
@@ -144,33 +147,118 @@ export class OntologyTypeEditorModal extends Modal {
     });
   }
 
-  private renderGeneral(panel: HTMLElement): void {
+  private renderDefinition(panel: HTMLElement): void {
     const { model } = this.options;
     const { typeNames, interfaceNames } = this.options;
 
     new Setting(panel)
       .setName('Type name')
-      .setDesc(this.options.editing ? 'The file name determines the type name.' : 'Creates a Markdown constructor file in the configured type folder.')
+      .setDesc(this.options.editing ? 'The file name determines the type name.' : 'Creates a Markdown file in the configured type folder.')
       .addText((text) => {
         text.setPlaceholder('journal-entry').setValue(model.name).onChange((value) => { model.name = value.trim(); });
         if (this.options.editing) text.setDisabled(true);
       });
 
     new Setting(panel).setName('Locked').setDesc('Valid instances participate in locked queries.').addToggle((t) => t.setValue(model.lock).onChange((v) => { model.lock = v; }));
-    new Setting(panel).setName('Abstract').setDesc('This type cannot be instantiated directly.').addToggle((t) => t.setValue(model.abstract).onChange((v) => { model.abstract = v; }));
-    new Setting(panel).setName('Interface').setDesc('This constructor is composed through implements.').addToggle((t) => t.setValue(model.isInterface).onChange((v) => { model.isInterface = v; }));
+    new Setting(panel).setName('Abstract').setDesc('Cannot be instantiated directly.').addToggle((t) => t.setValue(model.abstract).onChange((v) => { model.abstract = v; }));
+    new Setting(panel).setName('Interface').setDesc('Composed via implements rather than instantiated.').addToggle((t) => t.setValue(model.isInterface).onChange((v) => { model.isInterface = v; this.render(); }));
 
     this.addTagSetting(panel, 'Extends', 'Parent types.', model.extends, typeNames, (v) => { model.extends = v; });
     this.addTagSetting(panel, 'Implements', 'Interfaces this type composes.', model.implements, interfaceNames, (v) => { model.implements = v; });
-    this.renderRules(panel);
 
     if (model.isInterface) {
       this.addTagSetting(panel, 'Implementable by', 'Only these types (and their subtypes) may implement this interface.', model.implementableBy, typeNames, (v) => { model.implementableBy = v; });
     }
+  }
+
+  private renderFrontmatterPreview(container: HTMLElement): void {
+    const { model, index } = this.options;
+
+    container.createEl('div', { cls: 'ontology-preview-label', text: 'Instance preview' });
+    const pre = container.createEl('pre', { cls: 'ontology-preview-yaml' });
+
+    // Collect the inheritance chain from the index
+    const chain: Array<{ name: string; fields: Array<{ key: string; value: string; insert: string; required: boolean }> }> = [];
+    const visited = new Set<string>();
+
+    const collectType = (name: string): void => {
+      if (visited.has(name)) return;
+      visited.add(name);
+      const t = index.types.get(name);
+      if (!t) return;
+      for (const parent of t.extends) { collectType(parent); }
+      const fields: Array<{ key: string; value: string; insert: string; required: boolean }> = [];
+      for (const [k, def] of t.mustHave) {
+        const insert = def.insert !== undefined
+          ? (typeof def.insert === 'string' ? def.insert : JSON.stringify(def.insert))
+          : '';
+        fields.push({ insert, key: k, required: true, value: def.type ?? '' });
+      }
+      for (const [k, def] of t.canHave) {
+        fields.push({ insert: '', key: k, required: false, value: def.type ?? '' });
+      }
+      if (fields.length > 0) chain.push({ fields, name });
+    };
+
+    for (const parent of model.extends) { collectType(parent); }
+
+    // Own fields from the live model
+    const ownFields: Array<{ key: string; value: string; insert: string; required: boolean }> = [
+      ...model.mustHave.filter((f) => f.name.trim()).map((f) => ({ insert: f.insert, key: f.name, required: true, value: f.type })),
+      ...model.canHave.filter((f) => f.name.trim()).map((f) => ({ insert: f.insert, key: f.name, required: false, value: f.type })),
+    ];
+
+    let yaml = '';
+
+    // Show ingest-from triggers as the type declaration mechanism.
+    // If none are defined, fall back to showing is-instance so the user
+    // knows they'll need an explicit declaration.
+    if (model.ingestFrom.length > 0) {
+      for (const { field, target } of model.ingestFrom) {
+        yaml += `${field}: "[[${target}]]"\n`;
+      }
+    } else if (model.name) {
+      yaml += `is-instance: "[[${model.name}]]"\n`;
+    }
+
+    for (const { name, fields } of chain) {
+      if (fields.length === 0) continue;
+      yaml += `\n# ↑ inherited from ${name}\n`;
+      for (const f of fields) {
+        const val = f.insert || (f.value ? `# ${f.value}` : f.required ? '# required' : '# optional');
+        yaml += `${f.key}: ${val}\n`;
+      }
+    }
+
+    if (ownFields.length > 0) {
+      yaml += chain.length > 0 ? '\n# ── this type ──\n' : '';
+      for (const f of ownFields) {
+        const val = f.insert || (f.value ? `# ${f.value}` : f.required ? '# required' : '# optional');
+        yaml += `${f.key}: ${val}\n`;
+      }
+    }
+
+    if (model.rules.some((r) => r.kind === 'requires')) {
+      yaml += '\n# ── constraints ──\n';
+      for (const r of model.rules.filter((r) => r.kind === 'requires')) {
+        const auto = model.alsoApply.includes(r.value);
+        yaml += `# requires: [[${r.value}]]${auto ? ' (auto-applied)' : ''}\n`;
+      }
+    }
+
+    if (!yaml.trim()) {
+      yaml = '# No fields defined yet';
+    }
+
+    pre.textContent = yaml;
+  }
+
+  private renderFormatting(panel: HTMLElement): void {
+    const { model } = this.options;
 
     new Setting(panel)
       .setName('Template')
-      .setDesc('Markdown template applied when this type is first assigned. Start typing to search files in the vault.')
+      .setDesc('Markdown template applied once when an instance is first recognized or typed.')
       .addText((text) => {
         text.setPlaceholder('Templates/Person').setValue(model.template).onChange((value) => { model.template = value.trim(); });
         this.templateSuggest = new TemplateFileSuggest(
@@ -180,76 +268,99 @@ export class OntologyTypeEditorModal extends Modal {
           (linkpath) => { model.template = linkpath; },
         );
       });
+
+    this.renderAutoApplyScaffold(panel);
+    this.renderReplacements(panel);
   }
 
-  private renderRules(containerEl: HTMLElement): void {
+  private renderConstraints(containerEl: HTMLElement): void {
     const { model } = this.options;
-    if (model.rules.length === 0) {
-      model.rules.push({ kind: 'requires', value: '' });
-    }
+    const constraints = model.rules.filter((r) => r.kind !== 'replaces');
+    const constraintIndices = model.rules.map((r, i) => r.kind !== 'replaces' ? i : -1).filter((i) => i !== -1);
+
     const section = containerEl.createEl('section', { cls: 'ontology-type-editor-section' });
     const header = section.createEl('div', { cls: 'ontology-type-editor-header' });
-    header.createEl('h3', { text: 'Rules' });
-    const add = header.createEl('button', { cls: 'ontology-editor-add-button', attr: { 'aria-label': 'Add rule' }, text: 'Add rule' });
-    add.addEventListener('click', () => {
-      model.rules.push({ kind: 'requires', value: '' });
-      this.render();
-    });
-    section.createEl('p', {
-      cls: 'setting-item-description',
-      text: 'Add membership constraints or transform a field value when this type is applied.',
-    });
+    header.createEl('span', { cls: 'ontology-type-editor-sublabel', text: 'Constraints' });
+    const add = header.createEl('button', { cls: 'ontology-editor-add-button', attr: { 'aria-label': 'Add constraint' }, text: 'Add constraint' });
+    add.addEventListener('click', () => { model.rules.push({ kind: 'requires', value: '' }); this.render(); });
+    section.createEl('p', { cls: 'setting-item-description', text: 'Membership rules: what other types must or cannot coexist with this one.' });
 
-    for (const [index, rule] of model.rules.entries()) {
+    for (const [i, rule] of constraints.entries()) {
+      const index = constraintIndices[i];
       const card = section.createEl('div', { cls: 'ontology-type-editor-field ontology-rule-card' });
       const rowHeader = card.createEl('div', { cls: 'ontology-type-editor-row-header' });
-      const ruleName = rule.kind === 'requires' ? 'Requires' : rule.kind === 'excludes' ? 'Excludes' : 'Replaces';
-      rowHeader.createEl('span', { cls: 'ontology-type-editor-row-label', text: `${ruleName} rule` });
-      this.addItemDeleteButton(rowHeader, 'Remove rule', () => { model.rules.splice(index, 1); this.render(); });
+      rowHeader.createEl('span', { cls: 'ontology-type-editor-row-label', text: rule.kind === 'requires' ? 'Requires' : 'Excludes' });
+      this.addItemDeleteButton(rowHeader, 'Remove constraint', () => { model.rules.splice(index, 1); this.render(); });
 
       new Setting(card)
-        .setName('Rule type')
-        .setDesc('Choose what must be present, what cannot coexist, or what value should be replaced.')
-        .addDropdown((dropdown) => dropdown
+        .setName('Kind')
+        .addDropdown((d) => d
           .addOption('requires', 'Requires')
           .addOption('excludes', 'Excludes')
-          .addOption('replaces', 'Replaces')
           .setValue(rule.kind)
           .onChange((value) => {
-            const kind = value as TypeEditorRule['kind'];
-            model.rules[index] = kind === 'replaces'
-              ? { kind, newValue: model.name, value: rule.value }
-              : { kind, value: rule.value };
+            const prev = rule.value;
+            model.rules[index] = { kind: value as 'requires' | 'excludes', value: prev };
+            if (value === 'excludes') {
+              model.alsoApply = model.alsoApply.filter((t) => t !== prev);
+            }
             this.render();
           }));
 
-      if (rule.kind !== 'replaces') {
+      new Setting(card)
+        .setName(rule.kind === 'requires' ? 'Required type' : 'Excluded type')
+        .setDesc(rule.kind === 'requires' ? 'Lint error if an instance does not also belong to this type.' : 'Lint error if an instance belongs to this type at the same time.')
+        .addText((text) => text.setPlaceholder('type name').setValue(rule.value).onChange((v) => {
+          const prev = rule.value;
+          rule.value = v.trim();
+          const idx = model.alsoApply.indexOf(prev);
+          if (idx !== -1) { model.alsoApply[idx] = rule.value; }
+        }));
+
+      if (rule.kind === 'requires') {
         new Setting(card)
-          .setName(rule.kind === 'requires' ? 'Required type' : 'Excluded type')
-          .setDesc(rule.kind === 'requires'
-            ? 'Entities of this type must also belong to this type.'
-            : 'Entities cannot belong to this type at the same time.')
-          .addText((text) => text
-            .setPlaceholder('type name')
-            .setValue(rule.value)
-            .onChange((value) => { rule.value = value.trim(); }));
-        continue;
+          .setName('Apply on construction')
+          .setDesc('When this type is applied, also stamp the required type automatically.')
+          .addToggle((t) => t
+            .setValue(model.alsoApply.includes(rule.value))
+            .onChange((on) => {
+              if (on) {
+                if (rule.value && !model.alsoApply.includes(rule.value)) {
+                  model.alsoApply.push(rule.value);
+                }
+              } else {
+                model.alsoApply = model.alsoApply.filter((t) => t !== rule.value);
+              }
+            }));
       }
+    }
+  }
+
+  private renderReplacements(containerEl: HTMLElement): void {
+    const { model } = this.options;
+    const replacements = model.rules.filter((r): r is Extract<TypeEditorRule, { kind: 'replaces' }> => r.kind === 'replaces');
+    const replacementIndices = model.rules.map((r, i) => r.kind === 'replaces' ? i : -1).filter((i) => i !== -1);
+
+    const section = containerEl.createEl('section', { cls: 'ontology-type-editor-section' });
+    const header = section.createEl('div', { cls: 'ontology-type-editor-header' });
+    header.createEl('span', { cls: 'ontology-type-editor-sublabel', text: 'Field replacements' });
+    const add = header.createEl('button', { cls: 'ontology-editor-add-button', attr: { 'aria-label': 'Add replacement' }, text: 'Add replacement' });
+    add.addEventListener('click', () => { model.rules.push({ kind: 'replaces', newValue: model.name, value: '' }); this.render(); });
+    section.createEl('p', { cls: 'setting-item-description', text: 'When this type is applied, replace old field values with new ones.' });
+
+    for (const [i, rule] of replacements.entries()) {
+      const index = replacementIndices[i];
+      const card = section.createEl('div', { cls: 'ontology-type-editor-field ontology-rule-card' });
+      const rowHeader = card.createEl('div', { cls: 'ontology-type-editor-row-header' });
+      rowHeader.createEl('span', { cls: 'ontology-type-editor-row-label', text: 'Replaces' });
+      this.addItemDeleteButton(rowHeader, 'Remove replacement', () => { model.rules.splice(index, 1); this.render(); });
 
       const grid = card.createEl('div', { cls: 'ontology-replacement-grid' });
       grid.createEl('span', { cls: 'ontology-replacement-grid-spacer' });
       grid.createEl('span', { cls: 'ontology-replacement-column-label', text: 'Field' });
       grid.createEl('span', { cls: 'ontology-replacement-column-label', text: 'Value' });
 
-      const addInput = (
-        rowName: string,
-        fieldValue: string,
-        fieldPlaceholder: string,
-        value: string,
-        valuePlaceholder: string,
-        onFieldChange: (next: string) => void,
-        onValueChange: (next: string) => void,
-      ): void => {
+      const addInput = (rowName: string, fieldValue: string, fieldPlaceholder: string, value: string, valuePlaceholder: string, onFieldChange: (next: string) => void, onValueChange: (next: string) => void): void => {
         grid.createEl('span', { cls: 'ontology-replacement-row-label', text: rowName });
         const fieldInput = grid.createEl('input', { attr: { 'aria-label': `${rowName} field`, placeholder: fieldPlaceholder, type: 'text' } });
         fieldInput.value = fieldValue;
@@ -259,40 +370,59 @@ export class OntologyTypeEditorModal extends Modal {
         valueInput.addEventListener('input', () => { onValueChange(valueInput.value.trim()); });
       };
 
-      addInput(
-        'Original',
-        rule.field ?? '',
-        'all type fields',
-        rule.value,
-        'value to replace',
-        (value) => { rule.field = value || undefined; },
-        (value) => { rule.value = value; },
-      );
-      addInput(
-        'New',
-        rule.newField ?? '',
-        'same field',
-        rule.newValue ?? '',
-        'blank removes only',
-        (value) => { rule.newField = value || undefined; },
-        (value) => { rule.newValue = value || undefined; },
-      );
+      addInput('Original', rule.field ?? '', 'all type fields', rule.value, 'value to replace', (v) => { rule.field = v || undefined; }, (v) => { rule.value = v; });
+      addInput('New', rule.newField ?? '', 'same field', rule.newValue ?? '', 'blank removes only', (v) => { rule.newField = v || undefined; }, (v) => { rule.newValue = v || undefined; });
     }
   }
 
-  private renderAutoApply(containerEl: HTMLElement): void {
+  private renderRecognition(containerEl: HTMLElement): void {
     const { model } = this.options;
+
+    const ingestSection = containerEl.createEl('section', { cls: 'ontology-type-editor-section' });
+    const ingestHeader = ingestSection.createEl('div', { cls: 'ontology-type-editor-header' });
+    ingestHeader.createEl('span', { cls: 'ontology-type-editor-sublabel', text: 'Ingest from fields' });
+    const ingestAdd = ingestHeader.createEl('button', { cls: 'ontology-editor-add-button', attr: { 'aria-label': 'Add ingest rule' }, text: 'Add rule' });
+    ingestAdd.addEventListener('click', () => { model.ingestFrom.push({ field: '', target: '' }); this.render(); });
+    ingestSection.createEl('p', {
+      cls: 'setting-item-description ontology-type-editor-section-desc',
+      text: 'When a note\'s frontmatter field links to the target note, it is recognized as this type. Formatting is applied automatically once recognized.',
+    });
+    for (const [i, entry] of model.ingestFrom.entries()) {
+      const row = ingestSection.createEl('div', { cls: 'ontology-type-editor-field' });
+      const rowHeader = row.createEl('div', { cls: 'ontology-type-editor-row-header' });
+      rowHeader.createEl('span', { cls: 'ontology-type-editor-row-label', text: entry.field ? `${entry.field} → ${entry.target}` : 'New rule' });
+      this.addItemDeleteButton(rowHeader, 'Remove rule', () => { model.ingestFrom.splice(i, 1); this.render(); });
+      new Setting(row)
+        .setName('Field')
+        .setDesc('Frontmatter key to watch (e.g. up, parent).')
+        .addText((text) => text
+          .setPlaceholder('up')
+          .setValue(entry.field)
+          .onChange((v) => { entry.field = v.trim(); rowHeader.querySelector('.ontology-type-editor-row-label')!.textContent = entry.field ? `${entry.field} → ${entry.target}` : 'New rule'; }));
+      new Setting(row)
+        .setName('Target note')
+        .setDesc('The note name or path that the field must link to.')
+        .addText((text) => text
+          .setPlaceholder('archive/Philosophers')
+          .setValue(entry.target)
+          .onChange((v) => { entry.target = v.trim(); rowHeader.querySelector('.ontology-type-editor-row-label')!.textContent = entry.field ? `${entry.field} → ${entry.target}` : 'New rule'; }));
+    }
+  }
+
+  private renderAutoApplyScaffold(containerEl: HTMLElement): void {
+    const { model } = this.options;
+
     const section = containerEl.createEl('section', { cls: 'ontology-type-editor-section' });
-    section.createEl('h3', { text: 'Auto-apply scaffold' });
+    section.createEl('span', { cls: 'ontology-type-editor-sublabel', text: 'Scaffold' });
 
     new Setting(section)
-      .setName('When to apply')
-      .setDesc('Automatically scaffold new entities of this type.')
+      .setName('When to scaffold')
+      .setDesc('Automatically fill in missing fields when an entity of this type is saved. Use "Always" if you use ingest rules for detection — the type is already known at that point.')
       .addDropdown((dropdown) => {
         dropdown
           .addOption('never', 'Never')
           .addOption('always', 'Always')
-          .addOption('conditional', 'When conditions match')
+          .addOption('conditional', 'When extra conditions match')
           .setValue(model.autoApplyMode)
           .onChange((value) => {
             model.autoApplyMode = value as TypeEditorModel['autoApplyMode'];
@@ -312,7 +442,7 @@ export class OntologyTypeEditorModal extends Modal {
         });
 
       const condHeader = section.createEl('div', { cls: 'ontology-type-editor-header' });
-      condHeader.createEl('span', { cls: 'ontology-type-editor-sublabel', text: 'Conditions' });
+      condHeader.createEl('span', { cls: 'ontology-type-editor-sublabel', text: 'Extra conditions' });
       const addBtn = condHeader.createEl('button', { cls: 'clickable-icon', attr: { 'aria-label': 'Add condition' }, text: '+' });
       addBtn.addEventListener('click', () => {
         model.autoApplyConditions.push({ key: '', value: '' });
