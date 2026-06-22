@@ -1,6 +1,7 @@
 ---
 is-instance: "[[cat]]"
 lock: true
+up: "[[cat]]"
 common-name: cat
 habitat: home
 descriptor: weird

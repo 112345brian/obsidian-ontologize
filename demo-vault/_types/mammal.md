@@ -1,4 +1,6 @@
 ---
+ontologize: true
+up: "[[animal]]"
 extends:
   - "[[animal]]"
 lock: true

@@ -1,4 +1,6 @@
 ---
+ontologize: true
+up: "[[mammal]]"
 extends:
   - "[[mammal]]"
 implements:

@@ -1,4 +1,5 @@
 ---
+ontologize: true
 type: field-definitions
 fields:
   common-name:

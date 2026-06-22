@@ -1,4 +1,5 @@
 ---
+ontologize: true
 type: nominal
 values:
   - domesticated

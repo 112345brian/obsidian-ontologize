@@ -146,6 +146,7 @@ export interface OntologyIndex {
     foldersToIgnore: string[];
     frontmatterIgnoreRules: FrontmatterIgnoreRule[];
     globalTypePath: string;
+    requireOntologizePrefix: boolean;
     schemaPath: string;
     typeFolder: string;
   };

@@ -1,8 +1,21 @@
-import type { App, TFile } from 'obsidian';
+import type {
+  App,
+  TFile
+} from 'obsidian';
 
 type MaybeFile = { extension: string } | null | undefined;
 
-import type { EffectiveLockState, FrontmatterIgnoreRule, OntologyEntity, OntologyIndex, OntologyIssue, OntologyType, PropertyDefinition, RelationDefinition, Scale } from './types.ts';
+import type {
+  EffectiveLockState,
+  FrontmatterIgnoreRule,
+  OntologyEntity,
+  OntologyIndex,
+  OntologyIssue,
+  OntologyType,
+  PropertyDefinition,
+  RelationDefinition,
+  Scale
+} from './types.ts';
 
 import {
   collectGlobalFieldDefinitions,
@@ -11,11 +24,25 @@ import {
   resolveGlobalType,
   typeCompositionChain
 } from './compose.ts';
-import { basenameWithoutExtension, normalizeLinkTarget } from './links.ts';
+import {
+  basenameWithoutExtension,
+  normalizeLinkTarget
+} from './links.ts';
 import { detectTypeFromIngestFields } from './mutations.ts';
-import { parseOntologyEntity, parseOntologySchema, parseOntologyType } from './parser.ts';
-import { lintOntologySchemaSource, lintOntologyTypeSource } from './schema-linter.ts';
-import { validateIndex, validateSchemaCompositionConflicts, validateSingleEntity } from './validate.ts';
+import {
+  parseOntologyEntity,
+  parseOntologySchema,
+  parseOntologyType
+} from './parser.ts';
+import {
+  lintOntologySchemaSource,
+  lintOntologyTypeSource
+} from './schema-linter.ts';
+import {
+  validateIndex,
+  validateSchemaCompositionConflicts,
+  validateSingleEntity
+} from './validate.ts';
 
 export interface BuildIndexSettings {
   autoApplyBlockPrefix?: string;
@@ -24,6 +51,7 @@ export interface BuildIndexSettings {
   foldersToIgnore?: string[];
   frontmatterIgnoreRules?: FrontmatterIgnoreRule[];
   globalTypePath?: string;
+  requireOntologizePrefix?: boolean;
   schemaPath?: string;
   typeFolder: string;
 }
@@ -96,8 +124,10 @@ export function isIgnoredByFrontmatter(frontmatter: Record<string, unknown>, set
   return false;
 }
 
-export function isOntologyTypeFile(file: TFile, typeFolder: string): boolean {
-  return file.extension === 'md' && file.path.startsWith(`${typeFolder.replace(/\/$/, '')}/`);
+export function isOntologyTypeFile(file: TFile, typeFolder: string, frontmatter?: Record<string, unknown>): boolean {
+  if (file.extension !== 'md') return false;
+  if (file.path.startsWith(`${typeFolder.replace(/\/$/, '')}/`)) return true;
+  return frontmatter?.['ontologize'] === true;
 }
 
 export function isOntologySchemaFile(file: TFile, schemaPath: string | undefined): boolean {
@@ -127,10 +157,11 @@ function createEmptyOntologyIndex(settings: BuildIndexSettings): OntologyIndex {
       foldersToIgnore: settings.foldersToIgnore ?? [],
       frontmatterIgnoreRules: settings.frontmatterIgnoreRules ?? [],
       globalTypePath: settings.globalTypePath ?? '',
+      requireOntologizePrefix: settings.requireOntologizePrefix === true,
       schemaPath: settings.schemaPath ?? '',
-      typeFolder: settings.typeFolder,
+      typeFolder: settings.typeFolder
     },
-    types: new Map<string, OntologyType>(),
+    types: new Map<string, OntologyType>()
   };
 }
 
@@ -160,7 +191,7 @@ export function computeAncestors(
       pushIssueOnce(issues, {
         file: type.path,
         message: `Circular inheritance detected: ${[...stack, name].join(' -> ')}`,
-        severity: 'error',
+        severity: 'error'
       });
       return ancestors;
     }
@@ -171,7 +202,7 @@ export function computeAncestors(
         pushIssueOnce(issues, {
           file: type.path,
           message: `Unknown parent type ${parent}`,
-          severity: 'error',
+          severity: 'error'
         });
         continue;
       }
@@ -256,7 +287,7 @@ export function recomputeOntologyDerivedState(index: OntologyIndex): OntologyInd
     pushIssueOnce(index.issues, {
       file: paths[0] ?? '',
       message: `Duplicate entity name ${name}: ${paths.join(', ')}. Wiki links to ${name} cannot be resolved unambiguously.`,
-      severity: 'warning',
+      severity: 'warning'
     });
   }
   const circularTypes = new Set<string>();
@@ -311,7 +342,7 @@ function resolveEntityFromFile(
   path: string,
   frontmatter: Record<string, unknown>,
   typeFields: string[],
-  index: OntologyIndex,
+  index: OntologyIndex
 ): OntologyEntity | null {
   const explicit = parseOntologyEntity(path, frontmatter, typeFields);
   if (explicit) return explicit;
@@ -320,12 +351,12 @@ function resolveEntityFromFile(
   if (!detected) return null;
 
   return {
-    frontmatter: frontmatter as Record<string, unknown>,
+    frontmatter,
     ignored: false,
     instanceOf: [detected],
     lockIntent: frontmatter['lock'] === true,
     name: basenameWithoutExtension(path),
-    path,
+    path
   };
 }
 
@@ -375,19 +406,19 @@ export async function upsertOntologyFile(app: App, index: OntologyIndex, file: T
     return recomputeOntologyDerivedState(index);
   }
 
-  if (isOntologyTypeFile(file, settings.typeFolder)) {
+  const frontmatter = app.metadataCache.getFileCache(file)?.frontmatter as Record<string, unknown> | undefined;
+  if (isOntologyTypeFile(file, settings.typeFolder, frontmatter)) {
     const source = await app.vault.read(file);
-    const lintIssues = lintOntologyTypeSource(file.path, source, settings.autoApplyBlockPrefix);
+    const lintIssues = lintOntologyTypeSource(file.path, source, settings.autoApplyBlockPrefix, settings.requireOntologizePrefix);
     index.schemaIssues?.push(...lintIssues);
     if (lintIssues.some((item) => item.severity === 'error')) {
       return recomputeOntologyDerivedState(index);
     }
-    const type = parseOntologyType(file.path, source, settings.autoApplyBlockPrefix);
+    const type = parseOntologyType(file.path, source, settings.autoApplyBlockPrefix, settings.requireOntologizePrefix);
     index.types.set(type.name, type);
     return recomputeOntologyDerivedState(index);
   }
 
-  const frontmatter = app.metadataCache.getFileCache(file)?.frontmatter;
   if (isIgnoredByFrontmatter(frontmatter ?? {}, settings)) {
     return recomputeOntologyDerivedState(index);
   }
@@ -465,9 +496,11 @@ export function revalidateEntityBatch(app: App, index: OntologyIndex, paths: str
     const existing = index.entities.get(path);
     // Compare frontmatter by value — only update if something actually changed
     // to avoid unnecessary cache writes when the vault is quiet.
-    if (!existing || JSON.stringify(existing.frontmatter) !== JSON.stringify(fresh.frontmatter)
-        || existing.lockIntent !== fresh.lockIntent
-        || [...existing.instanceOf].sort().join('\0') !== [...fresh.instanceOf].sort().join('\0')) {
+    if (
+      !existing || JSON.stringify(existing.frontmatter) !== JSON.stringify(fresh.frontmatter)
+      || existing.lockIntent !== fresh.lockIntent
+      || [...existing.instanceOf].sort().join('\0') !== [...fresh.instanceOf].sort().join('\0')
+    ) {
       index.entities.set(path, fresh);
       staleCount++;
     }
@@ -509,12 +542,13 @@ export async function buildOntologyIndex(app: App, settings: BuildIndexSettings)
     if (isOntologySchemaFile(file, settings.schemaPath) || isIgnoredOntologyPath(file.path, settings)) {
       continue;
     }
-    if (isOntologyTypeFile(file, settings.typeFolder)) {
+    const cachedFm = app.metadataCache.getFileCache(file)?.frontmatter as Record<string, unknown> | undefined;
+    if (isOntologyTypeFile(file, settings.typeFolder, cachedFm)) {
       const source = await app.vault.read(file);
-      const lintIssues = lintOntologyTypeSource(file.path, source, settings.autoApplyBlockPrefix);
+      const lintIssues = lintOntologyTypeSource(file.path, source, settings.autoApplyBlockPrefix, settings.requireOntologizePrefix);
       index.schemaIssues?.push(...lintIssues);
       if (!lintIssues.some((item) => item.severity === 'error')) {
-        const type = parseOntologyType(file.path, source, settings.autoApplyBlockPrefix);
+        const type = parseOntologyType(file.path, source, settings.autoApplyBlockPrefix, settings.requireOntologizePrefix);
         index.types.set(type.name, type);
       }
     } else {

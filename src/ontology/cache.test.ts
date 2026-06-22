@@ -69,6 +69,7 @@ function makeIndex(): OntologyIndex {
       foldersToIgnore: ['Archive'],
       frontmatterIgnoreRules: [{ key: 'status', value: 'private' }],
       globalTypePath: '',
+      requireOntologizePrefix: false,
       schemaPath: '_types/ontology.schema.yaml',
       typeFolder: '_types',
     },

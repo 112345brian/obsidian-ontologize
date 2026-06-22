@@ -52,6 +52,7 @@ export function makeIndexSettings(overrides: Partial<OntologyIndex['settings']> 
     foldersToIgnore: [],
     frontmatterIgnoreRules: [],
     globalTypePath: '',
+    requireOntologizePrefix: false,
     schemaPath: '',
     typeFolder: '_types',
     ...overrides,

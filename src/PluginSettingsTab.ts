@@ -120,6 +120,11 @@ export class PluginSettingsTab extends PluginSettingTab {
         control: { type: 'toggle', key: 'autoScaffoldEntities' },
       },
       {
+        name: 'Require ontologize prefix',
+        desc: 'Only read type-note schema from keys prefixed with "ontologize.", such as "ontologize.must-have". Ordinary fields like "must-have" are treated as note metadata.',
+        control: { type: 'toggle', key: 'requireOntologizePrefix' },
+      },
+      {
         name: 'Ignored folders',
         desc: 'One vault-relative folder path per line. Files in these folders are excluded from ontology indexing and validation.',
         control: { type: 'textarea', key: 'foldersToIgnore', placeholder: 'Archive\nTemplates' },
@@ -286,7 +291,6 @@ export class PluginSettingsTab extends PluginSettingTab {
             await this.plugin.savePluginSettings();
           })
       );
-
 
     new Setting(containerEl)
       .setName('Ignored folders')

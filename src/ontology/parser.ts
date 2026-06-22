@@ -29,6 +29,23 @@ function normalizeKeys(record: Record<string, unknown>): Record<string, unknown>
   return result;
 }
 
+function normalizeSchemaKeys(record: Record<string, unknown>, requireOntologizePrefix: boolean): Record<string, unknown> {
+  if (!requireOntologizePrefix) {
+    return normalizeKeys(record);
+  }
+  const result: Record<string, unknown> = {};
+  for (const [key, value] of Object.entries(record)) {
+    if (!key.startsWith('ontologize.')) {
+      continue;
+    }
+    const schemaKey = key.slice('ontologize.'.length);
+    if (schemaKey) {
+      result[normalizeKey(schemaKey)] = value;
+    }
+  }
+  return result;
+}
+
 function readStructuredObject(source: string, path = ''): Record<string, unknown> {
   const trimmed = source.trim();
   if (!trimmed) {
@@ -215,7 +232,7 @@ function parseScale(value: unknown): Scale {
     if (key === 'min' || key === 'max' || key === 'neutral' || key === 'normalize') continue;
     if (Array.isArray(aliases)) {
       steps[key] = aliases.map(String);
-    } else if (aliases !== null && aliases !== undefined) {
+    } else if (typeof aliases === 'string' || typeof aliases === 'number' || typeof aliases === 'boolean') {
       steps[key] = [String(aliases)];
     }
   }
@@ -272,8 +289,8 @@ function parseOntologyTypeRecord(name: string, path: string, yaml: Record<string
   };
 }
 
-export function parseOntologyType(path: string, markdown: string, blockPrefix = DEFAULT_BLOCK_PREFIX): OntologyType {
-  return parseOntologyTypeRecord(basenameWithoutExtension(path), path, normalizeKeys(readYamlObject(markdown)), blockPrefix);
+export function parseOntologyType(path: string, markdown: string, blockPrefix = DEFAULT_BLOCK_PREFIX, requireOntologizePrefix = false): OntologyType {
+  return parseOntologyTypeRecord(basenameWithoutExtension(path), path, normalizeSchemaKeys(readYamlObject(markdown), requireOntologizePrefix), blockPrefix);
 }
 
 function parseSchemaTypeMap(path: string, group: string, value: unknown, blockPrefix: string, defaults: Partial<OntologyType> = {}): OntologyType[] {

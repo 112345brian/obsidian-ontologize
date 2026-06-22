@@ -72,6 +72,20 @@ vi.mock('obsidian', () => ({
     if (source.includes('abstract: true')) {
       return { abstract: true };
     }
+    if (source.includes('ontologize.must-have')) {
+      return {
+        'must-have': {
+          'note-owned-field': 'string',
+        },
+        'ontologize.extends': ['[[person]]'],
+        'ontologize.must-have': {
+          school: {
+            type: 'string',
+          },
+        },
+        ontologize: true,
+      };
+    }
     if (source.includes('extends:')) {
       return {
         extends: ['[[Person]]'],
@@ -110,6 +124,22 @@ lock: true
 
     expect(type.extends).toEqual(['Person']);
     expect(type.lockIntent).toBe(true);
+  });
+
+  it('can require schema keys to use the ontologize prefix', () => {
+    const type = parseOntologyType('_types/Philosopher.md', `---
+ontologize: true
+must-have:
+  note-owned-field: string
+ontologize.extends:
+  - "[[person]]"
+ontologize.must-have:
+  school:
+    type: string
+---`, undefined, true);
+
+    expect(type.extends).toEqual(['person']);
+    expect([...type.mustHave.keys()]).toEqual(['school']);
   });
 
   it('uses configured entity type fields for ontology membership', () => {

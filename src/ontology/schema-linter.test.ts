@@ -1,4 +1,9 @@
-import { describe, expect, it, vi } from 'vitest';
+import {
+  describe,
+  expect,
+  it,
+  vi
+} from 'vitest';
 
 vi.mock('obsidian', () => ({
   parseYaml: (source: string) => {
@@ -10,10 +15,11 @@ vi.mock('obsidian', () => ({
         'must-have': {
           started: {
             insert: 'clock.unknown()',
-            type: ['date'],
-          },
+            type: ['date']
+          }
         },
         mystery: true,
+        up: '[[person]]',
       };
     }
     if (source.includes('underscore-names')) {
@@ -21,23 +27,23 @@ vi.mock('obsidian', () => ({
         fields: {
           birth_year: {
             'frontmatter-key': 'birth_year',
-            type: 'number',
-          },
+            type: 'number'
+          }
         },
         relations: {
           influenced_by: {
-            inverse: 'influences_person',
-          },
-        },
+            inverse: 'influences_person'
+          }
+        }
       };
     }
     if (source.includes('bad-union')) {
       return {
         'must-have': {
           up: {
-            type: 'wikilink |',
-          },
-        },
+            type: 'wikilink |'
+          }
+        }
       };
     }
     if (source.includes('bad-replacement')) {
@@ -45,36 +51,53 @@ vi.mock('obsidian', () => ({
         replaces: [{
           'new-field': 42,
           'new-value': false,
-          value: '[[Friend]]',
-        }],
+          value: '[[Friend]]'
+        }]
+      };
+    }
+    if (source.includes('ontologize.must-have')) {
+      return {
+        'must-have': {
+          'note-owned-field': 'string'
+        },
+        'ontologize.must-have': {
+          started: {
+            type: 42
+          }
+        },
+        'ontologize.typo': true,
+        ontologize: true
       };
     }
     return {
       'must-have': {
         started: {
           insert: 'date.now()',
-          type: 'date',
-        },
-      },
+          type: 'date'
+        }
+      }
     };
-  },
+  }
 }));
 
-import { lintOntologySchemaSource, lintOntologyTypeSource } from './schema-linter.ts';
+import {
+  lintOntologySchemaSource,
+  lintOntologyTypeSource
+} from './schema-linter.ts';
 
 describe('schema linter', () => {
   it('reports malformed YAML and missing frontmatter delimiters', () => {
     expect(lintOntologyTypeSource('_types/Broken.md', '---\nBROKEN\n---')).toContainEqual(expect.objectContaining({
       file: '_types/Broken.md',
       message: 'Schema syntax error: bad indentation',
-      severity: 'error',
+      severity: 'error'
     }));
     expect(lintOntologyTypeSource('_types/Open.md', '---\nlock: true')).toContainEqual(expect.objectContaining({
-      message: 'YAML frontmatter is missing its closing --- delimiter',
+      message: 'YAML frontmatter is missing its closing --- delimiter'
     }));
   });
 
-  it('reports unknown keys, invalid strict type shapes, and unknown templates', () => {
+  it('warns on unknown type keys, ignores note-level keys, reports invalid strict type shapes and unknown templates', () => {
     const issues = lintOntologyTypeSource('_types/Bad.md', '---\nunknown-template\n---');
 
     expect(issues).toContainEqual(expect.objectContaining({
@@ -89,13 +112,41 @@ describe('schema linter', () => {
       message: 'Property started.insert uses unknown template clock.unknown()',
       severity: 'error',
     }));
+    // Note-level keys like 'up' must not trigger unknown-key warnings.
+    expect(issues).not.toContainEqual(expect.objectContaining({
+      message: expect.stringContaining('Unknown type field up'),
+    }));
+  });
+
+  it('validates only ontologize-prefixed schema keys when required', () => {
+    const issues = lintOntologyTypeSource('_types/Namespaced.md', `---
+ontologize: true
+must-have:
+  note-owned-field: string
+ontologize.must-have:
+  started:
+    type: 42
+ontologize.typo: true
+---`, undefined, true);
+
+    expect(issues).toContainEqual(expect.objectContaining({
+      message: 'Property started.type must be one string',
+      severity: 'error'
+    }));
+    expect(issues).toContainEqual(expect.objectContaining({
+      message: 'Unknown ontologize schema field typo',
+      severity: 'warning'
+    }));
+    expect(issues).not.toContainEqual(expect.objectContaining({
+      message: 'Property note-owned-field.type must be one string'
+    }));
   });
 
   it('accepts registered templates and validates JSON schema roots', () => {
     expect(lintOntologyTypeSource('_types/Good.md', '---\ninsert date\n---')).toEqual([]);
     expect(lintOntologySchemaSource('_types/schema.json', JSON.stringify({ types: [] }))).toContainEqual(expect.objectContaining({
       message: 'types must be a map of named definitions',
-      severity: 'error',
+      severity: 'error'
     }));
   });
 
@@ -106,14 +157,14 @@ describe('schema linter', () => {
       'Property name "birth_year" is not kebab-case and will be auto-normalized',
       'Property birth_year.frontmatter-key "birth_year" is not kebab-case and will be auto-normalized',
       'Relation name "influenced_by" is not kebab-case and will be auto-normalized',
-      'Relation influenced_by.inverse "influences_person" is not kebab-case and will be auto-normalized',
+      'Relation influenced_by.inverse "influences_person" is not kebab-case and will be auto-normalized'
     ]));
   });
 
   it('rejects malformed type unions', () => {
     expect(lintOntologyTypeSource('_types/BadUnion.md', '---\nbad-union\n---')).toContainEqual(expect.objectContaining({
       message: 'Property up.type has an invalid union expression',
-      severity: 'error',
+      severity: 'error'
     }));
   });
 
@@ -122,7 +173,7 @@ describe('schema linter', () => {
 
     expect(messages).toEqual(expect.arrayContaining([
       'replaces entry new-field must be a string',
-      'replaces entry new-value must be a wikilink string',
+      'replaces entry new-value must be a wikilink string'
     ]));
   });
 });

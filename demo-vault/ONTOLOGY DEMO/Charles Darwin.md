@@ -1,7 +1,7 @@
 ---
 is-instance: "[[historical-figure]]"
 lock: true
-up: "[[person]]"
+up: "[[historical-figure]]"
 full-name: Charles Darwin
 birth-year: 1809
 known-for: Theory of evolution by natural selection

@@ -3,7 +3,7 @@ import { parseYaml } from 'obsidian';
 import type { OntologyIssue } from './types.ts';
 
 import { isInsertTemplate } from './templates.ts';
-import { DEFAULT_BLOCK_PREFIX } from './parser.ts';
+import { DEFAULT_BLOCK_PREFIX, normalizeKey } from './parser.ts';
 import { isValidTypeExpression } from './type-expression.ts';
 
 const TYPE_KEYS = new Set([
@@ -19,6 +19,7 @@ const TYPE_KEYS = new Set([
   'implementable-by',
   'implements',
   'ingest-from',
+  'ontologize',
   'requires',
   'interface',
   'lock',
@@ -29,6 +30,12 @@ const TYPE_KEYS = new Set([
   'template',
   'type',
   'values',
+]);
+
+// Common note-level frontmatter keys that are never schema — silently allowed on type files.
+const NOTE_CONTENT_KEYS = new Set([
+  'aliases', 'cssclasses', 'date-created', 'date-modified', 'description',
+  'publish', 'tags', 'title', 'up',
 ]);
 
 const PROPERTY_KEYS = new Set([
@@ -42,7 +49,7 @@ const PROPERTY_KEYS = new Set([
   'type',
   'uses',
   'weight-scale',
-  'weighted',
+  'weighted'
 ]);
 
 const RELATION_KEYS = new Set([
@@ -55,7 +62,7 @@ const RELATION_KEYS = new Set([
   'type',
   'uses',
   'value',
-  'value-type',
+  'value-type'
 ]);
 
 const SCHEMA_KEYS = new Set(['fields', 'interfaces', 'relations', 'types']);
@@ -103,6 +110,23 @@ function lintUnknownKeys(file: string, context: string, record: Record<string, u
       issues.push(issue(file, `Unknown ${context} field ${key}`, 'warning'));
     }
   }
+}
+
+function schemaRecord(record: Record<string, unknown>, requireOntologizePrefix: boolean): Record<string, unknown> {
+  if (!requireOntologizePrefix) {
+    return record;
+  }
+  const result: Record<string, unknown> = {};
+  for (const [key, value] of Object.entries(record)) {
+    if (!key.startsWith('ontologize.')) {
+      continue;
+    }
+    const schemaKey = key.slice('ontologize.'.length);
+    if (schemaKey) {
+      result[normalizeKey(schemaKey)] = value;
+    }
+  }
+  return result;
 }
 
 function lintStringArray(file: string, context: string, value: unknown, issues: OntologyIssue[]): void {
@@ -285,34 +309,48 @@ function lintReplacesField(file: string, value: unknown, issues: OntologyIssue[]
   }
 }
 
-function lintTypeRecord(file: string, value: unknown, issues: OntologyIssue[], prefix: string): void {
+const SCHEMA_CONTENT_KEYS = new Set(['auto-apply', 'can-have', 'extends', 'fields', 'implements', 'ingest-from', 'must-have', 'relations', 'scales', 'type', 'values']);
+
+function lintTypeRecord(file: string, value: unknown, issues: OntologyIssue[], prefix: string, requireOntologizePrefix: boolean): void {
   const record = asRecord(value);
   if (!record) {
     issues.push(issue(file, 'Type definition must be a map/object'));
     return;
   }
-  lintUnknownKeys(file, 'type', record, TYPE_KEYS, issues);
-  lintStringOrStringArray(file, 'extends', record['extends'], issues);
-  lintStringOrStringArray(file, 'implements', record['implements'], issues);
-  lintIngestFrom(file, record['ingest-from'], issues);
-  lintStringOrStringArray(file, 'disjoint', record['disjoint'], issues);
-  lintStringOrStringArray(file, 'excludes', record['excludes'], issues);
-  lintReplacesField(file, record['replaces'], issues);
-  lintStringOrStringArray(file, 'requires', record['requires'], issues);
-  lintBoolean(file, 'abstract', record['abstract'], issues);
-  lintBoolean(file, 'interface', record['interface'], issues);
-  lintBoolean(file, 'lock', record['lock'], issues);
-  lintAutoApply(file, record['auto-apply'], issues, prefix);
-  lintPropertyMap(file, 'must-have', record['must-have'], issues);
-  lintPropertyMap(file, 'can-have', record['can-have'], issues);
-  lintPropertyMap(file, 'fields', record['fields'], issues);
-  lintRelationMap(file, record['relations'], issues);
+  if (requireOntologizePrefix) {
+    lintUnknownKeys(file, 'ontologize schema', schemaRecord(record, true), TYPE_KEYS, issues);
+  } else {
+    const allowed = new Set([...TYPE_KEYS, ...NOTE_CONTENT_KEYS]);
+    lintUnknownKeys(file, 'type', record, allowed, issues);
+  }
+  const schema = schemaRecord(record, requireOntologizePrefix);
+  if (record['ontologize'] === true) {
+    const hasContent = [...SCHEMA_CONTENT_KEYS].some((k) => schema[k] !== undefined);
+    if (!hasContent) {
+      issues.push(issue(file, 'Type file has ontologize: true but no schema content — remove ontologize: true to treat this as a regular note', 'warning'));
+    }
+  }
+  lintStringOrStringArray(file, 'extends', schema['extends'], issues);
+  lintStringOrStringArray(file, 'implements', schema['implements'], issues);
+  lintIngestFrom(file, schema['ingest-from'], issues);
+  lintStringOrStringArray(file, 'disjoint', schema['disjoint'], issues);
+  lintStringOrStringArray(file, 'excludes', schema['excludes'], issues);
+  lintReplacesField(file, schema['replaces'], issues);
+  lintStringOrStringArray(file, 'requires', schema['requires'], issues);
+  lintBoolean(file, 'abstract', schema['abstract'], issues);
+  lintBoolean(file, 'interface', schema['interface'], issues);
+  lintBoolean(file, 'lock', schema['lock'], issues);
+  lintAutoApply(file, schema['auto-apply'], issues, prefix);
+  lintPropertyMap(file, 'must-have', schema['must-have'], issues);
+  lintPropertyMap(file, 'can-have', schema['can-have'], issues);
+  lintPropertyMap(file, 'fields', schema['fields'], issues);
+  lintRelationMap(file, schema['relations'], issues);
 }
 
-export function lintOntologyTypeSource(file: string, source: string, blockPrefix = DEFAULT_BLOCK_PREFIX): OntologyIssue[] {
+export function lintOntologyTypeSource(file: string, source: string, blockPrefix = DEFAULT_BLOCK_PREFIX, requireOntologizePrefix = false): OntologyIssue[] {
   const parsed = parseSource(file, source, false);
   if (parsed.value) {
-    lintTypeRecord(file, parsed.value, parsed.issues, blockPrefix);
+    lintTypeRecord(file, parsed.value, parsed.issues, blockPrefix, requireOntologizePrefix);
   }
   return parsed.issues;
 }
@@ -330,7 +368,7 @@ export function lintOntologySchemaSource(file: string, source: string, blockPref
       continue;
     }
     for (const [name, definition] of Object.entries(definitions ?? {})) {
-      lintTypeRecord(`${file}#${group}/${name}`, definition, parsed.issues, blockPrefix);
+      lintTypeRecord(`${file}#${group}/${name}`, definition, parsed.issues, blockPrefix, false);
     }
   }
   lintPropertyMap(file, 'fields', parsed.value['fields'], parsed.issues);

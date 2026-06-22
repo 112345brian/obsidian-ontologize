@@ -1,4 +1,5 @@
 ---
+ontologize: true
 lock: true
 implements:
   - "[[observable]]"

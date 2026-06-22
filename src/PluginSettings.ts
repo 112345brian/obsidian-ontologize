@@ -14,6 +14,7 @@ export class PluginSettings {
   public filesToIgnore: string[] = [];
   public frontmatterIgnoreRules: FrontmatterIgnoreRule[] = [];
   public autoApplyBlockPrefix = DEFAULT_BLOCK_PREFIX;
+  public requireOntologizePrefix = false;
   public initialScaffoldComplete = false;
   public scriptsFolder = '';
 }

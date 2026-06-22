@@ -2,7 +2,7 @@ import type { OntologyEntity, OntologyIndex, Scale } from './types.ts';
 
 import { entityCompositionChain } from './compose.ts';
 import { extractAssertedLinkTargets, hasNegatedTarget, normalizeLinkTarget } from './links.ts';
-import { DEFAULT_SCALE, normalizeAlias, resolveScaleAlias, scaleNeutral } from './scale.ts';
+import { DEFAULT_SCALE, resolveScaleAlias, scaleNeutral } from './scale.ts';
 
 interface AndNode {
   left: QueryNode;

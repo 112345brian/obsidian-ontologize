@@ -1,6 +1,7 @@
 ---
 is-instance: "[[dog]]"
 lock: true
+up: "[[dog]]"
 common-name: dog
 habitat: home
 descriptor: happy

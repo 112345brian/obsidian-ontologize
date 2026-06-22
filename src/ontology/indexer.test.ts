@@ -1,13 +1,32 @@
-import { describe, expect, it, vi } from 'vitest';
+import {
+  describe,
+  expect,
+  it,
+  vi
+} from 'vitest';
 
-import type { App, TFile } from 'obsidian';
-import type { OntologyIndex, OntologyType, RelationDefinition } from './types.ts';
+import type {
+  App,
+  TFile
+} from 'obsidian';
+import type {
+  OntologyIndex,
+  OntologyType,
+  RelationDefinition
+} from './types.ts';
 
 vi.mock('obsidian', () => ({
-  parseYaml: () => ({}),
+  parseYaml: () => ({})
 }));
 
-import { buildOntologyIndex, isIgnoredByFrontmatter, recomputeOntologyDerivedState, removeOntologyFile, revalidateEntityBatch } from './indexer.ts';
+import {
+  buildOntologyIndex,
+  isIgnoredByFrontmatter,
+  recomputeOntologyDerivedState,
+  removeOntologyFile,
+  revalidateEntityBatch,
+  upsertOntologyFile
+} from './indexer.ts';
 import { makeIndexSettings } from './test-support.ts';
 
 function makeType(
@@ -43,7 +62,7 @@ function makeType(
     relations: options.relations ?? new Map<string, RelationDefinition>(),
     scales: new Map(),
     typeKind: options.typeKind,
-    values: [],
+    values: []
   };
 }
 
@@ -57,13 +76,13 @@ function makeIndex(): OntologyIndex {
       ['Ada.md', {
         frontmatter: {
           'instance-of': '[[Philosopher]]',
-          lock: true,
+          lock: true
         },
         instanceOf: ['Philosopher'],
         lockIntent: true,
         name: 'Ada',
-        path: 'Ada.md',
-      }],
+        path: 'Ada.md'
+      }]
     ]),
     entitiesByName: new Map(),
     fieldDefinitions: new Map(),
@@ -74,8 +93,8 @@ function makeIndex(): OntologyIndex {
     settings: makeIndexSettings({ entityTypeFields: ['instance_of', 'type'] }),
     types: new Map([
       ['Person', makeType('Person', '_types/Person.md', true)],
-      ['Philosopher', makeType('Philosopher', '_types/Philosopher.md', true, ['Person'])],
-    ]),
+      ['Philosopher', makeType('Philosopher', '_types/Philosopher.md', true, ['Person'])]
+    ])
   };
 }
 
@@ -91,12 +110,12 @@ describe('incremental ontology index state', () => {
     index.entities.set('Rex.md', {
       frontmatter: {
         instance_of: ['[[Dog]]', '[[Pet]]'],
-        'parent-of': '[[Missing]]',
+        'parent-of': '[[Missing]]'
       },
       instanceOf: ['Dog', 'Pet'],
       lockIntent: false,
       name: 'Rex',
-      path: 'Rex.md',
+      path: 'Rex.md'
     });
 
     recomputeOntologyDerivedState(index);
@@ -145,12 +164,12 @@ describe('incremental ontology index state', () => {
     index.entities.set('Archive/Draft.md', {
       frontmatter: {
         instance_of: '[[UnknownType]]',
-        lock: true,
+        lock: true
       },
       instanceOf: ['UnknownType'],
       lockIntent: true,
       name: 'Draft',
-      path: 'Archive/Draft.md',
+      path: 'Archive/Draft.md'
     });
 
     removeOntologyFile(index, 'Archive');
@@ -182,40 +201,49 @@ describe('incremental ontology index state', () => {
 
   it('validates relation contracts composed through implemented interfaces', () => {
     const index = makeIndex();
-    index.types.set('_relations', makeType('_relations', '_types/_relations.md', false, [], {
-      relations: new Map([
-        ['influenced_by', {
-          inverse: 'influenced',
-          range: 'Person',
-          valueType: 'wikilink',
-        }],
-        ['influenced', {
-          inverse: 'influenced_by',
-          range: 'Person',
-          valueType: 'wikilink',
-        }],
-      ]),
-      typeKind: 'relation-definitions',
-    }));
-    index.types.set('Influenceable', makeType('Influenceable', '_types/Influenceable.md', true, [], {
-      isInterface: true,
-      relations: new Map([
-        ['influenced_by', { uses: 'influenced_by' }],
-      ]),
-    }));
-    index.types.set('Philosopher', makeType('Philosopher', '_types/Philosopher.md', true, ['Person'], {
-      implementsTypes: ['Influenceable'],
-    }));
+    index.types.set(
+      '_relations',
+      makeType('_relations', '_types/_relations.md', false, [], {
+        relations: new Map([
+          ['influenced_by', {
+            inverse: 'influenced',
+            range: 'Person',
+            valueType: 'wikilink'
+          }],
+          ['influenced', {
+            inverse: 'influenced_by',
+            range: 'Person',
+            valueType: 'wikilink'
+          }]
+        ]),
+        typeKind: 'relation-definitions'
+      })
+    );
+    index.types.set(
+      'Influenceable',
+      makeType('Influenceable', '_types/Influenceable.md', true, [], {
+        isInterface: true,
+        relations: new Map([
+          ['influenced_by', { uses: 'influenced_by' }]
+        ])
+      })
+    );
+    index.types.set(
+      'Philosopher',
+      makeType('Philosopher', '_types/Philosopher.md', true, ['Person'], {
+        implementsTypes: ['Influenceable']
+      })
+    );
     index.entities.set('Spinoza.md', {
       frontmatter: {
         influenced_by: '[[Ada]]',
         instance_of: '[[Philosopher]]',
-        lock: true,
+        lock: true
       },
       instanceOf: ['Philosopher'],
       lockIntent: true,
       name: 'Spinoza',
-      path: 'Spinoza.md',
+      path: 'Spinoza.md'
     });
 
     recomputeOntologyDerivedState(index);
@@ -225,7 +253,7 @@ describe('incremental ontology index state', () => {
       autofixable: true,
       file: 'Spinoza.md',
       property: 'influenced_by',
-      target: 'Ada',
+      target: 'Ada'
     }));
   });
 
@@ -236,12 +264,12 @@ describe('incremental ontology index state', () => {
     index.entities.set('Cyclic.md', {
       frontmatter: {
         instance_of: '[[A]]',
-        lock: true,
+        lock: true
       },
       instanceOf: ['A'],
       lockIntent: true,
       name: 'Cyclic',
-      path: 'Cyclic.md',
+      path: 'Cyclic.md'
     });
 
     recomputeOntologyDerivedState(index);
@@ -258,21 +286,21 @@ describe('incremental ontology index state', () => {
     const index = makeIndex();
     index.types.get('Philosopher')!.relations.set('influenced_by', {
       inverse: 'influenced',
-      range: 'Person',
+      range: 'Person'
     });
     index.entities.set('people/Smith.md', {
       frontmatter: { instance_of: '[[Person]]' },
       instanceOf: ['Person'],
       lockIntent: false,
       name: 'Smith',
-      path: 'people/Smith.md',
+      path: 'people/Smith.md'
     });
     index.entities.set('works/Smith.md', {
       frontmatter: { instance_of: '[[Person]]' },
       instanceOf: ['Person'],
       lockIntent: false,
       name: 'Smith',
-      path: 'works/Smith.md',
+      path: 'works/Smith.md'
     });
     index.entities.get('Ada.md')!.frontmatter['influenced_by'] = '[[Smith]]';
 
@@ -287,17 +315,20 @@ describe('incremental ontology index state', () => {
 
   it('rejects direct instantiation of interfaces', () => {
     const index = makeIndex();
-    index.types.set('Influenceable', makeType('Influenceable', '_types/Influenceable.md', true, [], {
-      isInterface: true,
-    }));
+    index.types.set(
+      'Influenceable',
+      makeType('Influenceable', '_types/Influenceable.md', true, [], {
+        isInterface: true
+      })
+    );
     index.entities.set('Trait.md', {
       frontmatter: {
-        instance_of: '[[Influenceable]]',
+        instance_of: '[[Influenceable]]'
       },
       instanceOf: ['Influenceable'],
       lockIntent: false,
       name: 'Trait',
-      path: 'Trait.md',
+      path: 'Trait.md'
     });
 
     recomputeOntologyDerivedState(index);
@@ -305,7 +336,7 @@ describe('incremental ontology index state', () => {
     expect(index.issues).toContainEqual(expect.objectContaining({
       file: 'Trait.md',
       message: 'Cannot instantiate interface Influenceable',
-      severity: 'error',
+      severity: 'error'
     }));
   });
 
@@ -313,7 +344,7 @@ describe('incremental ontology index state', () => {
     const index = makeIndex();
     index.types.get('Philosopher')!.canHave.set('descriptor', {
       type: 'string',
-      values: ['happy', 'sad', 'weird'],
+      values: ['happy', 'sad', 'weird']
     });
     index.entities.get('Ada.md')!.frontmatter['descriptor'] = 'angry';
 
@@ -323,7 +354,7 @@ describe('incremental ontology index state', () => {
       file: 'Ada.md',
       message: 'descriptor value angry is outside allowed values: happy, sad, weird',
       property: 'descriptor',
-      severity: 'error',
+      severity: 'error'
     }));
   });
 
@@ -331,7 +362,7 @@ describe('incremental ontology index state', () => {
     const index = makeIndex();
     index.types.get('Philosopher')!.mustHave.set('up', {
       includedTypes: ['wikilink', 'string'],
-      insert: '[[Person]]',
+      insert: '[[Person]]'
     });
     index.entities.get('Ada.md')!.frontmatter['up'] = '[[Thinker]]';
 
@@ -341,7 +372,7 @@ describe('incremental ontology index state', () => {
       file: 'Ada.md',
       message: 'up must include [[Person]]',
       property: 'up',
-      severity: 'error',
+      severity: 'error'
     }));
     expect(index.issues.some((issue) => issue.message.startsWith('up must be'))).toBe(false);
 
@@ -354,7 +385,7 @@ describe('incremental ontology index state', () => {
     const index = makeIndex();
     index.types.get('Philosopher')!.mustHave.set('date-start', {
       insert: 'date.now()',
-      type: 'date',
+      type: 'date'
     });
     index.entities.get('Ada.md')!.frontmatter['date-start'] = '2020-01-01';
 
@@ -366,7 +397,7 @@ describe('incremental ontology index state', () => {
   it('warns when values do not match included types', () => {
     const index = makeIndex();
     index.types.get('Philosopher')!.canHave.set('reference', {
-      includedTypes: ['wikilink', 'string'],
+      includedTypes: ['wikilink', 'string']
     });
     index.entities.get('Ada.md')!.frontmatter['reference'] = 42;
 
@@ -374,7 +405,7 @@ describe('incremental ontology index state', () => {
     expect(index.issues).toContainEqual(expect.objectContaining({
       message: 'reference does not match included types: wikilink, string',
       property: 'reference',
-      severity: 'warning',
+      severity: 'warning'
     }));
 
     index.entities.get('Ada.md')!.frontmatter['reference'] = 'plain text';
@@ -385,7 +416,7 @@ describe('incremental ontology index state', () => {
   it('accepts strict property type unions when any branch matches', () => {
     const index = makeIndex();
     index.types.get('Philosopher')!.canHave.set('reference', {
-      type: 'number | string',
+      type: 'number | string'
     });
 
     index.entities.get('Ada.md')!.frontmatter['reference'] = 42;
@@ -397,7 +428,7 @@ describe('incremental ontology index state', () => {
     expect(index.issues).toContainEqual(expect.objectContaining({
       message: 'reference must be number | string',
       property: 'reference',
-      severity: 'error',
+      severity: 'error'
     }));
   });
 
@@ -406,14 +437,14 @@ describe('incremental ontology index state', () => {
     index.types.set('Organization', makeType('Organization', '_types/Organization.md', true));
     index.types.get('Philosopher')!.relations.set('member-of', {
       range: 'Person | Organization',
-      valueType: 'wikilink',
+      valueType: 'wikilink'
     });
     index.entities.set('Academy.md', {
       frontmatter: { instance_of: '[[Organization]]' },
       instanceOf: ['Organization'],
       lockIntent: false,
       name: 'Academy',
-      path: 'Academy.md',
+      path: 'Academy.md'
     });
     index.entities.get('Ada.md')!.frontmatter['member-of'] = '[[Academy]]';
 
@@ -424,7 +455,7 @@ describe('incremental ontology index state', () => {
   it('errors when values match excluded types', () => {
     const index = makeIndex();
     index.types.get('Philosopher')!.canHave.set('reference', {
-      excludedTypes: ['number', 'boolean'],
+      excludedTypes: ['number', 'boolean']
     });
     index.entities.get('Ada.md')!.frontmatter['reference'] = 42;
 
@@ -432,27 +463,39 @@ describe('incremental ontology index state', () => {
     expect(index.issues).toContainEqual(expect.objectContaining({
       message: 'reference matches excluded types: number',
       property: 'reference',
-      severity: 'error',
+      severity: 'error'
     }));
   });
 
   it('allows shared global fields and lets required beat optional', () => {
     const index = makeIndex();
-    index.types.set('_fields', makeType('_fields', '_types/_fields.md', false, [], {
-      typeKind: 'field-definitions',
-    }));
+    index.types.set(
+      '_fields',
+      makeType('_fields', '_types/_fields.md', false, [], {
+        typeKind: 'field-definitions'
+      })
+    );
     index.types.get('_fields')!.fields.set('label', { type: 'string' });
-    index.types.set('Named', makeType('Named', '_types/Named.md', true, [], {
-      isInterface: true,
-    }));
-    index.types.set('Cataloged', makeType('Cataloged', '_types/Cataloged.md', true, [], {
-      isInterface: true,
-    }));
+    index.types.set(
+      'Named',
+      makeType('Named', '_types/Named.md', true, [], {
+        isInterface: true
+      })
+    );
+    index.types.set(
+      'Cataloged',
+      makeType('Cataloged', '_types/Cataloged.md', true, [], {
+        isInterface: true
+      })
+    );
     index.types.get('Named')!.canHave.set('label', { uses: 'label' });
     index.types.get('Cataloged')!.mustHave.set('label', { uses: 'label' });
-    index.types.set('Philosopher', makeType('Philosopher', '_types/Philosopher.md', true, ['Person'], {
-      implementsTypes: ['Named', 'Cataloged'],
-    }));
+    index.types.set(
+      'Philosopher',
+      makeType('Philosopher', '_types/Philosopher.md', true, ['Person'], {
+        implementsTypes: ['Named', 'Cataloged']
+      })
+    );
     index.entities.get('Ada.md')!.frontmatter['label'] = 'Ada';
 
     recomputeOntologyDerivedState(index);
@@ -463,17 +506,26 @@ describe('incremental ontology index state', () => {
 
   it('flags local same-key interface fields as semantic schema conflicts', () => {
     const index = makeIndex();
-    index.types.set('Named', makeType('Named', '_types/Named.md', true, [], {
-      isInterface: true,
-    }));
-    index.types.set('Cataloged', makeType('Cataloged', '_types/Cataloged.md', true, [], {
-      isInterface: true,
-    }));
+    index.types.set(
+      'Named',
+      makeType('Named', '_types/Named.md', true, [], {
+        isInterface: true
+      })
+    );
+    index.types.set(
+      'Cataloged',
+      makeType('Cataloged', '_types/Cataloged.md', true, [], {
+        isInterface: true
+      })
+    );
     index.types.get('Named')!.canHave.set('label', { type: 'string' });
     index.types.get('Cataloged')!.canHave.set('label', { type: 'number' });
-    index.types.set('Philosopher', makeType('Philosopher', '_types/Philosopher.md', true, ['Person'], {
-      implementsTypes: ['Named', 'Cataloged'],
-    }));
+    index.types.set(
+      'Philosopher',
+      makeType('Philosopher', '_types/Philosopher.md', true, ['Person'], {
+        implementsTypes: ['Named', 'Cataloged']
+      })
+    );
 
     recomputeOntologyDerivedState(index);
 
@@ -481,27 +533,39 @@ describe('incremental ontology index state', () => {
       file: '_types/Philosopher.md',
       message: 'Schema conflict on Philosopher.label: Named uses semantic field Named.label but Cataloged uses semantic field Cataloged.label',
       property: 'label',
-      severity: 'error',
+      severity: 'error'
     }));
   });
 
   it('flags incompatible overrides of the same global field', () => {
     const index = makeIndex();
-    index.types.set('_fields', makeType('_fields', '_types/_fields.md', false, [], {
-      typeKind: 'field-definitions',
-    }));
+    index.types.set(
+      '_fields',
+      makeType('_fields', '_types/_fields.md', false, [], {
+        typeKind: 'field-definitions'
+      })
+    );
     index.types.get('_fields')!.fields.set('label', { type: 'string' });
-    index.types.set('Named', makeType('Named', '_types/Named.md', true, [], {
-      isInterface: true,
-    }));
-    index.types.set('Cataloged', makeType('Cataloged', '_types/Cataloged.md', true, [], {
-      isInterface: true,
-    }));
+    index.types.set(
+      'Named',
+      makeType('Named', '_types/Named.md', true, [], {
+        isInterface: true
+      })
+    );
+    index.types.set(
+      'Cataloged',
+      makeType('Cataloged', '_types/Cataloged.md', true, [], {
+        isInterface: true
+      })
+    );
     index.types.get('Named')!.canHave.set('label', { uses: 'label' });
     index.types.get('Cataloged')!.canHave.set('label', { type: 'number', uses: 'label' });
-    index.types.set('Philosopher', makeType('Philosopher', '_types/Philosopher.md', true, ['Person'], {
-      implementsTypes: ['Named', 'Cataloged'],
-    }));
+    index.types.set(
+      'Philosopher',
+      makeType('Philosopher', '_types/Philosopher.md', true, ['Person'], {
+        implementsTypes: ['Named', 'Cataloged']
+      })
+    );
 
     recomputeOntologyDerivedState(index);
 
@@ -509,18 +573,21 @@ describe('incremental ontology index state', () => {
       file: '_types/Philosopher.md',
       message: 'Schema conflict on Philosopher.label: Named declares can-have (type string) but Cataloged declares can-have (type number)',
       property: 'label',
-      severity: 'error',
+      severity: 'error'
     }));
   });
 
   it('validates and scaffolds global fields using frontmatter aliases', () => {
     const index = makeIndex();
-    index.types.set('_fields', makeType('_fields', '_types/_fields.md', false, [], {
-      typeKind: 'field-definitions',
-    }));
+    index.types.set(
+      '_fields',
+      makeType('_fields', '_types/_fields.md', false, [], {
+        typeKind: 'field-definitions'
+      })
+    );
     index.types.get('_fields')!.fields.set('birth-year', {
       frontmatterKey: 'birth_year',
-      type: 'number',
+      type: 'number'
     });
     index.types.get('Philosopher')!.mustHave.set('birth-year', { uses: 'birth-year' });
     index.entities.get('Ada.md')!.frontmatter['birth_year'] = '1815';
@@ -531,23 +598,26 @@ describe('incremental ontology index state', () => {
       file: 'Ada.md',
       message: 'birth_year must be number',
       property: 'birth_year',
-      severity: 'error',
+      severity: 'error'
     }));
   });
 
   it('does not erase global field constraints with undefined uses overrides', () => {
     const index = makeIndex();
-    index.types.set('_fields', makeType('_fields', '_types/_fields.md', false, [], {
-      typeKind: 'field-definitions',
-    }));
+    index.types.set(
+      '_fields',
+      makeType('_fields', '_types/_fields.md', false, [], {
+        typeKind: 'field-definitions'
+      })
+    );
     index.types.get('_fields')!.fields.set('common-name', {
       frontmatterKey: 'common_name',
-      type: 'string',
+      type: 'string'
     });
     index.types.get('Philosopher')!.mustHave.set('common-name', {
       frontmatterKey: undefined,
       type: undefined,
-      uses: 'common-name',
+      uses: 'common-name'
     });
     index.entities.get('Ada.md')!.frontmatter['common_name'] = 'Ada';
 
@@ -558,17 +628,26 @@ describe('incremental ontology index state', () => {
 
   it('flags cannot-have collisions in composed schemas', () => {
     const index = makeIndex();
-    index.types.set('Named', makeType('Named', '_types/Named.md', true, [], {
-      isInterface: true,
-    }));
-    index.types.set('Anonymous', makeType('Anonymous', '_types/Anonymous.md', true, [], {
-      isInterface: true,
-    }));
+    index.types.set(
+      'Named',
+      makeType('Named', '_types/Named.md', true, [], {
+        isInterface: true
+      })
+    );
+    index.types.set(
+      'Anonymous',
+      makeType('Anonymous', '_types/Anonymous.md', true, [], {
+        isInterface: true
+      })
+    );
     index.types.get('Named')!.mustHave.set('label', { type: 'string' });
     index.types.get('Anonymous')!.cannotHave.add('label');
-    index.types.set('Philosopher', makeType('Philosopher', '_types/Philosopher.md', true, ['Person'], {
-      implementsTypes: ['Named', 'Anonymous'],
-    }));
+    index.types.set(
+      'Philosopher',
+      makeType('Philosopher', '_types/Philosopher.md', true, ['Person'], {
+        implementsTypes: ['Named', 'Anonymous']
+      })
+    );
 
     recomputeOntologyDerivedState(index);
 
@@ -576,7 +655,7 @@ describe('incremental ontology index state', () => {
       file: '_types/Philosopher.md',
       message: 'Schema conflict on Philosopher.label: Anonymous declares cannot-have but Named declares must-have',
       property: 'label',
-      severity: 'error',
+      severity: 'error'
     }));
   });
 
@@ -585,30 +664,30 @@ describe('incremental ontology index state', () => {
       interfaces: {
         Influenceable: {
           lock: true,
-          relations: ['influenced_by'],
-        },
+          relations: ['influenced_by']
+        }
       },
       relations: {
         influenced_by: {
           inverse: 'influenced',
           range: 'Person',
-          'value-type': 'wikilink',
-        },
+          'value-type': 'wikilink'
+        }
       },
       types: {
         Person: {
-          lock: true,
+          lock: true
         },
         Philosopher: {
           extends: ['[[Person]]'],
           implements: ['[[Influenceable]]'],
-          lock: true,
-        },
-      },
+          lock: true
+        }
+      }
     });
     const file = {
       extension: 'md',
-      path: 'Spinoza.md',
+      path: 'Spinoza.md'
     } as TFile;
     const app = {
       metadataCache: {
@@ -616,23 +695,23 @@ describe('incremental ontology index state', () => {
           frontmatter: {
             influenced_by: '[[Descartes]]',
             instance_of: '[[Philosopher]]',
-            lock: true,
-          },
-        }),
+            lock: true
+          }
+        })
       },
       vault: {
         adapter: {
           exists: (path: string) => Promise.resolve(path === '_types/ontology.schema.json'),
-          read: () => Promise.resolve(schema),
+          read: () => Promise.resolve(schema)
         },
-        getMarkdownFiles: () => [file],
-      },
+        getMarkdownFiles: () => [file]
+      }
     } as unknown as App;
 
     const index = await buildOntologyIndex(app, {
       entityTypeFields: ['instance_of', 'type'],
       schemaPath: '_types/ontology.schema.json',
-      typeFolder: '_types',
+      typeFolder: '_types'
     });
 
     expect(index.types.get('Influenceable')?.isInterface).toBe(true);
@@ -642,7 +721,7 @@ describe('incremental ontology index state', () => {
     expect(index.issues).toContainEqual(expect.objectContaining({
       file: 'Spinoza.md',
       property: 'influenced-by',
-      target: 'Descartes',
+      target: 'Descartes'
     }));
   });
 
@@ -651,32 +730,33 @@ describe('incremental ontology index state', () => {
       vault: {
         adapter: {
           exists: () => Promise.resolve(true),
-          read: () => Promise.resolve(JSON.stringify({
-            types: [],
-          })),
+          read: () =>
+            Promise.resolve(JSON.stringify({
+              types: []
+            }))
         },
-        getMarkdownFiles: () => [],
-      },
+        getMarkdownFiles: () => []
+      }
     } as unknown as App;
 
     const index = await buildOntologyIndex(app, {
       schemaPath: '_types/ontology.schema.json',
-      typeFolder: '_types',
+      typeFolder: '_types'
     });
 
     expect(index.types.size).toBe(0);
     expect(index.schemaIssues).toContainEqual(expect.objectContaining({
       file: '_types/ontology.schema.json',
       message: 'types must be a map of named definitions',
-      severity: 'error',
+      severity: 'error'
     }));
     expect(index.issues).toContainEqual(expect.objectContaining({
-      message: 'types must be a map of named definitions',
+      message: 'types must be a map of named definitions'
     }));
 
     recomputeOntologyDerivedState(index);
     expect(index.issues).toContainEqual(expect.objectContaining({
-      message: 'types must be a map of named definitions',
+      message: 'types must be a map of named definitions'
     }));
   });
 
@@ -693,7 +773,7 @@ describe('incremental ontology index state', () => {
       instanceOf: ['Philosopher'],
       lockIntent: true,
       name: 'Leibniz',
-      path: 'Leibniz.md',
+      path: 'Leibniz.md'
     });
     index.entities.get('Ada.md')!.frontmatter['influenced-by'] = ['[[Leibniz]]'];
 
@@ -710,8 +790,8 @@ describe('incremental ontology index state', () => {
     const app = {
       metadataCache: {
         getFileCache: (file: TFile) => ({
-          frontmatter: index.entities.get(file.path)?.frontmatter ?? {},
-        }),
+          frontmatter: index.entities.get(file.path)?.frontmatter ?? {}
+        })
       },
       vault: {
         getAbstractFileByPath: (path: string) => {
@@ -719,8 +799,8 @@ describe('incremental ontology index state', () => {
             return { extension: 'md', path } as TFile;
           }
           return null;
-        },
-      },
+        }
+      }
     } as unknown as App;
 
     const result = revalidateEntityBatch(app, index, ['Ada.md']);
@@ -742,8 +822,8 @@ describe('incremental ontology index state', () => {
     const app = {
       metadataCache: {
         getFileCache: (file: TFile) => ({
-          frontmatter: file.path === 'Ada.md' ? freshFm : index.entities.get(file.path)?.frontmatter ?? {},
-        }),
+          frontmatter: file.path === 'Ada.md' ? freshFm : index.entities.get(file.path)?.frontmatter ?? {}
+        })
       },
       vault: {
         getAbstractFileByPath: (path: string) => {
@@ -751,8 +831,8 @@ describe('incremental ontology index state', () => {
             return { extension: 'md', path } as TFile;
           }
           return null;
-        },
-      },
+        }
+      }
     } as unknown as App;
 
     const result = revalidateEntityBatch(app, index, ['Ada.md']);
@@ -768,7 +848,7 @@ describe('incremental ontology index state', () => {
 
     const app = {
       metadataCache: { getFileCache: () => null },
-      vault: { getAbstractFileByPath: () => null },
+      vault: { getAbstractFileByPath: () => null }
     } as unknown as App;
 
     expect(index.entities.has('Ada.md')).toBe(true);
@@ -781,33 +861,81 @@ describe('incremental ontology index state', () => {
   it('uses configured entity type frontmatter fields', async () => {
     const file = {
       extension: 'md',
-      path: 'Ada.md',
+      path: 'Ada.md'
     } as TFile;
     const app = {
       metadataCache: {
         getFileCache: () => ({
           frontmatter: {
-            ontology: '[[Person]]',
-          },
-        }),
+            ontology: '[[Person]]'
+          }
+        })
       },
       vault: {
         adapter: {
-          exists: () => Promise.resolve(false),
+          exists: () => Promise.resolve(false)
         },
         getMarkdownFiles: () => [file],
-        read: () => Promise.resolve('lock: true'),
-      },
+        read: () => Promise.resolve('lock: true')
+      }
     } as unknown as App;
 
     const index = await buildOntologyIndex(app, {
       entityTypeFields: ['ontology'],
-      typeFolder: '_types',
+      typeFolder: '_types'
     });
     index.types.set('Person', makeType('Person', '_types/Person.md', true));
     recomputeOntologyDerivedState(index);
 
     expect(index.entities.get('Ada.md')?.instanceOf).toEqual(['Person']);
     expect(index.settings.entityTypeFields).toEqual(['ontology']);
+  });
+
+  it('indexes ontologize-marked type notes outside the configured type folder', async () => {
+    const typeFile = { extension: 'md', path: 'Concepts/philosopher.md', basename: 'philosopher' } as TFile;
+    const entityFile = { extension: 'md', path: 'Notes/Marx.md', basename: 'Marx' } as TFile;
+    const frontmatterByPath = new Map<string, Record<string, unknown>>([
+      ['Concepts/philosopher.md', { ontologize: true, up: '[[person]]', lock: true }],
+      ['Notes/Marx.md', { 'is-instance': '[[philosopher]]', up: '[[philosopher]]' }]
+    ]);
+    const sourceByPath = new Map<string, string>([
+      ['Concepts/philosopher.md', '{"ontologize":true,"up":"[[person]]","lock":true}'],
+      ['Notes/Marx.md', '']
+    ]);
+    const app = {
+      metadataCache: {
+        getFileCache: (file: TFile) => ({ frontmatter: frontmatterByPath.get(file.path) ?? {} })
+      },
+      vault: {
+        adapter: {
+          exists: () => Promise.resolve(false)
+        },
+        getMarkdownFiles: () => [typeFile, entityFile],
+        read: (file: TFile) => Promise.resolve(sourceByPath.get(file.path) ?? '')
+      }
+    } as unknown as App;
+
+    const index = await buildOntologyIndex(app, { typeFolder: '_types' });
+
+    expect(index.types.get('philosopher')?.path).toBe('Concepts/philosopher.md');
+    expect(index.entities.get('Notes/Marx.md')?.instanceOf).toEqual(['philosopher']);
+  });
+
+  it('incrementally upserts ontologize-marked type notes outside the configured type folder', async () => {
+    const file = { extension: 'md', path: 'Concepts/philosopher.md', basename: 'philosopher' } as TFile;
+    const index = recomputeOntologyDerivedState(makeIndex());
+    const app = {
+      metadataCache: {
+        getFileCache: () => ({ frontmatter: { ontologize: true, up: '[[person]]', lock: true } })
+      },
+      vault: {
+        read: () => Promise.resolve('{"ontologize":true,"up":"[[person]]","lock":true}')
+      }
+    } as unknown as App;
+
+    const updated = await upsertOntologyFile(app, index, file, { typeFolder: '_types' });
+
+    expect(updated.types.get('philosopher')?.path).toBe('Concepts/philosopher.md');
+    expect(updated.entities.has('Concepts/philosopher.md')).toBe(false);
   });
 });

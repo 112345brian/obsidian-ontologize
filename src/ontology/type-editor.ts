@@ -1,4 +1,9 @@
-import type { FrontmatterValue, OntologyType, PropertyDefinition, TypeReplacement } from './types.ts';
+import type {
+  FrontmatterValue,
+  OntologyType,
+  PropertyDefinition,
+  TypeReplacement
+} from './types.ts';
 
 export interface TypeEditorField {
   cardinality: string;
@@ -71,7 +76,7 @@ export function emptyTypeEditorModel(): TypeEditorModel {
     name: '',
     relations: [],
     rules: [],
-    template: '',
+    template: ''
   };
 }
 
@@ -92,7 +97,7 @@ function fieldFromDefinition(name: string, definition: PropertyDefinition): Type
     name,
     possibleValues: definition.values ?? [],
     type: definition.type ?? '',
-    uses: definition.uses ?? '',
+    uses: definition.uses ?? ''
   };
 }
 
@@ -106,7 +111,7 @@ function autoApplyToModel(autoApply: OntologyType['autoApply']): Pick<TypeEditor
   return {
     autoApplyConditions: Object.entries(autoApply.conditions).map(([key, value]) => ({ key, value: String(value) })),
     autoApplyMatch: autoApply.match,
-    autoApplyMode: 'conditional',
+    autoApplyMode: 'conditional'
   };
 }
 
@@ -133,14 +138,14 @@ export function typeEditorModelFromType(type: OntologyType): TypeEditorModel {
       symmetric: definition.symmetric === true,
       transitive: definition.transitive === true,
       uses: definition.uses ?? '',
-      valueType: definition.valueType ?? '',
+      valueType: definition.valueType ?? ''
     })),
     rules: [
       ...type.requires.map((value): TypeEditorRule => ({ kind: 'requires', value })),
       ...type.excludes.map((value): TypeEditorRule => ({ kind: 'excludes', value })),
-      ...type.replaces.map((replacement): TypeEditorRule => ({ kind: 'replaces', ...replacement })),
+      ...type.replaces.map((replacement): TypeEditorRule => ({ kind: 'replaces', ...replacement }))
     ],
-    template: type.template ?? '',
+    template: type.template ?? ''
   };
 }
 
@@ -194,29 +199,33 @@ function serializeFields(fields: TypeEditorField[]): Record<string, unknown> | u
   return Object.keys(result).length > 0 ? result : undefined;
 }
 
-export function typeEditorFrontmatter(model: TypeEditorModel): Record<string, unknown> {
-  const frontmatter: Record<string, unknown> = {};
+function schemaKey(key: string, requireOntologizePrefix: boolean): string {
+  return requireOntologizePrefix ? `ontologize.${key}` : key;
+}
+
+export function typeEditorFrontmatter(model: TypeEditorModel, requireOntologizePrefix = false): Record<string, unknown> {
+  const frontmatter: Record<string, unknown> = { ontologize: true };
   if (model.lock) {
-    frontmatter['lock'] = true;
+    frontmatter[schemaKey('lock', requireOntologizePrefix)] = true;
   }
   if (model.abstract) {
-    frontmatter['abstract'] = true;
+    frontmatter[schemaKey('abstract', requireOntologizePrefix)] = true;
   }
   if (model.isInterface) {
-    frontmatter['interface'] = true;
+    frontmatter[schemaKey('interface', requireOntologizePrefix)] = true;
   }
   if (model.extends.length > 0) {
-    frontmatter['extends'] = model.extends.map((name) => `[[${name}]]`);
+    frontmatter[schemaKey('extends', requireOntologizePrefix)] = model.extends.map((name) => `[[${name}]]`);
   }
   if (model.implementableBy.length > 0) {
-    frontmatter['implementable-by'] = model.implementableBy.map((name) => `[[${name}]]`);
+    frontmatter[schemaKey('implementable-by', requireOntologizePrefix)] = model.implementableBy.map((name) => `[[${name}]]`);
   }
   const ingestFrom = model.ingestFrom.filter((e) => e.field.trim() && e.target.trim());
   if (ingestFrom.length > 0) {
-    frontmatter['ingest-from'] = Object.fromEntries(ingestFrom.map((e) => [e.field.trim(), e.target.trim()]));
+    frontmatter[schemaKey('ingest-from', requireOntologizePrefix)] = Object.fromEntries(ingestFrom.map((e) => [e.field.trim(), e.target.trim()]));
   }
   if (model.implements.length > 0) {
-    frontmatter['implements'] = model.implements.map((name) => `[[${name}]]`);
+    frontmatter[schemaKey('implements', requireOntologizePrefix)] = model.implements.map((name) => `[[${name}]]`);
   }
   const replacementRules = model.rules.filter((rule): rule is Extract<TypeEditorRule, { kind: 'replaces' }> => rule.kind === 'replaces');
   if (replacementRules.length > 0) {
@@ -238,31 +247,31 @@ export function typeEditorFrontmatter(model: TypeEditorModel): Record<string, un
         ...(trimmedField ? { field: trimmedField } : {}),
         ...(trimmedNewField ? { 'new-field': trimmedNewField } : {}),
         ...(trimmedNewValue ? { 'new-value': `[[${trimmedNewValue}]]` } : {}),
-        value: linkedValue,
+        value: linkedValue
       });
     }
     if (serializedReplacements.length > 0) {
-      frontmatter['replaces'] = serializedReplacements;
+      frontmatter[schemaKey('replaces', requireOntologizePrefix)] = serializedReplacements;
     }
   }
   const requires = model.rules.filter((rule) => rule.kind === 'requires' && rule.value.trim()).map((rule) => `[[${rule.value.trim()}]]`);
   if (requires.length > 0) {
-    frontmatter['requires'] = requires;
+    frontmatter[schemaKey('requires', requireOntologizePrefix)] = requires;
   }
   const excludes = model.rules.filter((rule) => rule.kind === 'excludes' && rule.value.trim()).map((rule) => `[[${rule.value.trim()}]]`);
   if (excludes.length > 0) {
-    frontmatter['excludes'] = excludes;
+    frontmatter[schemaKey('excludes', requireOntologizePrefix)] = excludes;
   }
   const mustHave = serializeFields(model.mustHave);
   if (mustHave) {
-    frontmatter['must-have'] = mustHave;
+    frontmatter[schemaKey('must-have', requireOntologizePrefix)] = mustHave;
   }
   const canHave = serializeFields(model.canHave);
   if (canHave) {
-    frontmatter['can-have'] = canHave;
+    frontmatter[schemaKey('can-have', requireOntologizePrefix)] = canHave;
   }
   if (model.autoApplyMode === 'always') {
-    frontmatter['auto-apply'] = true;
+    frontmatter[schemaKey('auto-apply', requireOntologizePrefix)] = true;
   } else if (model.autoApplyMode === 'conditional' && model.autoApplyConditions.some((c) => c.key.trim())) {
     const conditions: Record<string, unknown> = {};
     for (const { key, value } of model.autoApplyConditions) {
@@ -270,27 +279,29 @@ export function typeEditorFrontmatter(model: TypeEditorModel): Record<string, un
         conditions[key.trim()] = value;
       }
     }
-    frontmatter['auto-apply'] = { match: model.autoApplyMatch, ...conditions };
+    frontmatter[schemaKey('auto-apply', requireOntologizePrefix)] = { match: model.autoApplyMatch, ...conditions };
   }
   if (model.template.trim()) {
-    frontmatter['template'] = `[[${model.template.trim()}]]`;
+    frontmatter[schemaKey('template', requireOntologizePrefix)] = `[[${model.template.trim()}]]`;
   }
   if (model.alsoApply.length > 0) {
-    frontmatter['also-apply'] = model.alsoApply.map((name) => `[[${name}]]`);
+    frontmatter[schemaKey('also-apply', requireOntologizePrefix)] = model.alsoApply.map((name) => `[[${name}]]`);
   }
   if (model.relations.length > 0) {
-    frontmatter['relations'] = Object.fromEntries(model.relations.filter((relation) => relation.name.trim()).map((relation) => {
-      const definition: Record<string, unknown> = {};
-      if (relation.uses.trim()) definition['uses'] = relation.uses.trim();
-      if (relation.valueType.trim()) definition['value-type'] = relation.valueType.trim();
-      if (relation.range.trim()) definition['range'] = relation.range.trim();
-      if (relation.inverse.trim()) definition['inverse'] = relation.inverse.trim();
-      if (relation.cardinality.trim()) definition['cardinality'] = relation.cardinality.trim();
-      if (relation.symmetric) definition['symmetric'] = true;
-      if (relation.transitive) definition['transitive'] = true;
-      if (relation.autoUpdate) definition['auto-update'] = true;
-      return [relation.name.trim(), Object.keys(definition).length > 0 ? definition : true];
-    }));
+    frontmatter[schemaKey('relations', requireOntologizePrefix)] = Object.fromEntries(
+      model.relations.filter((relation) => relation.name.trim()).map((relation) => {
+        const definition: Record<string, unknown> = {};
+        if (relation.uses.trim()) definition['uses'] = relation.uses.trim();
+        if (relation.valueType.trim()) definition['value-type'] = relation.valueType.trim();
+        if (relation.range.trim()) definition['range'] = relation.range.trim();
+        if (relation.inverse.trim()) definition['inverse'] = relation.inverse.trim();
+        if (relation.cardinality.trim()) definition['cardinality'] = relation.cardinality.trim();
+        if (relation.symmetric) definition['symmetric'] = true;
+        if (relation.transitive) definition['transitive'] = true;
+        if (relation.autoUpdate) definition['auto-update'] = true;
+        return [relation.name.trim(), Object.keys(definition).length > 0 ? definition : true];
+      })
+    );
   }
   return frontmatter;
 }
@@ -311,5 +322,5 @@ export const TYPE_EDITOR_KEYS = [
   'relations',
   'replaces',
   'requires',
-  'template',
+  'template'
 ] as const;

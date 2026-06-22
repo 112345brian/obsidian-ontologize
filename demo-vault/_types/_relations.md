@@ -1,4 +1,5 @@
 ---
+ontologize: true
 type: relation-definitions
 relations:
   observed-by:

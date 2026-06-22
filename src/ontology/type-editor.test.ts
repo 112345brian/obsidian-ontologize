@@ -1,8 +1,16 @@
-import { describe, expect, it } from 'vitest';
+import {
+  describe,
+  expect,
+  it
+} from 'vitest';
 
 import type { OntologyType } from './types.ts';
 
-import { emptyTypeEditorModel, typeEditorFrontmatter, typeEditorModelFromType } from './type-editor.ts';
+import {
+  emptyTypeEditorModel,
+  typeEditorFrontmatter,
+  typeEditorModelFromType
+} from './type-editor.ts';
 
 describe('type editor frontmatter', () => {
   it('serializes structured type controls', () => {
@@ -15,7 +23,7 @@ describe('type editor frontmatter', () => {
       { kind: 'requires', value: 'person' },
       { kind: 'excludes', value: 'archived' },
       { kind: 'replaces', value: 'draft' },
-      { field: 'status', kind: 'replaces', newField: 'state', newValue: 'approved', value: 'proposed' },
+      { field: 'status', kind: 'replaces', newField: 'state', newValue: 'approved', value: 'proposed' }
     ];
     model.mustHave.push({
       cardinality: 'one',
@@ -26,7 +34,7 @@ describe('type editor frontmatter', () => {
       name: 'date-start',
       possibleValues: [],
       type: 'date | string',
-      uses: '',
+      uses: ''
     });
     model.canHave.push({
       cardinality: '',
@@ -37,7 +45,7 @@ describe('type editor frontmatter', () => {
       name: 'descriptor',
       possibleValues: [],
       type: '',
-      uses: 'descriptor',
+      uses: 'descriptor'
     });
     model.relations = [{
       autoUpdate: false,
@@ -48,9 +56,10 @@ describe('type editor frontmatter', () => {
       symmetric: false,
       transitive: false,
       uses: 'up',
-      valueType: '',
+      valueType: ''
     }];
     expect(typeEditorFrontmatter(model)).toEqual({
+      ontologize: true,
       lock: true,
       extends: ['[[entry]]'],
       implements: ['[[dated]]'],
@@ -58,19 +67,32 @@ describe('type editor frontmatter', () => {
         'date-start': {
           cardinality: 'one',
           insert: 'date.now()',
-          type: 'date | string',
-        },
+          type: 'date | string'
+        }
       },
       'can-have': {
-        descriptor: { uses: 'descriptor' },
+        descriptor: { uses: 'descriptor' }
       },
       excludes: ['[[archived]]'],
       replaces: [
         '[[draft]]',
-        { field: 'status', 'new-field': 'state', 'new-value': '[[approved]]', value: '[[proposed]]' },
+        { field: 'status', 'new-field': 'state', 'new-value': '[[approved]]', value: '[[proposed]]' }
       ],
       requires: ['[[person]]'],
-      relations: { up: { uses: 'up' } },
+      relations: { up: { uses: 'up' } }
+    });
+
+    expect(typeEditorFrontmatter(model, true)).toMatchObject({
+      ontologize: true,
+      'ontologize.extends': ['[[entry]]'],
+      'ontologize.must-have': {
+        'date-start': {
+          cardinality: 'one',
+          insert: 'date.now()',
+          type: 'date | string'
+        }
+      },
+      'ontologize.relations': { up: { uses: 'up' } }
     });
   });
 
@@ -84,7 +106,7 @@ describe('type editor frontmatter', () => {
       extends: [],
       replaces: [
         { value: 'friend' },
-        { field: 'relationship', newValue: 'friend', value: 'colleague' },
+        { field: 'relationship', newValue: 'friend', value: 'colleague' }
       ],
       fields: new Map(),
       implementableBy: [],
@@ -98,7 +120,7 @@ describe('type editor frontmatter', () => {
       relations: new Map(),
       requires: ['person'],
       scales: new Map(),
-      values: [],
+      values: []
     };
 
     expect(typeEditorModelFromType(type)).toMatchObject({
@@ -109,8 +131,8 @@ describe('type editor frontmatter', () => {
         { kind: 'requires', value: 'person' },
         { kind: 'excludes', value: 'enemy' },
         { kind: 'replaces', value: 'friend' },
-        { field: 'relationship', kind: 'replaces', newValue: 'friend', value: 'colleague' },
-      ],
+        { field: 'relationship', kind: 'replaces', newValue: 'friend', value: 'colleague' }
+      ]
     });
   });
 });
