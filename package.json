@@ -24,7 +24,7 @@
     "prepare": "jiti scripts/prepare.ts",
     "test": "vitest run",
     "test:watch": "vitest",
-    "version": "jiti scripts/version.ts"
+    "bump": "jiti scripts/version.ts"
   },
   "devDependencies": {
     "@codemirror/language": "6.11.2",
