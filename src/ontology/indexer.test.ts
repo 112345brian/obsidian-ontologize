@@ -939,3 +939,61 @@ describe('incremental ontology index state', () => {
     expect(updated.entities.has('Concepts/philosopher.md')).toBe(false);
   });
 });
+
+describe('unknown entity field warnings', () => {
+  function makeIndexWithField(
+    frontmatterExtra: Record<string, unknown>,
+    settingsOverride: Record<string, unknown> = {}
+  ): OntologyIndex {
+    const index = makeIndex();
+    index.settings = makeIndexSettings({ entityTypeFields: ['instance_of', 'type'], ...settingsOverride });
+    const ada = index.entities.get('Ada.md')!;
+    index.entities.set('Ada.md', { ...ada, frontmatter: { ...ada.frontmatter, ...frontmatterExtra } });
+    return index;
+  }
+
+  it('is silent by default even with a genuinely undeclared field', () => {
+    const index = makeIndexWithField({ 'vc-id': 'Ada_md' });
+
+    recomputeOntologyDerivedState(index);
+
+    expect(index.issues.some((issue) => issue.message.startsWith('Unknown field'))).toBe(false);
+  });
+
+  it('warns on a field that is neither must-have, can-have, a declared relation, nor an Obsidian core key', () => {
+    const index = makeIndexWithField({ 'vc-id': 'Ada_md' }, { warnUnknownEntityFields: true });
+
+    recomputeOntologyDerivedState(index);
+
+    const unknown = index.issues.filter(
+      (issue) => issue.file === 'Ada.md' && issue.message === 'Unknown field vc-id on entity of type Philosopher, Person'
+    );
+    expect(unknown).toHaveLength(1);
+    expect(unknown[0]?.severity).toBe('warning');
+  });
+
+  it('does not warn on a declared can-have field, a declared relation, or Obsidian core keys', () => {
+    const index = makeIndexWithField(
+      { nickname: 'Countess of Lovelace', 'works-in': '[[Mathematics]]', aliases: ['Ada'], tags: ['history'] },
+      { warnUnknownEntityFields: true }
+    );
+    const philosopher = index.types.get('Philosopher')!;
+    philosopher.canHave.set('nickname', { type: 'string' });
+    philosopher.relations.set('works-in', { range: 'Concept', valueType: 'wikilink' });
+
+    recomputeOntologyDerivedState(index);
+
+    expect(index.issues.some((issue) => issue.file === 'Ada.md' && issue.message.startsWith('Unknown field'))).toBe(false);
+  });
+
+  it('respects the ignored-entity-fields list, including trailing-dot prefix matches', () => {
+    const index = makeIndexWithField(
+      { 'vc-id': 'Ada_md', 'next.moments': '[[Some Note]]' },
+      { warnUnknownEntityFields: true, ignoredEntityFields: ['vc-id', 'next.'] }
+    );
+
+    recomputeOntologyDerivedState(index);
+
+    expect(index.issues.some((issue) => issue.file === 'Ada.md' && issue.message.startsWith('Unknown field'))).toBe(false);
+  });
+});

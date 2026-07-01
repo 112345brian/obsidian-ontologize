@@ -69,9 +69,11 @@ function makeIndex(): OntologyIndex {
       foldersToIgnore: ['Archive'],
       frontmatterIgnoreRules: [{ key: 'status', value: 'private' }],
       globalTypePath: '',
+      ignoredEntityFields: [],
       requireOntologizePrefix: false,
       schemaPath: '_types/ontology.schema.yaml',
       typeFolder: '_types',
+      warnUnknownEntityFields: false
     },
     types: new Map([
       ['Philosopher', {

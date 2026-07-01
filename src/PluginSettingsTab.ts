@@ -35,6 +35,7 @@ export class PluginSettingsTab extends PluginSettingTab {
     if (key === 'foldersToIgnore') return s.foldersToIgnore.join('\n');
     if (key === 'filesToIgnore') return s.filesToIgnore.join('\n');
     if (key === 'frontmatterIgnoreRules') return formatFrontmatterIgnoreRules(s.frontmatterIgnoreRules);
+    if (key === 'ignoredEntityFields') return s.ignoredEntityFields.join('\n');
     return (s as Record<string, unknown>)[key];
   }
 
@@ -50,6 +51,8 @@ export class PluginSettingsTab extends PluginSettingTab {
       s.filesToIgnore = splitLines(value);
     } else if (key === 'frontmatterIgnoreRules') {
       s.frontmatterIgnoreRules = parseFrontmatterIgnoreRules(String(value));
+    } else if (key === 'ignoredEntityFields') {
+      s.ignoredEntityFields = splitLines(value);
     } else if (key === 'cachePath') {
       s.cachePath = String(value).trim() || '.obsidian/ontology-cache.json';
     } else if (key === 'typeFolder') {
@@ -123,6 +126,18 @@ export class PluginSettingsTab extends PluginSettingTab {
         name: 'Require ontologize prefix',
         desc: 'Only read type-note schema from keys prefixed with "ontologize.", such as "ontologize.must-have". Ordinary fields like "must-have" are treated as note metadata.',
         control: { type: 'toggle', key: 'requireOntologizePrefix' },
+      },
+      {
+        name: 'Warn on unknown entity fields',
+        desc:
+          'Flag frontmatter keys on an entity note that are not a declared must-have/can-have field, a declared relation (including inherited ones), or an Obsidian core property. Such a key is never validated or auto-mirrored — it silently does nothing — so this surfaces schema drift. Reported as warnings, never errors.',
+        control: { type: 'toggle', key: 'warnUnknownEntityFields' }
+      },
+      {
+        name: 'Ignored entity fields',
+        desc:
+          'One frontmatter key per line, exempted from the unknown-field check above (e.g. keys written by other plugins). An entry ending in "." matches as a prefix, covering dotted namespaces like "next.".',
+        control: { type: 'textarea', key: 'ignoredEntityFields', placeholder: 'vc-id\ncssclass\nnext.\nprev.' }
       },
       {
         name: 'Ignored folders',

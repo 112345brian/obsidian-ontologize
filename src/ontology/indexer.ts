@@ -51,9 +51,11 @@ export interface BuildIndexSettings {
   foldersToIgnore?: string[];
   frontmatterIgnoreRules?: FrontmatterIgnoreRule[];
   globalTypePath?: string;
+  ignoredEntityFields?: string[];
   requireOntologizePrefix?: boolean;
   schemaPath?: string;
   typeFolder: string;
+  warnUnknownEntityFields?: boolean;
 }
 
 function normalizedFolders(folders: string[] | undefined): string[] {
@@ -157,9 +159,11 @@ function createEmptyOntologyIndex(settings: BuildIndexSettings): OntologyIndex {
       foldersToIgnore: settings.foldersToIgnore ?? [],
       frontmatterIgnoreRules: settings.frontmatterIgnoreRules ?? [],
       globalTypePath: settings.globalTypePath ?? '',
+      ignoredEntityFields: settings.ignoredEntityFields ?? [],
       requireOntologizePrefix: settings.requireOntologizePrefix === true,
       schemaPath: settings.schemaPath ?? '',
-      typeFolder: settings.typeFolder
+      typeFolder: settings.typeFolder,
+      warnUnknownEntityFields: settings.warnUnknownEntityFields === true
     },
     types: new Map<string, OntologyType>()
   };

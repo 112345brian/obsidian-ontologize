@@ -160,9 +160,11 @@ export async function readOntologyCache(app: App, cachePath: string): Promise<On
         foldersToIgnore: stringArrayValue(settings['foldersToIgnore']),
         frontmatterIgnoreRules: frontmatterIgnoreRulesValue(settings['frontmatterIgnoreRules']),
         globalTypePath: stringValue(settings['globalTypePath']),
+        ignoredEntityFields: stringArrayValue(settings['ignoredEntityFields']),
         requireOntologizePrefix: settings['requireOntologizePrefix'] === true,
         schemaPath: stringValue(settings['schemaPath']),
         typeFolder: stringValue(settings['typeFolder'], '_types'),
+        warnUnknownEntityFields: settings['warnUnknownEntityFields'] === true
       },
       types,
     };

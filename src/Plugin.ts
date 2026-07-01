@@ -1171,9 +1171,11 @@ export class Plugin extends ObsidianPlugin {
     foldersToIgnore: string[];
     frontmatterIgnoreRules: PluginSettings['frontmatterIgnoreRules'];
     globalTypePath: string;
+    ignoredEntityFields: string[];
     requireOntologizePrefix: boolean;
     schemaPath: string;
     typeFolder: string;
+    warnUnknownEntityFields: boolean;
   } {
     return {
       autoApplyBlockPrefix: this.pluginSettings.autoApplyBlockPrefix,
@@ -1182,9 +1184,11 @@ export class Plugin extends ObsidianPlugin {
       foldersToIgnore: this.pluginSettings.foldersToIgnore,
       frontmatterIgnoreRules: this.pluginSettings.frontmatterIgnoreRules,
       globalTypePath: this.pluginSettings.globalTypePath,
+      ignoredEntityFields: this.pluginSettings.ignoredEntityFields,
       requireOntologizePrefix: this.pluginSettings.requireOntologizePrefix,
       schemaPath: this.pluginSettings.schemaPath,
-      typeFolder: this.pluginSettings.typeFolder
+      typeFolder: this.pluginSettings.typeFolder,
+      warnUnknownEntityFields: this.pluginSettings.warnUnknownEntityFields
     };
   }
 

@@ -17,4 +17,6 @@ export class PluginSettings {
   public requireOntologizePrefix = false;
   public initialScaffoldComplete = false;
   public scriptsFolder = '';
+  public warnUnknownEntityFields = false;
+  public ignoredEntityFields: string[] = [];
 }

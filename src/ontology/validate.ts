@@ -15,9 +15,18 @@ import {
   typeCompositionChain
 } from './compose.ts';
 import { containsFrontmatterValue, extractAssertedLinkTargets, extractAssertedWikiLinkTargets, extractLinkTargets, extractNegatedLinkTargets, hasNegatedTarget, normalizeLinkTarget } from './links.ts';
+import { normalizeKey } from './parser.ts';
 import { isInsertTemplate } from './templates.ts';
 import { parseTypeExpression } from './type-expression.ts';
 import { scaleNeutral } from './scale.ts';
+
+// Obsidian's own reserved frontmatter properties — universal regardless of which
+// community plugins a vault uses, so always exempt from the unknown-field check.
+const OBSIDIAN_CORE_KEYS = new Set(['aliases', 'cssclass', 'cssclasses', 'tags']);
+
+function isIgnoredEntityField(key: string, ignoredEntityFields: string[]): boolean {
+  return ignoredEntityFields.some((pattern) => (pattern.endsWith('.') ? key.startsWith(pattern) : key === pattern));
+}
 
 export function hasValue(frontmatter: Record<string, unknown>, key: string): boolean {
   const value = frontmatter[key];
@@ -305,6 +314,36 @@ export function validateSingleEntity(index: OntologyIndex, entity: OntologyEntit
           severity: 'error',
         });
       }
+    }
+  }
+
+  // Opt-in: warn about frontmatter keys that are neither a declared must-have/can-have
+  // field, a declared relation, an Obsidian core property, nor an explicitly ignored
+  // pattern (for other plugins' metadata). Such a key is never validated or auto-mirrored
+  // by anything above — it just sits inert — so this surfaces schema drift that would
+  // otherwise pass silently.
+  if (index.settings.warnUnknownEntityFields) {
+    const known = new Set<string>([
+      ...mustHave.keys(),
+      ...getInheritedCanHave(index, entity).keys(),
+      ...resolveEntityRelations(index, entity.instanceOf).keys(),
+      // entityTypeFields may be configured with unnormalized punctuation (instance_of,
+      // is-instance, IsInstance…); frontmatter keys are normalized to kebab-case on read,
+      // so normalize here too or the type-membership field itself gets flagged as unknown.
+      ...index.settings.entityTypeFields.map(normalizeKey),
+      ...OBSIDIAN_CORE_KEYS,
+      'lock'
+    ]);
+    for (const key of Object.keys(entity.frontmatter)) {
+      if (known.has(key) || isIgnoredEntityField(key, index.settings.ignoredEntityFields)) {
+        continue;
+      }
+      pushIssueOnce(index.issues, {
+        file: entity.path,
+        message: `Unknown field ${key} on entity of type ${entity.instanceOf.join(', ')}`,
+        property: key,
+        severity: 'warning',
+      });
     }
   }
 }

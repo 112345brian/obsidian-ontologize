@@ -146,9 +146,11 @@ export interface OntologyIndex {
     foldersToIgnore: string[];
     frontmatterIgnoreRules: FrontmatterIgnoreRule[];
     globalTypePath: string;
+    ignoredEntityFields: string[];
     requireOntologizePrefix: boolean;
     schemaPath: string;
     typeFolder: string;
+    warnUnknownEntityFields: boolean;
   };
   types: Map<string, OntologyType>;
 }

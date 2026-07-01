@@ -52,9 +52,11 @@ export function makeIndexSettings(overrides: Partial<OntologyIndex['settings']> 
     foldersToIgnore: [],
     frontmatterIgnoreRules: [],
     globalTypePath: '',
+    ignoredEntityFields: [],
     requireOntologizePrefix: false,
     schemaPath: '',
     typeFolder: '_types',
-    ...overrides,
+    warnUnknownEntityFields: false,
+    ...overrides
   };
 }
