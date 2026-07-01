@@ -136,8 +136,8 @@ export class PluginSettingsTab extends PluginSettingTab {
       {
         name: 'Ignored entity fields',
         desc:
-          'One frontmatter key per line, exempted from the unknown-field check above (e.g. keys written by other plugins). An entry ending in "." matches as a prefix, covering dotted namespaces like "next.".',
-        control: { type: 'textarea', key: 'ignoredEntityFields', placeholder: 'vc-id\ncssclass\nnext.\nprev.' }
+          'One frontmatter key per line, exempted from the unknown-field check above (e.g. keys written by other plugins). An entry ending in "-" matches as a prefix, covering dotted namespaces from other plugins like "next.<path>" (frontmatter keys are normalized to kebab-case, so match with "next-").',
+        control: { type: 'textarea', key: 'ignoredEntityFields', placeholder: 'vc-id\ncssclass\nnext-\nprev-' }
       },
       {
         name: 'Ignored folders',

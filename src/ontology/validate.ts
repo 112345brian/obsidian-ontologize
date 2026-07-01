@@ -25,7 +25,18 @@ import { scaleNeutral } from './scale.ts';
 const OBSIDIAN_CORE_KEYS = new Set(['aliases', 'cssclass', 'cssclasses', 'tags']);
 
 function isIgnoredEntityField(key: string, ignoredEntityFields: string[]): boolean {
-  return ignoredEntityFields.some((pattern) => (pattern.endsWith('.') ? key.startsWith(pattern) : key === pattern));
+  // Frontmatter keys are normalized to kebab-case on read (dots/underscores become
+  // hyphens), so a trailing "." can never match anything — the prefix marker has to be
+  // a trailing "-". Normalize the pattern itself too (case/separator variance in what the
+  // user typed), preserving the trailing hyphen through normalizeKey's own trim.
+  return ignoredEntityFields.some((pattern) => {
+    const isPrefix = pattern.endsWith('-') || pattern.endsWith('.') || pattern.endsWith('_');
+    if (isPrefix) {
+      const normalized = `${normalizeKey(pattern.slice(0, -1))}-`;
+      return key.startsWith(normalized);
+    }
+    return key === normalizeKey(pattern);
+  });
 }
 
 export function hasValue(frontmatter: Record<string, unknown>, key: string): boolean {

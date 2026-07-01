@@ -986,10 +986,24 @@ describe('unknown entity field warnings', () => {
     expect(index.issues.some((issue) => issue.file === 'Ada.md' && issue.message.startsWith('Unknown field'))).toBe(false);
   });
 
-  it('respects the ignored-entity-fields list, including trailing-dot prefix matches', () => {
+  it('respects the ignored-entity-fields list, including trailing-hyphen prefix matches', () => {
+    // 'next-moments', not 'next.moments' -- frontmatter keys are normalized to kebab-case
+    // on read (dots become hyphens), so this is the realistic key shape a "next.<path>"
+    // sequence field from another plugin actually arrives as.
     const index = makeIndexWithField(
-      { 'vc-id': 'Ada_md', 'next.moments': '[[Some Note]]' },
-      { warnUnknownEntityFields: true, ignoredEntityFields: ['vc-id', 'next.'] }
+      { 'vc-id': 'Ada_md', 'next-moments': '[[Some Note]]' },
+      { warnUnknownEntityFields: true, ignoredEntityFields: ['vc-id', 'next-'] }
+    );
+
+    recomputeOntologyDerivedState(index);
+
+    expect(index.issues.some((issue) => issue.file === 'Ada.md' && issue.message.startsWith('Unknown field'))).toBe(false);
+  });
+
+  it('accepts a dot- or underscore-typed pattern as a prefix marker too, normalizing it internally', () => {
+    const index = makeIndexWithField(
+      { 'next-moments': '[[Some Note]]' },
+      { warnUnknownEntityFields: true, ignoredEntityFields: ['next.'] }
     );
 
     recomputeOntologyDerivedState(index);

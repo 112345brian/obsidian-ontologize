@@ -140,7 +140,7 @@ types:
 | Ignored file patterns | — | JavaScript regexes matched against vault-relative paths |
 | Frontmatter ignore list | — | `key` or `key: value` matchers; matching notes are excluded |
 | Warn on unknown entity fields | off | Flag frontmatter keys on an entity that are neither a declared must-have/can-have field, a declared relation, nor an Obsidian core property. Warnings only, never errors |
-| Ignored entity fields | — | Frontmatter keys exempted from the check above (e.g. other plugins' metadata). An entry ending in `.` matches as a prefix |
+| Ignored entity fields | — | Frontmatter keys exempted from the check above (e.g. other plugins' metadata). An entry ending in `-` matches as a prefix (keys are normalized to kebab-case, so match dotted namespaces like `next.<path>` with `next-`) |
 
 ## Development
 
