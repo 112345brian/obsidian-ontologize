@@ -354,6 +354,53 @@ describe('incremental ontology index state', () => {
     expect(index.issues.some((issue) => issue.file === 'Ada.md' && issue.message.includes('unknown entity'))).toBe(false);
   });
 
+  it('resolves a fully kebab-slugified relation target against the real title', () => {
+    const index = makeIndex();
+    index.types.get('Philosopher')!.relations.set('influenced-by', {
+      inverse: 'influenced',
+      range: 'Person'
+    });
+    index.entities.set('Trump\'s Immigration Policies.md', {
+      frontmatter: { 'instance-of': '[[Person]]' },
+      instanceOf: ['Person'],
+      lockIntent: false,
+      name: 'Trump\'s Immigration Policies',
+      path: 'Trump\'s Immigration Policies.md'
+    });
+    index.entities.get('Ada.md')!.frontmatter['influenced-by'] = '[[trump-s-immigration-policies]]';
+
+    recomputeOntologyDerivedState(index);
+
+    expect(index.issues.some((issue) => issue.file === 'Ada.md' && issue.message.includes('unknown entity'))).toBe(false);
+  });
+
+  it('refuses to guess between two distinct entities that collide once slug-folded', () => {
+    const index = makeIndex();
+    index.types.get('Philosopher')!.relations.set('influenced-by', {
+      inverse: 'influenced',
+      range: 'Person'
+    });
+    index.entities.set('re-cap.md', {
+      frontmatter: { 'instance-of': '[[Person]]' },
+      instanceOf: ['Person'],
+      lockIntent: false,
+      name: 're-cap',
+      path: 're-cap.md'
+    });
+    index.entities.set('recap.md', {
+      frontmatter: { 'instance-of': '[[Person]]' },
+      instanceOf: ['Person'],
+      lockIntent: false,
+      name: 'recap',
+      path: 'recap.md'
+    });
+    index.entities.get('Ada.md')!.frontmatter['influenced-by'] = '[[Re Cap]]';
+
+    recomputeOntologyDerivedState(index);
+
+    expect(index.issues.some((issue) => issue.file === 'Ada.md' && issue.message.includes('unknown entity'))).toBe(true);
+  });
+
   it('rejects direct instantiation of interfaces', () => {
     const index = makeIndex();
     index.types.set(

@@ -56,6 +56,36 @@ function resolveEntityByFoldedName(index: OntologyIndex, targetName: string): On
   return cache.get(foldEntityName(targetName));
 }
 
+// A hyphen substituted for an elided apostrophe (the exact mistake foldEntityName
+// corrects for) is only half of the legacy-slug bug: some older links in this
+// vault's history aren't just missing the apostrophe, they're the *entire* title
+// kebab-slugified ("trump-s-immigration-policies" instead of "Trump's
+// Immigration Policies") — hyphens standing in for spaces too. Stripping every
+// non-alphanumeric character folds both forms onto the same key, at the cost of
+// also merging two genuinely different real titles that happen to share the
+// same letters/digits once punctuation is gone. Guard against that: if two
+// distinct entities fold to the same key, record it as an unresolvable
+// collision (null) rather than silently picking one and resolving to the wrong
+// note.
+const slugFoldedNameCache = new WeakMap<OntologyIndex, Map<string, OntologyEntity | null>>();
+
+function slugFoldEntityName(name: string): string {
+  return name.toLowerCase().replace(/[^a-z0-9]+/g, '');
+}
+
+function resolveEntityBySlugFold(index: OntologyIndex, targetName: string): OntologyEntity | undefined {
+  let cache = slugFoldedNameCache.get(index);
+  if (!cache) {
+    cache = new Map();
+    for (const [name, candidate] of index.entitiesByName) {
+      const folded = slugFoldEntityName(name);
+      cache.set(folded, cache.has(folded) ? null : candidate);
+    }
+    slugFoldedNameCache.set(index, cache);
+  }
+  return cache.get(slugFoldEntityName(targetName)) ?? undefined;
+}
+
 function isIgnoredEntityField(key: string, ignoredEntityFields: string[]): boolean {
   // Frontmatter keys are normalized to kebab-case on read (dots/underscores become
   // hyphens), so a trailing "." can never match anything — the prefix marker has to be
@@ -434,7 +464,9 @@ function validateRelation(index: OntologyIndex, entity: OntologyEntity, property
       });
       continue;
     }
-    const target = index.entitiesByName.get(targetName) ?? resolveEntityByFoldedName(index, targetName);
+    const target = index.entitiesByName.get(targetName)
+      ?? resolveEntityByFoldedName(index, targetName)
+      ?? resolveEntityBySlugFold(index, targetName);
     if (!target) {
       pushIssueOnce(index.issues, { file: entity.path, message: `${property} points to unknown entity ${targetName}`, property, severity: 'warning', target: targetName });
       continue;
