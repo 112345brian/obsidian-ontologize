@@ -1040,6 +1040,50 @@ describe('incremental ontology index state', () => {
     expect(updated.types.get('philosopher')?.path).toBe('Concepts/philosopher.md');
     expect(updated.entities.has('Concepts/philosopher.md')).toBe(false);
   });
+
+  it('indexes a type-def file as an entity too when it declares its own explicit instance-of', async () => {
+    const typeFile = { extension: 'md', path: '_types/moment.md', basename: 'moment' } as TFile;
+    const frontmatter = { 'instance-of': '[[collection]]', 'member-of': '[[personal]]', ontologize: true };
+    const app = {
+      metadataCache: {
+        getFileCache: () => ({ frontmatter })
+      },
+      vault: {
+        adapter: { exists: () => Promise.resolve(false) },
+        getMarkdownFiles: () => [typeFile],
+        read: () => Promise.resolve('ontologize: true\nrelations:\n  member-of:\n    uses: member-of\n')
+      }
+    } as unknown as App;
+
+    const index = await buildOntologyIndex(app, { entityTypeFields: ['instance-of'], typeFolder: '_types' });
+
+    expect(index.types.get('moment')?.path).toBe('_types/moment.md');
+    expect(index.entities.get('_types/moment.md')?.instanceOf).toEqual(['collection']);
+    expect(index.entitiesByName.get('moment')?.path).toBe('_types/moment.md');
+  });
+
+  it('does not mistake a type-def file\'s own typeKind marker for an instance-of value', async () => {
+    const typeFile = { extension: 'md', path: '_types/_relations.md', basename: '_relations' } as TFile;
+    const frontmatter = { ontologize: true, relations: {}, type: 'relation-definitions' };
+    const app = {
+      metadataCache: {
+        getFileCache: () => ({ frontmatter })
+      },
+      vault: {
+        adapter: { exists: () => Promise.resolve(false) },
+        getMarkdownFiles: () => [typeFile],
+        read: () => Promise.resolve('ontologize: true\ntype: relation-definitions\nrelations:\n')
+      }
+    } as unknown as App;
+
+    // "type" is a valid entityTypeField alias for instance-of on regular entities,
+    // but on a type-def file it's already reserved for typeKind — must not be
+    // reinterpreted as "this note is an instance of relation-definitions".
+    const index = await buildOntologyIndex(app, { entityTypeFields: ['instance-of', 'type'], typeFolder: '_types' });
+
+    expect(index.entities.has('_types/_relations.md')).toBe(false);
+    expect(index.issues.some((issue) => issue.message.includes('relation-definitions'))).toBe(false);
+  });
 });
 
 describe('unknown entity field warnings', () => {

@@ -364,6 +364,27 @@ function resolveEntityFromFile(
   };
 }
 
+/**
+ * A type-def file that also declares an explicit instance-of doubles as the
+ * browsable hub note for its own type (e.g. config/_types/moment.md embeds a
+ * dashboard and carries its own member-of/aliases, unifying what used to be
+ * a separate ARCHIVE/Moments.md). Only the explicit form counts here — the
+ * ingest-from fallback is deliberately not consulted, since that would infer
+ * a type for type-def files that never meant to be dual-purposed.
+ */
+function resolveTypeFileAsEntity(
+  path: string,
+  frontmatter: Record<string, unknown>,
+  typeFields: string[]
+): OntologyEntity | null {
+  // On a type-def file, a bare "type" key is already reserved for typeKind
+  // (nominal / relation-definitions / field-definitions / interface) — it
+  // never means instance-of here, even if the vault's own entityTypeFields
+  // setting treats "type" as an instance-of alias for regular entities.
+  const dualPurposeFields = typeFields.filter((field) => field !== 'type');
+  return parseOntologyEntity(path, frontmatter, dualPurposeFields);
+}
+
 function removeOntologyRecords(index: OntologyIndex, path: string): void {
   for (const [entityPath] of index.entities.entries()) {
     if (matchesPathOrChild(entityPath, path)) {
@@ -420,6 +441,10 @@ export async function upsertOntologyFile(app: App, index: OntologyIndex, file: T
     }
     const type = parseOntologyType(file.path, source, settings.autoApplyBlockPrefix, settings.requireOntologizePrefix);
     index.types.set(type.name, type);
+    const hubEntity = resolveTypeFileAsEntity(file.path, frontmatter ?? {}, normalizedEntityTypeFields(settings.entityTypeFields));
+    if (hubEntity) {
+      index.entities.set(hubEntity.path, hubEntity);
+    }
     return recomputeOntologyDerivedState(index);
   }
 
@@ -540,6 +565,7 @@ export async function buildOntologyIndex(app: App, settings: BuildIndexSettings)
 
   const allFiles = app.vault.getMarkdownFiles();
   const entityFiles = [];
+  const typeFields = normalizedEntityTypeFields(settings.entityTypeFields);
 
   // Pass 1: load all type files so ingest-from detection has the full type map.
   for (const file of allFiles) {
@@ -555,13 +581,16 @@ export async function buildOntologyIndex(app: App, settings: BuildIndexSettings)
         const type = parseOntologyType(file.path, source, settings.autoApplyBlockPrefix, settings.requireOntologizePrefix);
         index.types.set(type.name, type);
       }
+      const hubEntity = resolveTypeFileAsEntity(file.path, cachedFm ?? {}, typeFields);
+      if (hubEntity) {
+        index.entities.set(hubEntity.path, hubEntity);
+      }
     } else {
       entityFiles.push(file);
     }
   }
 
   // Pass 2: resolve entities with the complete type map available.
-  const typeFields = normalizedEntityTypeFields(settings.entityTypeFields);
   for (const file of entityFiles) {
     const frontmatter = app.metadataCache.getFileCache(file)?.frontmatter;
     if (isIgnoredByFrontmatter(frontmatter ?? {}, settings)) {
