@@ -313,6 +313,27 @@ describe('incremental ontology index state', () => {
     expect(index.issues.some((issue) => issue.file === 'Ada.md' && issue.autofixable)).toBe(false);
   });
 
+  it('resolves relation targets case-insensitively, matching Obsidian\'s own link resolution', () => {
+    const index = makeIndex();
+    index.types.get('Philosopher')!.relations.set('influenced-by', {
+      inverse: 'influenced',
+      range: 'Person'
+    });
+    index.entities.set('smith.md', {
+      frontmatter: { 'instance-of': '[[Person]]' },
+      instanceOf: ['Person'],
+      lockIntent: false,
+      name: 'smith',
+      path: 'smith.md'
+    });
+    index.entities.get('Ada.md')!.frontmatter['influenced-by'] = '[[Smith]]';
+
+    recomputeOntologyDerivedState(index);
+
+    expect(index.issues.some((issue) => issue.file === 'Ada.md' && issue.message.includes('unknown entity'))).toBe(false);
+    expect(index.issues.some((issue) => issue.file === 'Ada.md' && issue.message.includes('ambiguous'))).toBe(false);
+  });
+
   it('rejects direct instantiation of interfaces', () => {
     const index = makeIndex();
     index.types.set(

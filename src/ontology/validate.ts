@@ -24,6 +24,29 @@ import { scaleNeutral } from './scale.ts';
 // community plugins a vault uses, so always exempt from the unknown-field check.
 const OBSIDIAN_CORE_KEYS = new Set(['aliases', 'cssclass', 'cssclasses', 'tags']);
 
+// Obsidian's own link resolution is case-insensitive on the case-insensitive
+// filesystems (macOS/Windows) this plugin actually runs on, so a wikilink whose
+// case differs from the target file's real name still resolves fine in Obsidian
+// even though it wouldn't match entitiesByName's exact-case keys. Cache the
+// case-folded lookup per index (rebuilt each time the index itself changes)
+// rather than rescanning entitiesByName on every relation target.
+const caseInsensitiveNameCache = new WeakMap<OntologyIndex, Map<string, OntologyEntity>>();
+
+function resolveEntityByNameCaseInsensitive(index: OntologyIndex, targetName: string): OntologyEntity | undefined {
+  let cache = caseInsensitiveNameCache.get(index);
+  if (!cache) {
+    cache = new Map();
+    for (const [name, candidate] of index.entitiesByName) {
+      const lower = name.toLowerCase();
+      if (!cache.has(lower)) {
+        cache.set(lower, candidate);
+      }
+    }
+    caseInsensitiveNameCache.set(index, cache);
+  }
+  return cache.get(targetName.toLowerCase());
+}
+
 function isIgnoredEntityField(key: string, ignoredEntityFields: string[]): boolean {
   // Frontmatter keys are normalized to kebab-case on read (dots/underscores become
   // hyphens), so a trailing "." can never match anything — the prefix marker has to be
@@ -402,7 +425,7 @@ function validateRelation(index: OntologyIndex, entity: OntologyEntity, property
       });
       continue;
     }
-    const target = index.entitiesByName.get(targetName);
+    const target = index.entitiesByName.get(targetName) ?? resolveEntityByNameCaseInsensitive(index, targetName);
     if (!target) {
       pushIssueOnce(index.issues, { file: entity.path, message: `${property} points to unknown entity ${targetName}`, property, severity: 'warning', target: targetName });
       continue;
