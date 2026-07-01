@@ -401,6 +401,20 @@ describe('incremental ontology index state', () => {
     expect(index.issues.some((issue) => issue.file === 'Ada.md' && issue.message.includes('unknown entity'))).toBe(true);
   });
 
+  it('does not treat a bare string as a link target on a relation that allows plain text', () => {
+    const index = makeIndex();
+    index.types.get('Philosopher')!.relations.set('influenced-by', {
+      inverse: 'influenced',
+      range: 'Person',
+      valueType: 'wikilink | string'
+    });
+    index.entities.get('Ada.md')!.frontmatter['influenced-by'] = 'Gottfried Wilhelm Leibniz';
+
+    recomputeOntologyDerivedState(index);
+
+    expect(index.issues.some((issue) => issue.file === 'Ada.md' && issue.property === 'influenced-by')).toBe(false);
+  });
+
   it('rejects direct instantiation of interfaces', () => {
     const index = makeIndex();
     index.types.set(

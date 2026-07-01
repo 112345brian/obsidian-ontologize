@@ -14,7 +14,7 @@ import {
   resolvePropertyDefinition,
   typeCompositionChain
 } from './compose.ts';
-import { containsFrontmatterValue, extractAssertedLinkTargets, extractAssertedWikiLinkTargets, extractLinkTargets, extractNegatedLinkTargets, hasNegatedTarget, normalizeLinkTarget } from './links.ts';
+import { containsFrontmatterValue, extractAssertedWikiLinkTargets, extractLinkTargets, extractNegatedLinkTargets, hasNegatedTarget, normalizeLinkTarget } from './links.ts';
 import { normalizeKey } from './parser.ts';
 import { isInsertTemplate } from './templates.ts';
 import { parseTypeExpression } from './type-expression.ts';
@@ -436,7 +436,14 @@ function validateRelation(index: OntologyIndex, entity: OntologyEntity, property
   validateCardinality(entity.path, property, relation, value, index.issues);
   validateStrictType(entity.path, property, relation.valueType, value, index.issues);
 
-  const assertedTargets = new Set(extractAssertedLinkTargets(value));
+  // Only strings written as an actual [[wikilink]] are treated as link targets here.
+  // A bare string (e.g. a plain-text external author allowed by a "wikilink | string"
+  // value-type) isn't a link at all — it shouldn't be checked for existence or range,
+  // and it especially shouldn't get resolved by the fuzzy-matching fallbacks above and
+  // held to a range meant for real linked entities. validateStrictType already flags a
+  // bare string against a wikilink-only relation, so nothing is lost by restricting
+  // this check to genuine wikilinks.
+  const assertedTargets = new Set(extractAssertedWikiLinkTargets(value));
   const negatedTargets = new Set(extractNegatedLinkTargets(value));
   for (const targetName of assertedTargets) {
     if (negatedTargets.has(targetName)) {
