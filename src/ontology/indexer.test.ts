@@ -334,6 +334,26 @@ describe('incremental ontology index state', () => {
     expect(index.issues.some((issue) => issue.file === 'Ada.md' && issue.message.includes('ambiguous'))).toBe(false);
   });
 
+  it('resolves relation targets with the apostrophe folded away, so a dropped or curly apostrophe still matches', () => {
+    const index = makeIndex();
+    index.types.get('Philosopher')!.relations.set('influenced-by', {
+      inverse: 'influenced',
+      range: 'Person'
+    });
+    index.entities.set('Descartes’ Successors.md', {
+      frontmatter: { 'instance-of': '[[Person]]' },
+      instanceOf: ['Person'],
+      lockIntent: false,
+      name: 'Descartes’ Successors',
+      path: 'Descartes’ Successors.md'
+    });
+    index.entities.get('Ada.md')!.frontmatter['influenced-by'] = "[[Descartes' Successors]]";
+
+    recomputeOntologyDerivedState(index);
+
+    expect(index.issues.some((issue) => issue.file === 'Ada.md' && issue.message.includes('unknown entity'))).toBe(false);
+  });
+
   it('rejects direct instantiation of interfaces', () => {
     const index = makeIndex();
     index.types.set(

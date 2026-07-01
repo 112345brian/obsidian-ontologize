@@ -27,24 +27,33 @@ const OBSIDIAN_CORE_KEYS = new Set(['aliases', 'cssclass', 'cssclasses', 'tags']
 // Obsidian's own link resolution is case-insensitive on the case-insensitive
 // filesystems (macOS/Windows) this plugin actually runs on, so a wikilink whose
 // case differs from the target file's real name still resolves fine in Obsidian
-// even though it wouldn't match entitiesByName's exact-case keys. Cache the
-// case-folded lookup per index (rebuilt each time the index itself changes)
-// rather than rescanning entitiesByName on every relation target.
-const caseInsensitiveNameCache = new WeakMap<OntologyIndex, Map<string, OntologyEntity>>();
+// even though it wouldn't match entitiesByName's exact-case keys. Also fold away
+// apostrophes (straight and curly): idiomatic kebab-case elides an apostrophe
+// entirely rather than treating it as a word separator (Trump's -> trumps, not
+// trump-s), but some older slugs/links in the wild get this backwards and
+// hyphenate it instead, so a name with the apostrophe stripped should still
+// resolve against the real entity that has one. Cache the folded lookup per
+// index (rebuilt each time the index itself changes) rather than rescanning
+// entitiesByName on every relation target.
+const foldedNameCache = new WeakMap<OntologyIndex, Map<string, OntologyEntity>>();
 
-function resolveEntityByNameCaseInsensitive(index: OntologyIndex, targetName: string): OntologyEntity | undefined {
-  let cache = caseInsensitiveNameCache.get(index);
+function foldEntityName(name: string): string {
+  return name.toLowerCase().replace(/['’‘]/g, '');
+}
+
+function resolveEntityByFoldedName(index: OntologyIndex, targetName: string): OntologyEntity | undefined {
+  let cache = foldedNameCache.get(index);
   if (!cache) {
     cache = new Map();
     for (const [name, candidate] of index.entitiesByName) {
-      const lower = name.toLowerCase();
-      if (!cache.has(lower)) {
-        cache.set(lower, candidate);
+      const folded = foldEntityName(name);
+      if (!cache.has(folded)) {
+        cache.set(folded, candidate);
       }
     }
-    caseInsensitiveNameCache.set(index, cache);
+    foldedNameCache.set(index, cache);
   }
-  return cache.get(targetName.toLowerCase());
+  return cache.get(foldEntityName(targetName));
 }
 
 function isIgnoredEntityField(key: string, ignoredEntityFields: string[]): boolean {
@@ -425,7 +434,7 @@ function validateRelation(index: OntologyIndex, entity: OntologyEntity, property
       });
       continue;
     }
-    const target = index.entitiesByName.get(targetName) ?? resolveEntityByNameCaseInsensitive(index, targetName);
+    const target = index.entitiesByName.get(targetName) ?? resolveEntityByFoldedName(index, targetName);
     if (!target) {
       pushIssueOnce(index.issues, { file: entity.path, message: `${property} points to unknown entity ${targetName}`, property, severity: 'warning', target: targetName });
       continue;
