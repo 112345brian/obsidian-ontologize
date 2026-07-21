@@ -1,0 +1,1 @@
+**Type-file prose edits no longer rebuild the ontology graph.** Type constructor files now track a parsed schema fingerprint, so adding reference notes or explanatory prose to a type file skips reindexing when the actual type schema is unchanged.

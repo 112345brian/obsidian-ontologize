@@ -73,6 +73,7 @@ import { OntologyCacheService } from './OntologyCacheService.ts';
 import { registerVaultEvents } from './VaultEventRegistration.ts';
 import { EntityScaffoldService } from './EntityScaffoldService.ts';
 import { FrontmatterFingerprintService } from './FrontmatterFingerprintService.ts';
+import { TypeSchemaFingerprintService } from './TypeSchemaFingerprintService.ts';
 
 const AUTO_INVERSE_DEBOUNCE_MS = 1000;
 
@@ -85,6 +86,7 @@ export class Plugin extends ObsidianPlugin {
   private readonly backgroundSweepService = new BackgroundSweepService();
   private readonly indexTaskQueue = new IndexTaskQueue();
   private readonly frontmatterFingerprints = new FrontmatterFingerprintService();
+  private readonly typeSchemaFingerprints = new TypeSchemaFingerprintService();
   private readonly entityScaffoldService = new EntityScaffoldService(
     this.app,
     () => this.index,
@@ -134,6 +136,7 @@ export class Plugin extends ObsidianPlugin {
     this.index = cachedIndex && JSON.stringify(cachedIndex.settings) === JSON.stringify(this.indexSettings()) ? cachedIndex : null;
     if (this.index) {
       this.frontmatterFingerprints.seed(this.index.entities.values());
+      this.typeSchemaFingerprints.seed(this.index.types.values());
     }
 
     this.registerMarkdownCodeBlockProcessor('ontology-query', this.renderQueryBlock.bind(this));
@@ -213,6 +216,7 @@ export class Plugin extends ObsidianPlugin {
   private async buildAndStore(showNotice: boolean): Promise<void> {
     this.index = await buildOntologyIndex(this.app, this.indexSettings());
     this.frontmatterFingerprints.seed(this.index.entities.values());
+    this.typeSchemaFingerprints.seed(this.index.types.values());
     await this.writeCacheSafely();
     // Reload scripts on full rebuild so they see the fresh index, then run validate hooks.
     await this.reloadScripts();
@@ -634,6 +638,7 @@ export class Plugin extends ObsidianPlugin {
       const wasType = 'basename' in file && this.index.types.has((file as { basename: string }).basename);
       this.index = removeOntologyFile(this.index, file.path);
       this.frontmatterFingerprints.forget(file.path);
+      this.typeSchemaFingerprints.forget(file.path);
       if (wasType) {
         this.offerScaffoldAfterTypeChange();
       }
@@ -660,9 +665,18 @@ export class Plugin extends ObsidianPlugin {
         const typeName = file.basename;
         const previousType = this.index?.types.get(typeName);
         const shouldWarnIfChanged = !this.modalWritingPaths.has(file.path) && previousType?.lockIntent === true;
+        const source = await this.app.vault.read(file);
+        const parsedType = parseOntologyType(file.path, source, this.pluginSettings.autoApplyBlockPrefix, this.pluginSettings.requireOntologizePrefix);
+        if (!this.typeSchemaFingerprints.hasChanged(parsedType)) {
+          return;
+        }
         await this.upsertFileCore(file);
+        const indexedType = this.index?.types.get(typeName);
+        if (indexedType) {
+          this.typeSchemaFingerprints.record(indexedType);
+        }
         if (shouldWarnIfChanged && previousType) {
-          const newType = this.index?.types.get(typeName);
+          const newType = indexedType;
           if (newType && hasOntologySchemaChange(previousType, newType)) {
             new Notice(
               `"${typeName}" is a locked type. Use the type editor (right-click → Edit type) to validate impact before saving changes.`
@@ -684,6 +698,7 @@ export class Plugin extends ObsidianPlugin {
         const index = await this.ensureIndexCore();
         this.index = removeOntologyFile(index, oldPath);
         this.frontmatterFingerprints.forget(oldPath);
+        this.typeSchemaFingerprints.forget(oldPath);
         await this.upsertFileCore(file);
         return;
       }
@@ -716,6 +731,10 @@ export class Plugin extends ObsidianPlugin {
       this.index = await upsertOntologyEntityFileFast(this.app, index, file, this.indexSettings());
     } else {
       this.index = await upsertOntologyFile(this.app, index, file, this.indexSettings());
+      const indexedType = this.index.types.get(file.basename) ?? [...this.index.types.values()].find((type) => type.path === file.path);
+      if (indexedType) {
+        this.typeSchemaFingerprints.record(indexedType);
+      }
     }
     this.frontmatterFingerprints.record(file.path, frontmatter);
     const membershipAfter = this.index.entities.get(file.path)?.instanceOf ?? [];

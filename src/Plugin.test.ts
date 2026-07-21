@@ -351,4 +351,44 @@ describe('Plugin orchestration', () => {
 
     expect(plugin.index?.generatedAt).toBe('sentinel');
   });
+
+  it('skips type-file prose edits when parsed schema is unchanged', async () => {
+    const fake = makeFakeVault();
+    const typeFile = makeTFile('_types/Reference.md');
+    fake.files.set('_types/Reference.md', '---\n{"lock": true}\n---\n# Reference\nworking notes');
+    fake.markdownFiles = [typeFile];
+
+    const plugin = await loadPlugin(fake);
+    for (const callback of layoutCallbacks) {
+      callback();
+    }
+    await settle(plugin);
+    expect(plugin.index?.types.get('Reference')?.lockIntent).toBe(true);
+
+    plugin.index!.generatedAt = 'sentinel';
+    fake.files.set('_types/Reference.md', '---\n{"lock": true}\n---\n# Reference\nexpanded working notes');
+    await plugin['handleVaultModify'](typeFile);
+    await settle(plugin);
+
+    expect(plugin.index?.generatedAt).toBe('sentinel');
+  });
+
+  it('still reindexes type files when parsed schema changes', async () => {
+    const fake = makeFakeVault();
+    const typeFile = makeTFile('_types/Reference.md');
+    fake.files.set('_types/Reference.md', '---\n{"lock": true}\n---\n# Reference\nworking notes');
+    fake.markdownFiles = [typeFile];
+
+    const plugin = await loadPlugin(fake);
+    for (const callback of layoutCallbacks) {
+      callback();
+    }
+    await settle(plugin);
+
+    fake.files.set('_types/Reference.md', '---\n{"lock": false}\n---\n# Reference\nworking notes');
+    await plugin['handleVaultModify'](typeFile);
+    await settle(plugin);
+
+    expect(plugin.index?.types.get('Reference')?.lockIntent).toBe(false);
+  });
 });
