@@ -52,7 +52,7 @@ import {
 import type { TypeEditorModel } from './ontology/type-editor.ts';
 import { applyTypeTemplate } from './templater.ts';
 import { analyzeTypeChange } from './ontology/impact.ts';
-import { parseOntologyType } from './ontology/parser.ts';
+import { parseOntologyType, readYamlObject } from './ontology/parser.ts';
 import { OntologyTypeImpactModal } from './OntologyTypeImpactModal.ts';
 import type { ImpactResolution } from './OntologyTypeImpactModal.ts';
 import { OntologyRepairModal } from './OntologyRepairModal.ts';
@@ -134,10 +134,6 @@ export class Plugin extends ObsidianPlugin {
     // hydrating it would let pre-rebuild reads see files the user has since
     // ignored (or miss files they un-ignored). Wait for the cold rebuild instead.
     this.index = cachedIndex && JSON.stringify(cachedIndex.settings) === JSON.stringify(this.indexSettings()) ? cachedIndex : null;
-    if (this.index) {
-      this.frontmatterFingerprints.seed(this.index.entities.values());
-      this.typeSchemaFingerprints.seed(this.index.types.values());
-    }
 
     this.registerMarkdownCodeBlockProcessor('ontology-query', this.renderQueryBlock.bind(this));
 
@@ -213,10 +209,38 @@ export class Plugin extends ObsidianPlugin {
     await this.enqueue(() => this.buildAndStore(showNotice));
   }
 
+  // Type files aren't necessarily entities (only ones with entity-registration
+  // frontmatter are, via resolveTypeFileAsEntity) — a pure-schema type file's raw
+  // frontmatter needs to be seeded separately or its baseline fingerprint would
+  // never get recorded, and the very first handleVaultModify after a rebuild would
+  // always see it as "changed" regardless of whether anything actually changed.
+  // Read fresh via vault.read() rather than metadataCache, matching how
+  // handleVaultModify's own fingerprint check reads type files, so the seeded
+  // baseline and later comparisons agree on what "the frontmatter" is.
+  private async typeOnlyFrontmatterEntries(index: OntologyIndex): Promise<Array<{ frontmatter: Record<string, unknown>; path: string }>> {
+    const entries: Array<{ frontmatter: Record<string, unknown>; path: string }> = [];
+    for (const type of index.types.values()) {
+      if (index.entities.has(type.path)) {
+        continue;
+      }
+      const file = this.app.vault.getFileByPath(type.path);
+      if (!(file instanceof TFile)) {
+        continue;
+      }
+      const source = await this.app.vault.read(file);
+      entries.push({ frontmatter: readYamlObject(source), path: type.path });
+    }
+    return entries;
+  }
+
+  private async seedFingerprints(index: OntologyIndex): Promise<void> {
+    this.frontmatterFingerprints.seed([...index.entities.values(), ...await this.typeOnlyFrontmatterEntries(index)]);
+    this.typeSchemaFingerprints.seed(index.types.values());
+  }
+
   private async buildAndStore(showNotice: boolean): Promise<void> {
     this.index = await buildOntologyIndex(this.app, this.indexSettings());
-    this.frontmatterFingerprints.seed(this.index.entities.values());
-    this.typeSchemaFingerprints.seed(this.index.types.values());
+    await this.seedFingerprints(this.index);
     await this.writeCacheSafely();
     // Reload scripts on full rebuild so they see the fresh index, then run validate hooks.
     await this.reloadScripts();
@@ -566,6 +590,7 @@ export class Plugin extends ObsidianPlugin {
       const fixed = await fixMissingInverses(this.app, this.index, { onlyAutoUpdate: true });
       if (fixed > 0) {
         this.index = await buildOntologyIndex(this.app, this.indexSettings());
+        await this.seedFingerprints(this.index);
         await this.writeCacheSafely();
       }
       return fixed;

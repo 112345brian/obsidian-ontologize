@@ -61,7 +61,7 @@ function readStructuredObject(source: string, path = ''): Record<string, unknown
   return asRecord(parseYaml(trimmed));
 }
 
-function readYamlObject(markdown: string): Record<string, unknown> {
+export function readYamlObject(markdown: string): Record<string, unknown> {
   const trimmed = markdown.trim();
   if (!trimmed) {
     return {};
