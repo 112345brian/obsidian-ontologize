@@ -113,9 +113,7 @@ describe('schema linter', () => {
       severity: 'error',
     }));
     // Note-level keys like 'up' must not trigger unknown-key warnings.
-    expect(issues).not.toContainEqual(expect.objectContaining({
-      message: expect.stringContaining('Unknown type field up'),
-    }));
+    expect(issues.some((issue) => issue.message.includes('Unknown type field up'))).toBe(false);
   });
 
   it('validates only ontologize-prefixed schema keys when required', () => {
