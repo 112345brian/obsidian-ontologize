@@ -140,7 +140,7 @@ function createEmptyOntologyIndex(settings: BuildIndexSettings): OntologyIndex {
   return {
     ambiguousEntityNames: new Set<string>(),
     ancestorsByType: new Map<string, Set<string>>(),
-    cacheVersion: 1,
+    cacheVersion: 2,
     circularTypes: new Set<string>(),
     effectiveEntityLocks: new Map<string, EffectiveLockState>(),
     effectiveTypeLocks: new Map<string, EffectiveLockState>(),
@@ -201,7 +201,7 @@ export function computeAncestors(
     }
 
     visiting.add(name);
-    for (const parent of type.extends) {
+    for (const parent of type.subtypeOf) {
       if (!types.has(parent)) {
         pushIssueOnce(issues, {
           file: type.path,

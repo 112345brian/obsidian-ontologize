@@ -33,7 +33,7 @@ function makeType(
   name: string,
   path: string,
   lockIntent: boolean,
-  extendsTypes: string[] = [],
+  subtypeOfTypes: string[] = [],
   options: {
     implementsTypes?: string[];
     isInterface?: boolean;
@@ -47,7 +47,8 @@ function makeType(
     cannotHave: new Set(),
     disjoint: [],
     excludes: [],
-    extends: extendsTypes,
+    subtypeOf: subtypeOfTypes,
+    alsoApply: [],
     replaces: [],
     requires: [],
     fields: new Map(),
@@ -69,7 +70,7 @@ function makeType(
 function makeIndex(): OntologyIndex {
   return {
     ancestorsByType: new Map(),
-    cacheVersion: 1,
+    cacheVersion: 2,
     effectiveEntityLocks: new Map(),
     effectiveTypeLocks: new Map(),
     entities: new Map([
@@ -781,7 +782,7 @@ describe('incremental ontology index state', () => {
           lock: true
         },
         Philosopher: {
-          extends: ['[[Person]]'],
+          'subtype-of': ['[[Person]]'],
           implements: ['[[Influenceable]]'],
           lock: true
         }

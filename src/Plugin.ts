@@ -432,8 +432,8 @@ export class Plugin extends ObsidianPlugin {
       },
       onCreateSubtype: (parent) => {
         const model = emptyTypeEditorModel();
-        model.extends = [parent.name];
-        this.openTypeEditorForCreate(model);
+        model.subtypeOf = [parent.name];
+        void this.openTypeEditorForCreate(model);
       },
       onEdit: (type) => {
         const file = this.app.vault.getFileByPath(type.path);
@@ -595,7 +595,10 @@ export class Plugin extends ObsidianPlugin {
         try {
           await this.app.fileManager.processFrontMatter(file, (frontmatter) => {
             delete frontmatter['ontologize'];
-            for (const key of TYPE_EDITOR_KEYS) {
+            // 'extends' is the pre-rename name of 'subtype-of' (no longer parsed at all);
+            // clean it up here too or the structured editor leaves a dead, misleading key
+            // behind on an un-migrated type file instead of replacing it with subtype-of.
+            for (const key of [...TYPE_EDITOR_KEYS, 'extends']) {
               delete frontmatter[key];
               delete frontmatter[`ontologize.${key}`];
             }

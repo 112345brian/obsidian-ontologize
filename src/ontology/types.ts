@@ -59,7 +59,7 @@ export interface OntologyType {
   cannotHave: Set<string>;
   disjoint: string[];
   excludes: string[];
-  extends: string[];
+  subtypeOf: string[];
   implementableBy: string[];
   implements: string[];
   alsoApply: string[];
@@ -123,7 +123,7 @@ export interface OntologyIssue {
 export interface OntologyIndex {
   ambiguousEntityNames?: Set<string>;
   ancestorsByType: Map<string, Set<string>>;
-  cacheVersion: 1;
+  cacheVersion: 2;
   circularTypes?: Set<string>;
   effectiveEntityLocks: Map<string, EffectiveLockState>;
   effectiveTypeLocks: Map<string, EffectiveLockState>;

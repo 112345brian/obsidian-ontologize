@@ -1,7 +1,7 @@
 ---
 ontologize: true
 up: "[[person]]"
-extends:
+subtype-of:
   - "[[person]]"
 lock: true
 can-have:

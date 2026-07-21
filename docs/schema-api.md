@@ -97,7 +97,7 @@ types:
   Person:
     lock: true
   Philosopher:
-    extends:
+    subtype-of:
       - "[[Person]]"
     implements:
       - "[[Influenceable]]"
@@ -121,7 +121,7 @@ Frontmatter form:
 
 ```markdown
 ---
-extends:
+subtype-of:
   - "[[Person]]"
 implements:
   - "[[Influenceable]]"
@@ -132,7 +132,7 @@ lock: true
 Body form:
 
 ```markdown
-extends:
+subtype-of:
   - "[[Person]]"
 implements:
   - "[[Influenceable]]"
@@ -192,7 +192,7 @@ These fields are recognized in type, interface, and single-schema type definitio
 
 | Field | Value | Meaning |
 |---|---|---|
-| `extends` | link or array of links | Identity inheritance. The referenced constructors must exist. |
+| `subtype-of` | link or array of links | Identity inheritance — declares this type as a subtype of the referenced constructor(s), which must exist. (The "Subtype of…" / "New subtype" UI actions write this field.) |
 | `implements` | link or array of links | Composition contracts. Referenced constructors should be `interface: true`. |
 | `interface` | boolean | Marks the constructor as an interface that cannot be directly instantiated. |
 | `abstract` | boolean | Marks the type as non-instantiable but inheritable. |
@@ -213,7 +213,7 @@ These fields are recognized in type, interface, and single-schema type definitio
 | `scales` | map | Named scale definitions for weighted property fields. See [Scales and Weighted Properties](#scales-and-weighted-properties). |
 | `ingest-from` | map of `field: target` pairs | Sufficient conditions for type membership. If a note's frontmatter field links to the named target, the note is indexed as this type — no explicit `is-instance` needed. |
 | `auto-apply` | condition map | Condition-based type detection. When the conditions match, the type is applied and scaffolded. See [Auto-Apply](#auto-apply). |
-| `also-apply` | link or array of links | Additional types to apply whenever this type is applied. Use for non-hierarchical co-application. Types in the `extends` chain are always applied automatically and do not need to be listed here. |
+| `also-apply` | link or array of links | Additional types to apply whenever this type is applied. Use for non-hierarchical co-application. Types in the `subtype-of` chain are always applied automatically and do not need to be listed here. |
 
 ### Requires and Excludes
 
@@ -278,9 +278,9 @@ If the Templater plugin is installed, Templater processes the template against t
 Otherwise the raw body text is copied.
 The template is only applied once — if the entity already has body text, it is left untouched.
 
-### Extends and Membership Cascade
+### Subtype-Of and Membership Cascade
 
-When a type is applied to an entity, all types in its `extends` chain are also resolved as part of the entity's membership. A philosopher that extends person is automatically also indexed as a person — you do not need `also-apply` or any explicit declaration on the entity note.
+When a type is applied to an entity, all types in its `subtype-of` chain are also resolved as part of the entity's membership. A philosopher that is subtype-of person is automatically also indexed as a person — you do not need `also-apply` or any explicit declaration on the entity note.
 
 This means:
 - Queries for `person` return philosopher entities automatically.
@@ -293,7 +293,7 @@ This means:
 
 ```yaml
 # philosopher.md
-extends:
+subtype-of:
   - "[[person]]"
 ingest-from:
   up: Philosophers
@@ -339,7 +339,7 @@ You can use both on the same type. `ingest-from` ensures the entity is in the in
 
 ### Also-Apply
 
-`also-apply` lists additional types that are applied whenever this type is applied. Use it for non-hierarchical co-application — types that should always come together but do not share an `extends` ancestor.
+`also-apply` lists additional types that are applied whenever this type is applied. Use it for non-hierarchical co-application — types that should always come together but do not share a `subtype-of` ancestor.
 
 ```yaml
 # field-researcher.md
@@ -348,7 +348,9 @@ also-apply:
   - "[[academic]]"
 ```
 
-Types already in the `extends` chain do not need to be listed in `also-apply` — they are applied automatically. `also-apply` is for types that should co-apply for semantic reasons that are not expressed through inheritance.
+Types already in the `subtype-of` chain do not need to be listed in `also-apply` — they are applied automatically. `also-apply` is for types that should co-apply for semantic reasons that are not expressed through inheritance.
+
+Co-application happens at the membership level, the same way `subtype-of` ancestors do: an entity typed `field-researcher` counts as a `person` and `academic` in queries and validation without those types being written to its frontmatter. The one exception is the auto-apply/ingest stamping path, which writes the co-applied types explicitly alongside the detected type.
 
 ### Composition Constraints
 
@@ -368,7 +370,7 @@ lock: true
 Minimum useful subtype:
 
 ```yaml
-extends:
+subtype-of:
   - "[[Person]]"
 lock: true
 ```

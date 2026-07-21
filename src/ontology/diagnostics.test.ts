@@ -12,7 +12,7 @@ function makeType(name: string, path = `_types/${name}.md`): OntologyType {
 function makeIndex(): OntologyIndex {
   return {
     ancestorsByType: new Map(),
-    cacheVersion: 1,
+    cacheVersion: 2,
     circularTypes: new Set(['Loop']),
     effectiveEntityLocks: new Map(),
     effectiveTypeLocks: new Map(),

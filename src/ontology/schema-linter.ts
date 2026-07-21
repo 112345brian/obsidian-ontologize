@@ -6,7 +6,7 @@ import { isInsertTemplate } from './templates.ts';
 import { DEFAULT_BLOCK_PREFIX, normalizeKey } from './parser.ts';
 import { isValidTypeExpression } from './type-expression.ts';
 
-const TYPE_KEYS = new Set([
+export const TYPE_KEYS = new Set([
   'abstract',
   'also-apply',
   'auto-apply',
@@ -14,7 +14,6 @@ const TYPE_KEYS = new Set([
   'cannot-have',
   'disjoint',
   'excludes',
-  'extends',
   'fields',
   'implementable-by',
   'implements',
@@ -27,14 +26,15 @@ const TYPE_KEYS = new Set([
   'relations',
   'replaces',
   'scales',
+  'subtype-of',
   'template',
   'type',
   'values',
 ]);
 
 // Common note-level frontmatter keys that are never schema — silently allowed on type files.
-const NOTE_CONTENT_KEYS = new Set([
-  'aliases', 'cssclasses', 'date-created', 'date-modified', 'description',
+export const NOTE_CONTENT_KEYS = new Set([
+  'aliases', 'cssclass', 'cssclasses', 'date-created', 'date-modified', 'description',
   'publish', 'tags', 'title', 'up',
 ]);
 
@@ -309,7 +309,7 @@ function lintReplacesField(file: string, value: unknown, issues: OntologyIssue[]
   }
 }
 
-const SCHEMA_CONTENT_KEYS = new Set(['auto-apply', 'can-have', 'extends', 'fields', 'implements', 'ingest-from', 'must-have', 'relations', 'scales', 'type', 'values']);
+const SCHEMA_CONTENT_KEYS = new Set(['auto-apply', 'can-have', 'fields', 'implements', 'ingest-from', 'must-have', 'relations', 'scales', 'subtype-of', 'type', 'values']);
 
 function lintTypeRecord(file: string, value: unknown, issues: OntologyIssue[], prefix: string, requireOntologizePrefix: boolean): void {
   const record = asRecord(value);
@@ -330,7 +330,7 @@ function lintTypeRecord(file: string, value: unknown, issues: OntologyIssue[], p
       issues.push(issue(file, 'Type file has ontologize: true but no schema content — remove ontologize: true to treat this as a regular note', 'warning'));
     }
   }
-  lintStringOrStringArray(file, 'extends', schema['extends'], issues);
+  lintStringOrStringArray(file, 'subtype-of', schema['subtype-of'], issues);
   lintStringOrStringArray(file, 'implements', schema['implements'], issues);
   lintIngestFrom(file, schema['ingest-from'], issues);
   lintStringOrStringArray(file, 'disjoint', schema['disjoint'], issues);

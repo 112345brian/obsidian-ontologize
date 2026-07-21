@@ -45,7 +45,7 @@ export interface TypeEditorModel {
   autoApplyMatch: 'all' | 'any';
   autoApplyMode: 'never' | 'always' | 'conditional';
   canHave: TypeEditorField[];
-  extends: string[];
+  subtypeOf: string[];
   implementableBy: string[];
   implements: string[];
   ingestFrom: Array<{ field: string; target: string }>;
@@ -66,7 +66,7 @@ export function emptyTypeEditorModel(): TypeEditorModel {
     autoApplyMatch: 'all',
     autoApplyMode: 'never',
     canHave: [],
-    extends: [],
+    subtypeOf: [],
     implementableBy: [],
     implements: [],
     ingestFrom: [],
@@ -121,7 +121,7 @@ export function typeEditorModelFromType(type: OntologyType): TypeEditorModel {
     alsoApply: [...(type.alsoApply ?? [])],
     ...autoApplyToModel(type.autoApply),
     canHave: [...type.canHave].map(([name, definition]) => fieldFromDefinition(name, definition)),
-    extends: [...type.extends],
+    subtypeOf: [...type.subtypeOf],
     implementableBy: [...(type.implementableBy ?? [])],
     implements: [...type.implements],
     ingestFrom: [...(type.ingestFrom ?? new Map())].map(([field, target]) => ({ field, target })),
@@ -214,8 +214,8 @@ export function typeEditorFrontmatter(model: TypeEditorModel, requireOntologizeP
   if (model.isInterface) {
     frontmatter[schemaKey('interface', requireOntologizePrefix)] = true;
   }
-  if (model.extends.length > 0) {
-    frontmatter[schemaKey('extends', requireOntologizePrefix)] = model.extends.map((name) => `[[${name}]]`);
+  if (model.subtypeOf.length > 0) {
+    frontmatter[schemaKey('subtype-of', requireOntologizePrefix)] = model.subtypeOf.map((name) => `[[${name}]]`);
   }
   if (model.implementableBy.length > 0) {
     frontmatter[schemaKey('implementable-by', requireOntologizePrefix)] = model.implementableBy.map((name) => `[[${name}]]`);
@@ -312,7 +312,6 @@ export const TYPE_EDITOR_KEYS = [
   'auto-apply',
   'can-have',
   'excludes',
-  'extends',
   'implementable-by',
   'implements',
   'ingest-from',
@@ -322,5 +321,6 @@ export const TYPE_EDITOR_KEYS = [
   'relations',
   'replaces',
   'requires',
+  'subtype-of',
   'template'
 ] as const;

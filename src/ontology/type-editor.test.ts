@@ -17,7 +17,7 @@ describe('type editor frontmatter', () => {
     const model = emptyTypeEditorModel();
     model.name = 'journal-entry';
     model.lock = true;
-    model.extends = ['entry'];
+    model.subtypeOf = ['entry'];
     model.implements = ['dated'];
     model.rules = [
       { kind: 'requires', value: 'person' },
@@ -61,7 +61,7 @@ describe('type editor frontmatter', () => {
     expect(typeEditorFrontmatter(model)).toEqual({
       ontologize: true,
       lock: true,
-      extends: ['[[entry]]'],
+      'subtype-of': ['[[entry]]'],
       implements: ['[[dated]]'],
       'must-have': {
         'date-start': {
@@ -84,7 +84,7 @@ describe('type editor frontmatter', () => {
 
     expect(typeEditorFrontmatter(model, true)).toMatchObject({
       ontologize: true,
-      'ontologize.extends': ['[[entry]]'],
+      'ontologize.subtype-of': ['[[entry]]'],
       'ontologize.must-have': {
         'date-start': {
           cardinality: 'one',
@@ -103,7 +103,8 @@ describe('type editor frontmatter', () => {
       cannotHave: new Set(),
       disjoint: [],
       excludes: ['enemy'],
-      extends: [],
+      subtypeOf: [],
+      alsoApply: [],
       replaces: [
         { value: 'friend' },
         { field: 'relationship', newValue: 'friend', value: 'colleague' }
@@ -125,7 +126,7 @@ describe('type editor frontmatter', () => {
 
     expect(typeEditorModelFromType(type)).toMatchObject({
       lock: true,
-      extends: [],
+      subtypeOf: [],
       implements: [],
       rules: [
         { kind: 'requires', value: 'person' },

@@ -1,7 +1,7 @@
 ---
 ontologize: true
 up: "[[animal]]"
-extends:
+subtype-of:
   - "[[animal]]"
 lock: true
 must-have:

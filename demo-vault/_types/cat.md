@@ -1,7 +1,7 @@
 ---
 ontologize: true
 up: "[[mammal]]"
-extends:
+subtype-of:
   - "[[mammal]]"
 implements:
   - "[[pet]]"

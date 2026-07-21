@@ -269,7 +269,7 @@ function parseOntologyTypeRecord(name: string, path: string, yaml: Record<string
     cannotHave: parseCannotHave(yaml['cannot-have']),
     disjoint: extractLinkTargets(yaml['disjoint']),
     excludes: extractLinkTargets(yaml['excludes']),
-    extends: extractLinkTargets(yaml['extends']),
+    subtypeOf: extractLinkTargets(yaml['subtype-of']),
     implementableBy: extractLinkTargets(yaml['implementable-by']),
     implements: extractLinkTargets(yaml['implements']),
     ingestFrom: parseIngestFrom(yaml['ingest-from']),

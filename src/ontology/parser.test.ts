@@ -77,7 +77,7 @@ vi.mock('obsidian', () => ({
         'must-have': {
           'note-owned-field': 'string',
         },
-        'ontologize.extends': ['[[person]]'],
+        'ontologize.subtype-of': ['[[person]]'],
         'ontologize.must-have': {
           school: {
             type: 'string',
@@ -86,9 +86,9 @@ vi.mock('obsidian', () => ({
         ontologize: true,
       };
     }
-    if (source.includes('extends:')) {
+    if (source.includes('subtype-of:')) {
       return {
-        extends: ['[[Person]]'],
+        'subtype-of': ['[[Person]]'],
         lock: true,
       };
     }
@@ -105,24 +105,24 @@ abstract: true
 ---
 
 # Philosopher
-extends:
+subtype-of:
   - [[Person]]
 lock: true
 `);
 
     expect(type.abstract).toBe(true);
-    expect(type.extends).toEqual([]);
+    expect(type.subtypeOf).toEqual([]);
     expect(type.lockIntent).toBe(false);
   });
 
   it('uses body YAML when frontmatter is absent', () => {
     const type = parseOntologyType('_types/Philosopher.md', `# Philosopher
-extends:
+subtype-of:
   - [[Person]]
 lock: true
 `);
 
-    expect(type.extends).toEqual(['Person']);
+    expect(type.subtypeOf).toEqual(['Person']);
     expect(type.lockIntent).toBe(true);
   });
 
@@ -131,14 +131,14 @@ lock: true
 ontologize: true
 must-have:
   note-owned-field: string
-ontologize.extends:
+ontologize.subtype-of:
   - "[[person]]"
 ontologize.must-have:
   school:
     type: string
 ---`, undefined, true);
 
-    expect(type.extends).toEqual(['person']);
+    expect(type.subtypeOf).toEqual(['person']);
     expect([...type.mustHave.keys()]).toEqual(['school']);
   });
 

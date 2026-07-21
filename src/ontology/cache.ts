@@ -58,7 +58,7 @@ function hydrateType(value: unknown): OntologyType {
     cannotHave: new Set(Array.isArray(record['cannotHave']) ? record['cannotHave'].map(String) : []),
     disjoint: Array.isArray(record['disjoint']) ? record['disjoint'].map(String) : [],
     excludes: Array.isArray(record['excludes']) ? record['excludes'].map(String) : [],
-    extends: Array.isArray(record['extends']) ? record['extends'].map(String) : [],
+    subtypeOf: Array.isArray(record['subtypeOf']) ? record['subtypeOf'].map(String) : [],
     fields: hydrateMap<PropertyDefinition>(record['fields'], (item) => item as PropertyDefinition),
     implementableBy: Array.isArray(record['implementableBy']) ? record['implementableBy'].map(String) : [],
     implements: Array.isArray(record['implements']) ? record['implements'].map(String) : [],
@@ -119,13 +119,20 @@ function hydrateEntity(value: unknown): OntologyEntity {
   };
 }
 
+// The cache lives under .obsidian/ by default, which the Vault API does not
+// index — the low-level adapter is the only way to read/write it there, so its
+// use throughout this module is intentional, not an oversight.
 export async function readOntologyCache(app: App, cachePath: string): Promise<OntologyIndex | null> {
   try {
     if (!(await app.vault.adapter.exists(cachePath))) {
       return null;
     }
     const payload = asRecord(JSON.parse(await app.vault.adapter.read(cachePath)) as unknown);
-    if (payload['cacheVersion'] !== 1) {
+    // Bumped from 1 to 2 for the extends -> subtype-of rename: a v1 cache written by a
+    // pre-rename build has types shaped { extends: [...] }, not { subtypeOf: [...] } —
+    // hydrating it under the new shape would silently zero out every type's ancestry.
+    // Rejecting it here forces a full rebuild from the vault instead.
+    if (payload['cacheVersion'] !== 2) {
       return null;
     }
 
@@ -141,7 +148,7 @@ export async function readOntologyCache(app: App, cachePath: string): Promise<On
     const result: OntologyIndex = {
       ambiguousEntityNames: new Set(Array.isArray(payload['ambiguousEntityNames']) ? payload['ambiguousEntityNames'].map(String) : []),
       ancestorsByType: hydrateMap<Set<string>>(payload['ancestorsByType'], (item) => new Set(Array.isArray(item) ? item.map(String) : [])),
-      cacheVersion: 1,
+      cacheVersion: 2,
       circularTypes: new Set(Array.isArray(payload['circularTypes']) ? payload['circularTypes'].map(String) : []),
       effectiveEntityLocks: hydrateMap<EffectiveLockState>(payload['effectiveEntityLocks'], (item) => item as EffectiveLockState),
       effectiveTypeLocks: hydrateMap<EffectiveLockState>(payload['effectiveTypeLocks'], (item) => item as EffectiveLockState),

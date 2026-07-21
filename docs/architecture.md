@@ -28,7 +28,7 @@ The product contract remains [`spec.md`](spec.md); this document explains how th
 
 - `src/OntologyBulkScaffoldModal.ts` — three-phase bulk scaffold modal: select (per-type entity/field counts + master checkbox) → preview (per-entity field cards) → apply. Exported `BulkScaffoldEntityDiff { name, path, plans }` is the payload passed to `onApply`. Running this modal once sets `initialScaffoldComplete`.
 - `src/OntologyScaffoldReviewModal.ts` — per-note scaffold review modal for auto-scaffold and `Scaffold active ontology note`.
-- `src/OntologyTypeEditorModal.ts` — structured editor for creating and modifying type constructor files. Manages `extends`, `implements`, `interface`/`abstract`/`lock` flags, `requires`, `excludes`, `replaces`, `template`, `must-have`/`can-have` fields, and relations. Preserves schema keys outside its ownership on save.
+- `src/OntologyTypeEditorModal.ts` — structured editor for creating and modifying type constructor files. Manages `subtype-of`, `implements`, `interface`/`abstract`/`lock` flags, `requires`, `excludes`, `replaces`, `template`, `must-have`/`can-have` fields, and relations. Preserves schema keys outside its ownership on save.
 - `src/OntologyTypeLibraryModal.ts` — browse and select from existing types.
 - `src/OntologyTypeWizardModal.ts` — guided type creation flow.
 - `src/OntologyIssuesModal.ts` — entity validation issue list with severity filter, file open, rebuild, and inverse-fix actions.
@@ -63,7 +63,7 @@ The product contract remains [`spec.md`](spec.md); this document explains how th
 6. Other Markdown files with one of the configured entity type frontmatter fields are parsed as ontology entities.
 7. The indexer computes ancestor sets for each type.
 8. The indexer collects global field and relation definitions from registry type files.
-9. The indexer resolves type composition from `extends` and `implements`.
+9. The indexer resolves type composition from `subtype-of` and `implements`.
 10. The indexer computes effective lock states for types and entities.
 11. Validation issues are collected into `OntologyIndex.issues`.
 12. If automatic inverse updates are enabled, missing inverse entries are repaired for relations with `auto-update: true`.
@@ -139,7 +139,7 @@ Type files are regular Markdown files in the configured type folder. The parser 
 
 Implemented type constructor fields:
 
-- `extends` — identity inheritance (link or array)
+- `subtype-of` — identity inheritance (link or array)
 - `implements` — composition contracts (link or array)
 - `interface` — marks as interface (cannot be directly instantiated)
 - `abstract` — marks as non-instantiable but inheritable
@@ -190,7 +190,7 @@ interfaces:
 types:
   Philosopher:
     lock: true
-    extends:
+    subtype-of:
       - "[[Person]]"
     implements:
       - "[[Influenceable]]"
@@ -200,7 +200,7 @@ The parser creates synthetic type records: `relations` becomes a relation regist
 
 ## Composition And Global Relations
 
-`compose.ts` is the single resolver. Inheritance models identity (`extends`); reusable capabilities use `interface: true` + `implements`. Validation flattens both.
+`compose.ts` is the single resolver. Inheritance models identity (`subtype-of`); reusable capabilities use `interface: true` + `implements`. Validation flattens both.
 
 Global field registries (`type: field-definitions`) are parsed into `OntologyIndex.fieldDefinitions`. Property definitions reference them with `uses`. The resolved definition carries a `frontmatter-key` alias. Compatible optional/required uses of the same global field collapse to the stricter contract; incompatible duplicates are schema issues. Local fields from different interfaces are different semantic fields — composing them to the same frontmatter key is a schema issue.
 

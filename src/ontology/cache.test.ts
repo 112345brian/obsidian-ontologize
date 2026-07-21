@@ -28,7 +28,7 @@ function makeIndex(): OntologyIndex {
       ['Philosopher', new Set(['Person'])],
       ['Person', new Set<string>()],
     ]),
-    cacheVersion: 1,
+    cacheVersion: 2,
     circularTypes: new Set(['Loop']),
     effectiveEntityLocks: new Map([
       ['Ada.md', { state: 'locked' as const }],
@@ -84,7 +84,7 @@ function makeIndex(): OntologyIndex {
         cannotHave: new Set(['tag']),
         disjoint: ['Musician'],
         excludes: ['Sophist'],
-        extends: ['Person'],
+        subtypeOf: ['Person'],
         replaces: [{ value: 'Thinker' }, { field: 'category', newField: 'role', newValue: 'Philosopher', value: 'Sage' }],
         requires: ['Person'],
         template: 'Templates/Philosopher',

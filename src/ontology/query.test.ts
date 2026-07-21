@@ -16,7 +16,7 @@ function makeIndex(): OntologyIndex {
       ['Rationalist', new Set(['Philosopher', 'Person'])],
       ['Person', new Set()],
     ]),
-    cacheVersion: 1,
+    cacheVersion: 2,
     effectiveEntityLocks: new Map([
       ['Ada.md', { state: 'locked' }],
       ['Spinoza.md', { state: 'locked' }],

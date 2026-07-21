@@ -95,7 +95,7 @@ function makeIndex(): OntologyIndex {
     ancestorsByType: new Map([
       ['Philosopher', new Set()],
     ]),
-    cacheVersion: 1,
+    cacheVersion: 2,
     effectiveEntityLocks: new Map(),
     effectiveTypeLocks: new Map(),
     entities: new Map([
@@ -504,7 +504,7 @@ describe('detectTypeFromIngestFields', () => {
   function makeIngestIndex() {
     return {
       ancestorsByType: new Map([['philosopher', new Set<string>()]]),
-      cacheVersion: 1 as const,
+      cacheVersion: 2 as const,
       circularTypes: new Set<string>(),
       effectiveEntityLocks: new Map(),
       effectiveTypeLocks: new Map(),

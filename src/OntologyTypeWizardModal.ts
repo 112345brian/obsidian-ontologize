@@ -30,7 +30,7 @@ export class OntologyTypeWizardModal extends Modal {
       this.close();
       new OntologyTypePickerModal(this.app, this.types.filter((t) => !t.isInterface), 'Pick a parent type', (parent) => {
         const model = emptyTypeEditorModel();
-        model.extends = [parent.name];
+        model.subtypeOf = [parent.name];
         this.onSelect(model);
       }).open();
     });
@@ -70,7 +70,7 @@ export class OntologyTypePickerModal extends FuzzySuggestModal<OntologyType> {
   }
 
   public getItemText(type: OntologyType): string {
-    const parents = type.extends.length > 0 ? ` — extends ${type.extends.join(', ')}` : '';
+    const parents = type.subtypeOf.length > 0 ? ` — subtype of ${type.subtypeOf.join(', ')}` : '';
     return `${type.name}${parents}`;
   }
 

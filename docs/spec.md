@@ -67,7 +67,7 @@ Frontmatter style:
 
 ```markdown
 ---
-extends:
+subtype-of:
   - "[[Person]]"
 implements:
   - "[[Influenceable]]"
@@ -78,7 +78,7 @@ lock: true
 Body style:
 
 ```markdown
-extends:
+subtype-of:
   - "[[Person]]"
 implements:
   - "[[Influenceable]]"
@@ -110,7 +110,7 @@ types:
 
   Philosopher:
     lock: true
-    extends:
+    subtype-of:
       - "[[Person]]"
     implements:
       - "[[Influenceable]]"
@@ -144,7 +144,7 @@ Concrete types opt into those contracts:
 
 ```markdown
 # Philosopher
-extends:
+subtype-of:
   - "[[Person]]"
 implements:
   - "[[Influenceable]]"
@@ -152,7 +152,7 @@ implements:
 
 An instance of `Philosopher` is treated as a `Person` through inheritance and as `Influenceable` through composition.
 Queries such as `type: Influenceable` include philosophers that implement that interface.
-Validation flattens both `extends` and `implements`.
+Validation flattens both `subtype-of` and `implements`.
 
 An interface can restrict which types are permitted to implement it with `implementable-by`:
 
@@ -194,7 +194,7 @@ must-have:
 
 ```markdown
 # Philosopher
-extends:
+subtype-of:
   - "[[Person]]"
 ```
 
@@ -202,7 +202,7 @@ Multiple inheritance is supported:
 
 ```markdown
 # Singer-Songwriter
-extends:
+subtype-of:
   - "[[Singer]]"
   - "[[Composer]]"
 ```
@@ -318,7 +318,7 @@ Type files define property constraints for their entities.
 
 ```markdown
 # Philosopher
-extends:
+subtype-of:
   - "[[Person]]"
 
 must-have:
@@ -577,7 +577,7 @@ relations:
 ### Meta-Relation Properties
 
 - `range` — the type the relation must point to (validated against vault)
-- `cardinality` — `one-to-one`, `one-to-many`, `many-to-many`
+- `cardinality` — `one-to-one`, `one-to-many`, `many-to-many`. Currently enforced: `one` / `one-to-one` flag multi-valued properties; `one-to-many` and `many-to-many` are accepted but impose no validation yet.
 - `inverse` — a separate reciprocal property implied by this relation
 - `symmetric` — same property in both directions (no separate inverse needed)
 - `transitive` — if A→B and B→C then A→C is implied
@@ -596,6 +596,11 @@ influenced-by:
     confidence: high
 ```
 
+> **Status: partially implemented.** The `target:` object form is fully
+> supported — link extraction, range checks, and inverse maintenance all see
+> the target. The `source`/`confidence` keys are preserved in frontmatter
+> untouched but are not yet validated or queryable.
+
 ---
 
 ## Temporal Properties
@@ -608,6 +613,10 @@ member-of:
     from: 1672
     to: 1676
 ```
+
+> **Status: partially implemented.** As with provenance, the `target:` is
+> fully resolved; `from`/`to` are preserved in frontmatter but not yet
+> validated or usable in queries.
 
 ---
 
@@ -757,11 +766,11 @@ This applies to:
 
 ### Circularity
 
-Circular inheritance is forbidden and checked at the schema level on every type file save. If introducing an `extends` relation would create a cycle in the type graph, the change is rejected before it is written.
+Circular inheritance is forbidden and checked at the schema level on every type file save. If introducing a `subtype-of` relation would create a cycle in the type graph, the change is rejected before it is written.
 
 ```
-A extends B
-B extends A  ← rejected: circular inheritance
+A's `subtype-of` names B
+B's `subtype-of` names A  ← rejected: circular inheritance
 ```
 
 Cycle detection runs as a depth-first search over the type graph. The same check applies to transitive relations — a relation declared `transitive: true` with a circular chain would produce infinite inference and is equally forbidden.
@@ -781,6 +790,9 @@ schema-mode: libertarian  # or: authoritarian
 - **Authoritarian** — notes without `is-instance` fail validation.
 
 Either way, untyped notes are still queryable as raw notes. The mode only affects schema enforcement.
+
+> **Status: planned.** Only libertarian behavior is implemented today; the
+> `schema-mode` setting is not yet read, and untyped notes are never flagged.
 
 ### Lock States
 

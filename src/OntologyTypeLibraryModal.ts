@@ -94,7 +94,7 @@ export class OntologyTypeLibraryModal extends Modal {
     const roots: OntologyType[] = [];
 
     for (const type of allTypes) {
-      const knownParent = type.extends.find((p) => typeNames.has(p));
+      const knownParent = type.subtypeOf.find((p) => typeNames.has(p));
       if (knownParent) {
         const siblings = childrenOf.get(knownParent) ?? [];
         siblings.push(type);
@@ -141,7 +141,7 @@ export class OntologyTypeLibraryModal extends Modal {
     }
 
     const meta: string[] = [];
-    if (type.extends.length > 0) { meta.push(`extends ${type.extends.join(', ')}`); }
+    if (type.subtypeOf.length > 0) { meta.push(`subtype of ${type.subtypeOf.join(', ')}`); }
     if (type.implements.length > 0) { meta.push(`implements ${type.implements.join(', ')}`); }
     if (meta.length > 0) {
       info.createEl('span', { cls: 'ontology-library-meta', text: meta.join(' · ') });

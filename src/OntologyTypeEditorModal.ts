@@ -163,7 +163,7 @@ export class OntologyTypeEditorModal extends Modal {
     new Setting(panel).setName('Abstract').setDesc('Cannot be instantiated directly.').addToggle((t) => t.setValue(model.abstract).onChange((v) => { model.abstract = v; }));
     new Setting(panel).setName('Interface').setDesc('Composed via implements rather than instantiated.').addToggle((t) => t.setValue(model.isInterface).onChange((v) => { model.isInterface = v; this.render(); }));
 
-    this.addTagSetting(panel, 'Extends', 'Parent types.', model.extends, typeNames, (v) => { model.extends = v; });
+    this.addTagSetting(panel, 'Subtype of', 'Parent types this inherits from.', model.subtypeOf, typeNames, (v) => { model.subtypeOf = v; });
     this.addTagSetting(panel, 'Implements', 'Interfaces this type composes.', model.implements, interfaceNames, (v) => { model.implements = v; });
 
     if (model.isInterface) {
@@ -186,7 +186,7 @@ export class OntologyTypeEditorModal extends Modal {
       visited.add(name);
       const t = index.types.get(name);
       if (!t) return;
-      for (const parent of t.extends) { collectType(parent); }
+      for (const parent of t.subtypeOf) { collectType(parent); }
       const fields: Array<{ key: string; value: string; insert: string; required: boolean }> = [];
       for (const [k, def] of t.mustHave) {
         const insert = def.insert !== undefined
@@ -200,7 +200,7 @@ export class OntologyTypeEditorModal extends Modal {
       if (fields.length > 0) chain.push({ fields, name });
     };
 
-    for (const parent of model.extends) { collectType(parent); }
+    for (const parent of model.subtypeOf) { collectType(parent); }
 
     // Own fields from the live model
     const ownFields: Array<{ key: string; value: string; insert: string; required: boolean }> = [
