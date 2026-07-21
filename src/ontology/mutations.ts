@@ -4,7 +4,9 @@ import type { AutoApplyBlock, FrontmatterValue, OntologyEntity, OntologyIndex, O
 
 import { getInheritedCanHave, getInheritedMustHave, resolveEntityRelations } from './compose.ts';
 import { containsFrontmatterValue, extractAssertedLinkTargets, extractLinkTargets, normalizeLinkTarget, toWikiLink } from './links.ts';
+import { normalizeKey } from './parser.ts';
 import { isInsertTemplate, resolveInsertTemplate } from './templates.ts';
+import { hasValue } from './validate.ts';
 
 export interface FixMissingInversesOptions {
   onlyAutoUpdate?: boolean;
@@ -202,12 +204,23 @@ function evalAutoApplyBlock(frontmatter: Record<string, unknown>, block: AutoApp
   return block.match === 'all' ? all.every(Boolean) : all.some(Boolean);
 }
 
+function hasExplicitTypeField(index: OntologyIndex, entity: OntologyEntity): boolean {
+  const typeKeys = new Set(['type', 'is-instance', ...index.settings.entityTypeFields.map(normalizeKey)]);
+  return [...typeKeys].some((key) => hasValue(entity.frontmatter, key));
+}
+
 export function shouldAutoApplyScaffold(index: OntologyIndex, entity: OntologyEntity): boolean {
   return entity.instanceOf.some((typeName) => {
     const type = index.types.get(typeName);
     if (!type) return false;
-    // Ingest-from detection is sufficient — membership is already certain.
-    if (type.ingestFrom.size > 0) return true;
+    // Ingest-from only makes membership "already certain" when it's the ONLY
+    // source of that membership — i.e. the note has no explicit type field at
+    // all, so ingest-from inferred it silently and finishing the job (scaffold)
+    // is part of that same silent inference. Once a note explicitly declares
+    // its own type (instance-of/is-instance/type), typing it — or retyping it —
+    // is an ordinary edit, and should follow the normal autoScaffoldEntities
+    // setting like everything else, not bypass it.
+    if (type.ingestFrom.size > 0 && !hasExplicitTypeField(index, entity)) return true;
     if (!type.autoApply) return false;
     if (type.autoApply === true) return true;
     return evalAutoApplyBlock(entity.frontmatter, type.autoApply);

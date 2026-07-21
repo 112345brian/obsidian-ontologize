@@ -345,6 +345,24 @@ describe('shouldAutoApplyScaffold', () => {
     expect(shouldAutoApplyScaffold(index, entity)).toBe(true);
   });
 
+  it('returns true via ingest-from when the entity has no explicit type field', () => {
+    const index = makeIndex();
+    index.types.get('Philosopher')!.ingestFrom = new Map([['member-of', 'Philosopher']]);
+    const entity = index.entities.get('Spinoza.md')!;
+    entity.frontmatter = { 'member-of': '[[Philosopher]]' };
+    expect(shouldAutoApplyScaffold(index, entity)).toBe(true);
+  });
+
+  it('returns false via ingest-from once the entity explicitly declares its own type', () => {
+    // Membership is no longer "inferred" here — the note names its own type,
+    // so retyping it is an ordinary edit and should not silently scaffold.
+    const index = makeIndex();
+    index.types.get('Philosopher')!.ingestFrom = new Map([['member-of', 'Philosopher']]);
+    const entity = index.entities.get('Spinoza.md')!;
+    entity.frontmatter = { 'instance-of': '[[Philosopher]]', 'member-of': '[[Philosopher]]' };
+    expect(shouldAutoApplyScaffold(index, entity)).toBe(false);
+  });
+
   it('flat all (default): all conditions must match', () => {
     const index = makeIndex();
     const entity = index.entities.get('Spinoza.md')!;
