@@ -13,7 +13,7 @@ export function makeOntologyType(overrides: Partial<OntologyType> & { name: stri
     cannotHave: new Set(),
     disjoint: [],
     excludes: [],
-    extends: [],
+    subtypeOf: [],
     fields: new Map(),
     implementableBy: [],
     implements: [],

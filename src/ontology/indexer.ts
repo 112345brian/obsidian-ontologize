@@ -495,9 +495,11 @@ export async function upsertOntologyFile(app: App, index: OntologyIndex, file: T
     }
     const type = parseOntologyType(file.path, source, settings.autoApplyBlockPrefix, settings.requireOntologizePrefix);
     index.types.set(type.name, type);
-    const hubEntity = resolveTypeFileAsEntity(file.path, frontmatter ?? {}, normalizedEntityTypeFields(settings.entityTypeFields));
-    if (hubEntity) {
-      index.entities.set(hubEntity.path, hubEntity);
+    if (!isIgnoredByFrontmatter(frontmatter ?? {}, settings)) {
+      const hubEntity = resolveTypeFileAsEntity(file.path, frontmatter ?? {}, normalizedEntityTypeFields(settings.entityTypeFields));
+      if (hubEntity) {
+        index.entities.set(hubEntity.path, hubEntity);
+      }
     }
     return recomputeOntologyDerivedState(index);
   }
@@ -630,9 +632,11 @@ export async function buildOntologyIndex(app: App, settings: BuildIndexSettings)
         const type = parseOntologyType(file.path, source, settings.autoApplyBlockPrefix, settings.requireOntologizePrefix);
         index.types.set(type.name, type);
       }
-      const hubEntity = resolveTypeFileAsEntity(file.path, cachedFm ?? {}, typeFields);
-      if (hubEntity) {
-        index.entities.set(hubEntity.path, hubEntity);
+      if (!isIgnoredByFrontmatter(cachedFm ?? {}, settings)) {
+        const hubEntity = resolveTypeFileAsEntity(file.path, cachedFm ?? {}, typeFields);
+        if (hubEntity) {
+          index.entities.set(hubEntity.path, hubEntity);
+        }
       }
     } else {
       entityFiles.push(file);
