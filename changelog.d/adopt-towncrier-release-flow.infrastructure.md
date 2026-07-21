@@ -1,0 +1,1 @@
+**Changelog fragments and automated release flow.** Changes are now documented with one small fragment file per change in `changelog.d/`, compiled into `CHANGELOG.md` by [towncrier](https://towncrier.readthedocs.io/) as part of `npm run bump` (which also bumps `package.json`/`manifest.json`/`versions.json`, commits, and tags via `release-it`). See `docs/releasing.md`.

@@ -151,11 +151,16 @@ npx tsc --noEmit   # type-check
 npm test           # unit tests
 ```
 
+## Releasing
+
+Each change gets a small fragment file in [`changelog.d/`](changelog.d/README.md), compiled into `CHANGELOG.md` and rolled into the version bump by `npm run bump`. See [`docs/releasing.md`](docs/releasing.md) for the full recipe.
+
 ## Docs
 
 - [`docs/spec.md`](docs/spec.md) — product and system specification
 - [`docs/schema-api.md`](docs/schema-api.md) — field-by-field schema authoring reference
 - [`docs/architecture.md`](docs/architecture.md) — V1 implementation architecture notes
+- [`docs/releasing.md`](docs/releasing.md) — changelog fragments and cutting a release
 
 ## Demo Vault
 

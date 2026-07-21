@@ -1,0 +1,37 @@
+[tool.towncrier]
+name = "obsidian-ontologize"
+directory = "changelog.d"
+filename = "CHANGELOG.md"
+start_string = "<!-- towncrier release notes start -->\n"
+title_format = "## {version}"
+issue_format = ""
+
+[[tool.towncrier.type]]
+directory = "feature"
+name = "Features"
+showcontent = true
+
+[[tool.towncrier.type]]
+directory = "fix"
+name = "Bug fixes"
+showcontent = true
+
+[[tool.towncrier.type]]
+directory = "improvement"
+name = "Improvements"
+showcontent = true
+
+[[tool.towncrier.type]]
+directory = "performance"
+name = "Performance"
+showcontent = true
+
+[[tool.towncrier.type]]
+directory = "architecture"
+name = "Architecture"
+showcontent = true
+
+[[tool.towncrier.type]]
+directory = "infrastructure"
+name = "Infrastructure"
+showcontent = true

@@ -23,8 +23,31 @@
     "lint:fix": "jiti scripts/lint-fix.ts",
     "prepare": "jiti scripts/prepare.ts",
     "test": "vitest run",
+    "typecheck": "tsc --noEmit",
+    "check": "npm run lint && npm run typecheck && npm test && npm run build",
     "test:watch": "vitest",
-    "bump": "jiti scripts/version.ts"
+    "bump": "release-it",
+    "release": "release-it"
+  },
+  "release-it": {
+    "git": {
+      "commitMessage": "chore: release v${version}",
+      "tagName": "v${version}",
+      "requireCleanWorkingDir": true
+    },
+    "github": {
+      "release": false
+    },
+    "npm": {
+      "publish": false
+    },
+    "hooks": {
+      "before:init": "npm run check",
+      "after:bump": [
+        "jiti scripts/sync-obsidian-manifest.ts",
+        "towncrier build --yes --version ${version}"
+      ]
+    }
   },
   "devDependencies": {
     "@codemirror/language": "6.11.2",
@@ -37,6 +60,7 @@
     "obsidian": "latest",
     "obsidian-dev-utils": "latest",
     "obsidian-typings": "obsidian-public-latest",
+    "release-it": "^20.2.1",
     "typescript": "latest",
     "vitest": "latest"
   },

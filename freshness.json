@@ -1,0 +1,19 @@
+{
+  "_note": "Freshness ledger for perishable researched info. Maintained by the research-freshness skill. Dates are ISO YYYY-MM-DD.",
+  "entries": [
+    {
+      "id": "towncrier-release-it-versions",
+      "artifact": "package.json#devDependencies, towncrier.toml",
+      "topic": "release-it (^20.2.1, npm) and towncrier (25.8.0, pipx/pip) — the release flow this repo's changelog/version tooling depends on",
+      "checked": "2026-07-21",
+      "recheck_by": "2027-01-21",
+      "volatility": "medium",
+      "reason": "towncrier is mature and widely used (Twisted-maintained, non-Python-project support confirmed working end to end); release-it is actively developed. Re-verify the release flow after any major version bump of either.",
+      "sources": [
+        "https://towncrier.readthedocs.io/",
+        "https://github.com/twisted/towncrier",
+        "https://github.com/release-it/release-it"
+      ]
+    }
+  ]
+}
