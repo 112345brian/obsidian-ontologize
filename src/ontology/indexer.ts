@@ -284,6 +284,23 @@ function rebuildEntityNameIndex(index: OntologyIndex): void {
   index.ambiguousEntityNames = new Set([...counts].filter(([, count]) => count > 1).map(([name]) => name));
 }
 
+// Incrementally re-derives the "Duplicate entity name" issue for a single name after
+// rebuildEntityNameIndex — the fast path only touches one entity per edit, so only the
+// name(s) that entity is (or was) registered under can have changed ambiguity status;
+// every other name's issue is untouched. Mirrors the full derivation in
+// recomputeOntologyDerivedState, which regenerates all of them from scratch.
+function syncDuplicateEntityNameIssue(index: OntologyIndex, name: string): void {
+  index.issues = index.issues.filter((issue) => !issue.message.startsWith(`Duplicate entity name ${name}:`));
+  if (index.ambiguousEntityNames?.has(name)) {
+    const paths = [...index.entities.values()].filter((entity) => entity.name === name).map((entity) => entity.path).sort();
+    pushIssueOnce(index.issues, {
+      file: paths[0] ?? '',
+      message: `Duplicate entity name ${name}: ${paths.join(', ')}. Wiki links to ${name} cannot be resolved unambiguously.`,
+      severity: 'warning'
+    });
+  }
+}
+
 // Obsidian resolves wikilinks case-insensitively, so `is-instance: [[philosopher]]`
 // points at Philosopher.md just fine in the app — membership resolution has to
 // accept the same variance instead of silently treating it as an unknown type.
@@ -608,6 +625,14 @@ export async function upsertOntologyEntityFileFast(app: App, index: OntologyInde
   rebuildEntityNameIndex(index);
   index.effectiveEntityLocks.set(file.path, computeEntityLock(fresh, index.effectiveTypeLocks));
   revalidateEntityPaths(index, affectedPaths);
+  // Must run after revalidateEntityPaths, which clears and re-derives per-entity
+  // issues for affectedPaths — a duplicate-name issue added before that filter runs
+  // could be wiped out if its `file` (the alphabetically-first duplicate path) happens
+  // to be one of the affected paths.
+  syncDuplicateEntityNameIssue(index, fresh.name);
+  if (previous && previous.name !== fresh.name) {
+    syncDuplicateEntityNameIssue(index, previous.name);
+  }
   index.generatedAt = new Date().toISOString();
   return index;
 }
