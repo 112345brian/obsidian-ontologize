@@ -26,6 +26,7 @@ import {
 } from './compose.ts';
 import {
   basenameWithoutExtension,
+  extractAssertedLinkTargets,
   normalizeLinkTarget
 } from './links.ts';
 import { detectTypeFromIngestFields } from './mutations.ts';
@@ -458,6 +459,45 @@ export function removeOntologyFile(index: OntologyIndex, path: string): Ontology
   return recomputeOntologyDerivedState(index);
 }
 
+function entityFrontmatterTouchesTransitiveRelation(index: OntologyIndex, before: Record<string, unknown> | undefined, after: Record<string, unknown> | undefined): boolean {
+  for (const property of new Set([...Object.keys(before ?? {}), ...Object.keys(after ?? {})])) {
+    if (index.relationDefinitions.get(property)?.transitive === true) {
+      return true;
+    }
+  }
+  return false;
+}
+
+function linkedEntityNames(frontmatter: Record<string, unknown>): Set<string> {
+  const names = new Set<string>();
+  for (const value of Object.values(frontmatter)) {
+    for (const target of extractAssertedLinkTargets(value)) {
+      names.add(target);
+    }
+  }
+  return names;
+}
+
+function entityPathsLinkedToName(index: OntologyIndex, targetName: string): Set<string> {
+  const paths = new Set<string>();
+  for (const entity of index.entities.values()) {
+    if (linkedEntityNames(entity.frontmatter).has(targetName)) {
+      paths.add(entity.path);
+    }
+  }
+  return paths;
+}
+
+function revalidateEntityPaths(index: OntologyIndex, paths: Set<string>): void {
+  index.issues = index.issues.filter((issue) => !paths.has(issue.file));
+  for (const path of paths) {
+    const entity = index.entities.get(path);
+    if (entity) {
+      validateSingleEntity(index, entity);
+    }
+  }
+}
+
 async function loadSchemaTypes(app: App, index: OntologyIndex, settings: BuildIndexSettings): Promise<void> {
   const schemaPath = settings.schemaPath?.trim();
   if (!schemaPath) {
@@ -522,6 +562,54 @@ export async function upsertOntologyFile(app: App, index: OntologyIndex, file: T
     index.entities.set(entity.path, entity);
   }
   return recomputeOntologyDerivedState(index);
+}
+
+export async function upsertOntologyEntityFileFast(app: App, index: OntologyIndex, file: TFile, settings: BuildIndexSettings): Promise<OntologyIndex> {
+  if (isOntologySchemaFile(file, settings.schemaPath)) {
+    return buildOntologyIndex(app, settings);
+  }
+
+  const frontmatter = app.metadataCache.getFileCache(file)?.frontmatter as Record<string, unknown> | undefined;
+  if (isOntologyTypeFile(file, settings.typeFolder, frontmatter) || isIgnoredOntologyPath(file.path, settings)) {
+    return upsertOntologyFile(app, index, file, settings);
+  }
+
+  const previous = index.entities.get(file.path);
+  if (entityFrontmatterTouchesTransitiveRelation(index, previous?.frontmatter, frontmatter)) {
+    return upsertOntologyFile(app, index, file, settings);
+  }
+
+  if (isIgnoredByFrontmatter(frontmatter ?? {}, settings)) {
+    return previous ? upsertOntologyFile(app, index, file, settings) : index;
+  }
+
+  const fresh = resolveEntityFromFile(file.path, frontmatter ?? {}, normalizedEntityTypeFields(settings.entityTypeFields), index);
+  if (!fresh) {
+    return previous ? upsertOntologyFile(app, index, file, settings) : index;
+  }
+
+  const foldedTypeNames = buildFoldedTypeNameMap(index.types);
+  fresh.instanceOf = expandDeclaredMemberships(index, foldedTypeNames, fresh.declaredInstanceOf ?? fresh.instanceOf);
+
+  const affectedPaths = new Set<string>([file.path]);
+  for (const targetName of linkedEntityNames(previous?.frontmatter ?? {})) {
+    const target = index.entitiesByName.get(targetName);
+    if (target) affectedPaths.add(target.path);
+  }
+  for (const targetName of linkedEntityNames(fresh.frontmatter)) {
+    const target = index.entitiesByName.get(targetName);
+    if (target) affectedPaths.add(target.path);
+  }
+  for (const path of entityPathsLinkedToName(index, fresh.name)) {
+    affectedPaths.add(path);
+  }
+
+  index.entities.set(file.path, fresh);
+  rebuildEntityNameIndex(index);
+  index.effectiveEntityLocks.set(file.path, computeEntityLock(fresh, index.effectiveTypeLocks));
+  revalidateEntityPaths(index, affectedPaths);
+  index.generatedAt = new Date().toISOString();
+  return index;
 }
 
 export interface BatchRevalidationResult {

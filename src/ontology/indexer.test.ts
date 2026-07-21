@@ -25,6 +25,7 @@ import {
   recomputeOntologyDerivedState,
   removeOntologyFile,
   revalidateEntityBatch,
+  upsertOntologyEntityFileFast,
   upsertOntologyFile
 } from './indexer.ts';
 import { makeIndexSettings } from './test-support.ts';
@@ -1301,6 +1302,53 @@ describe('incremental ontology index state', () => {
     expect(incremental.entities.get('Ada.md')).toEqual(fresh.entities.get('Ada.md'));
     expect(incremental.effectiveEntityLocks.get('Ada.md')).toEqual(fresh.effectiveEntityLocks.get('Ada.md'));
     expect(incremental.issues.map((issue) => issue.message)).toEqual(fresh.issues.map((issue) => issue.message));
+  });
+
+  it('fast-path entity upserts preserve unrelated issues instead of rebuilding the whole vault', async () => {
+    const entityFile = { basename: 'Ada', extension: 'md', path: 'Ada.md' } as TFile;
+    const frontmatterByPath = new Map<string, Record<string, unknown>>([
+      ['Ada.md', { 'is-instance': '[[Philosopher]]', lock: true }]
+    ]);
+    const schema = JSON.stringify({
+      types: {
+        Philosopher: {
+          lock: true,
+          'must-have': {
+            school: {
+              type: 'string'
+            }
+          }
+        }
+      }
+    });
+    const app = {
+      metadataCache: {
+        getFileCache: (file: TFile) => ({ frontmatter: frontmatterByPath.get(file.path) ?? {} })
+      },
+      vault: {
+        adapter: {
+          exists: (path: string) => Promise.resolve(path === '_types/ontology.schema.json'),
+          read: () => Promise.resolve(schema)
+        },
+        getFileByPath: () => null,
+        getMarkdownFiles: () => [entityFile],
+        read: () => Promise.resolve('')
+      }
+    } as unknown as App;
+    const settings = {
+      entityTypeFields: ['is-instance', 'type'],
+      schemaPath: '_types/ontology.schema.json',
+      typeFolder: '_types'
+    };
+
+    const index = await buildOntologyIndex(app, settings);
+    index.issues.push({ file: 'Other.md', message: 'custom script issue', severity: 'warning' });
+
+    frontmatterByPath.set('Ada.md', { 'is-instance': '[[Philosopher]]', lock: true, school: 'Rationalism' });
+    const updated = await upsertOntologyEntityFileFast(app, index, entityFile, settings);
+
+    expect(updated.issues).toContainEqual(expect.objectContaining({ file: 'Other.md', message: 'custom script issue' }));
+    expect(updated.issues.some((issue) => issue.file === 'Ada.md' && issue.property === 'school')).toBe(false);
   });
 });
 

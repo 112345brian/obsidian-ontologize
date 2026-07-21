@@ -331,4 +331,24 @@ describe('Plugin orchestration', () => {
     await settle(plugin);
     expect(hoisted.openedModals).toHaveLength(2);
   });
+
+  it('skips hot entity work when metadata changes but frontmatter is unchanged', async () => {
+    const fake = makeFakeVault();
+    fake.files.set('_types/Dog.md', '{"lock": true}');
+    fake.markdownFiles = [makeTFile('_types/Dog.md'), makeTFile('Rex.md')];
+    fake.frontmatterByPath.set('Rex.md', { 'is-instance': '[[Dog]]', lock: true });
+
+    const plugin = await loadPlugin(fake);
+    for (const callback of layoutCallbacks) {
+      callback();
+    }
+    await settle(plugin);
+    expect(plugin.index?.entities.has('Rex.md')).toBe(true);
+
+    plugin.index!.generatedAt = 'sentinel';
+    await plugin['handleMetadataChanged'](makeTFile('Rex.md'));
+    await settle(plugin);
+
+    expect(plugin.index?.generatedAt).toBe('sentinel');
+  });
 });

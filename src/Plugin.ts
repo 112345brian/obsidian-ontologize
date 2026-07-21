@@ -21,6 +21,7 @@ import {
   isOntologySchemaFile,
   isOntologyTypeFile,
   removeOntologyFile,
+  upsertOntologyEntityFileFast,
   upsertOntologyFile
 } from './ontology/indexer.ts';
 import {
@@ -71,6 +72,9 @@ import { IndexTaskQueue } from './IndexTaskQueue.ts';
 import { OntologyCacheService } from './OntologyCacheService.ts';
 import { registerVaultEvents } from './VaultEventRegistration.ts';
 import { EntityScaffoldService } from './EntityScaffoldService.ts';
+import { FrontmatterFingerprintService } from './FrontmatterFingerprintService.ts';
+
+const AUTO_INVERSE_DEBOUNCE_MS = 1000;
 
 export class Plugin extends ObsidianPlugin {
   public index: null | OntologyIndex = null;
@@ -80,6 +84,7 @@ export class Plugin extends ObsidianPlugin {
   private readonly issueBlameService = new IssueBlameService();
   private readonly backgroundSweepService = new BackgroundSweepService();
   private readonly indexTaskQueue = new IndexTaskQueue();
+  private readonly frontmatterFingerprints = new FrontmatterFingerprintService();
   private readonly entityScaffoldService = new EntityScaffoldService(
     this.app,
     () => this.index,
@@ -97,6 +102,7 @@ export class Plugin extends ObsidianPlugin {
   private deviceId = '';
   private indexReady = false;
   private isAutoFixingInverses = false;
+  private autoInverseTimer: null | number = null;
   // Paths currently being written by the type editor modal; suppresses the
   // raw-edit lock warning for writes the plugin itself initiates.
   private modalWritingPaths = new Set<string>();
@@ -126,6 +132,9 @@ export class Plugin extends ObsidianPlugin {
     // hydrating it would let pre-rebuild reads see files the user has since
     // ignored (or miss files they un-ignored). Wait for the cold rebuild instead.
     this.index = cachedIndex && JSON.stringify(cachedIndex.settings) === JSON.stringify(this.indexSettings()) ? cachedIndex : null;
+    if (this.index) {
+      this.frontmatterFingerprints.seed(this.index.entities.values());
+    }
 
     this.registerMarkdownCodeBlockProcessor('ontology-query', this.renderQueryBlock.bind(this));
 
@@ -186,6 +195,10 @@ export class Plugin extends ObsidianPlugin {
 
   public override onunload(): void {
     this.cacheService.clearTimer();
+    if (this.autoInverseTimer !== null) {
+      window.clearTimeout(this.autoInverseTimer);
+      this.autoInverseTimer = null;
+    }
   }
 
   public async savePluginSettings(): Promise<void> {
@@ -199,6 +212,7 @@ export class Plugin extends ObsidianPlugin {
 
   private async buildAndStore(showNotice: boolean): Promise<void> {
     this.index = await buildOntologyIndex(this.app, this.indexSettings());
+    this.frontmatterFingerprints.seed(this.index.entities.values());
     await this.writeCacheSafely();
     // Reload scripts on full rebuild so they see the fresh index, then run validate hooks.
     await this.reloadScripts();
@@ -496,6 +510,21 @@ export class Plugin extends ObsidianPlugin {
     return this.runAutoInverseFix();
   }
 
+  private scheduleAutoInverseUpdates(): void {
+    if (!this.index || !this.pluginSettings.autoUpdateInverses || !this.indexReady) {
+      return;
+    }
+    if (this.autoInverseTimer !== null) {
+      window.clearTimeout(this.autoInverseTimer);
+    }
+    this.autoInverseTimer = window.setTimeout(() => {
+      this.autoInverseTimer = null;
+      this.runEventTask(this.enqueue(async () => {
+        await this.applyAutoInverseUpdates();
+      }));
+    }, AUTO_INVERSE_DEBOUNCE_MS);
+  }
+
   /**
    * Rotates through the entity roster in batches, refreshing frontmatter from
    * the in-memory metadataCache and re-running per-entity validation without a
@@ -604,6 +633,7 @@ export class Plugin extends ObsidianPlugin {
       }
       const wasType = 'basename' in file && this.index.types.has((file as { basename: string }).basename);
       this.index = removeOntologyFile(this.index, file.path);
+      this.frontmatterFingerprints.forget(file.path);
       if (wasType) {
         this.offerScaffoldAfterTypeChange();
       }
@@ -653,6 +683,7 @@ export class Plugin extends ObsidianPlugin {
       if (file instanceof TFile) {
         const index = await this.ensureIndexCore();
         this.index = removeOntologyFile(index, oldPath);
+        this.frontmatterFingerprints.forget(oldPath);
         await this.upsertFileCore(file);
         return;
       }
@@ -677,7 +708,16 @@ export class Plugin extends ObsidianPlugin {
   private async upsertFileCore(file: TFile): Promise<void> {
     const index = await this.ensureIndexCore();
     const membershipBefore = index.entities.get(file.path)?.instanceOf ?? [];
-    this.index = await upsertOntologyFile(this.app, index, file, this.indexSettings());
+    const frontmatter = this.app.metadataCache.getFileCache(file)?.frontmatter as Record<string, unknown> | undefined;
+    if (!isOntologySchemaFile(file, this.pluginSettings.schemaPath) && !isOntologyTypeFile(file, this.pluginSettings.typeFolder, frontmatter)) {
+      if (!this.frontmatterFingerprints.hasChanged(file.path, frontmatter)) {
+        return;
+      }
+      this.index = await upsertOntologyEntityFileFast(this.app, index, file, this.indexSettings());
+    } else {
+      this.index = await upsertOntologyFile(this.app, index, file, this.indexSettings());
+    }
+    this.frontmatterFingerprints.record(file.path, frontmatter);
     const membershipAfter = this.index.entities.get(file.path)?.instanceOf ?? [];
 
     const entity = this.index.entities.get(file.path);
@@ -725,7 +765,7 @@ export class Plugin extends ObsidianPlugin {
       }
     }
 
-    await this.applyAutoInverseUpdates();
+    this.scheduleAutoInverseUpdates();
     this.scheduleCacheWrite();
   }
 
