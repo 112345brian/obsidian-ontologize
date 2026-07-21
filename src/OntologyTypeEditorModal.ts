@@ -284,8 +284,9 @@ export class OntologyTypeEditorModal extends Modal {
 
   private renderConstraints(containerEl: HTMLElement): void {
     const { model } = this.options;
-    const constraints = model.rules.filter((r) => r.kind !== 'replaces');
-    const constraintIndices = model.rules.map((r, i) => r.kind !== 'replaces' ? i : -1).filter((i) => i !== -1);
+    const constraints = model.rules
+      .map((rule, index) => ({ rule, index }))
+      .filter(({ rule }) => rule.kind !== 'replaces');
 
     const section = containerEl.createEl('section', { cls: 'ontology-type-editor-section' });
     const header = section.createEl('div', { cls: 'ontology-type-editor-header' });
@@ -294,8 +295,7 @@ export class OntologyTypeEditorModal extends Modal {
     add.addEventListener('click', () => { model.rules.push({ kind: 'requires', value: '' }); this.render(); });
     section.createEl('p', { cls: 'setting-item-description', text: 'Membership rules: what other types must or cannot coexist with this one.' });
 
-    for (const [i, rule] of constraints.entries()) {
-      const index = constraintIndices[i];
+    for (const { rule, index } of constraints) {
       const card = section.createEl('div', { cls: 'ontology-type-editor-field ontology-rule-card' });
       const rowHeader = card.createEl('div', { cls: 'ontology-type-editor-row-header' });
       rowHeader.createEl('span', { cls: 'ontology-type-editor-row-label', text: rule.kind === 'requires' ? 'Requires' : 'Excludes' });
@@ -347,8 +347,9 @@ export class OntologyTypeEditorModal extends Modal {
 
   private renderReplacements(containerEl: HTMLElement): void {
     const { model } = this.options;
-    const replacements = model.rules.filter((r): r is Extract<TypeEditorRule, { kind: 'replaces' }> => r.kind === 'replaces');
-    const replacementIndices = model.rules.map((r, i) => r.kind === 'replaces' ? i : -1).filter((i) => i !== -1);
+    const replacements = model.rules
+      .map((rule, index) => ({ rule, index }))
+      .filter((e): e is { rule: Extract<TypeEditorRule, { kind: 'replaces' }>; index: number } => e.rule.kind === 'replaces');
 
     const section = containerEl.createEl('section', { cls: 'ontology-type-editor-section' });
     const header = section.createEl('div', { cls: 'ontology-type-editor-header' });
@@ -357,8 +358,7 @@ export class OntologyTypeEditorModal extends Modal {
     add.addEventListener('click', () => { model.rules.push({ kind: 'replaces', newValue: model.name, value: '' }); this.render(); });
     section.createEl('p', { cls: 'setting-item-description', text: 'When this type is applied, replace old field values with new ones.' });
 
-    for (const [i, rule] of replacements.entries()) {
-      const index = replacementIndices[i];
+    for (const { rule, index } of replacements) {
       const card = section.createEl('div', { cls: 'ontology-type-editor-field ontology-rule-card' });
       const rowHeader = card.createEl('div', { cls: 'ontology-type-editor-row-header' });
       rowHeader.createEl('span', { cls: 'ontology-type-editor-row-label', text: 'Replaces' });
