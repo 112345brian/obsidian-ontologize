@@ -1,1 +1,0 @@
-**More plugin lifecycle code moved behind focused services.** Script loading and hook dispatch, cache read/write debouncing, index task serialization, vault event registration, and scaffold review state now live in dedicated service modules instead of the main Obsidian plugin shell.

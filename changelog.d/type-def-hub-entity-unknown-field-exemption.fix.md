@@ -1,1 +1,0 @@
-**`warnUnknownEntityFields` no longer false-positives on type-def files that double as hub entities.** Such a file carries its full type-schema frontmatter (`must-have`, `can-have`, `relations`, `subtype-of`, etc.), none of which are declared fields on the entity's own type — every recognized schema key is now exempted for these dual-purpose files instead of flooding warnings.

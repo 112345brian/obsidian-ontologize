@@ -1,1 +1,0 @@
-**Hot note edits avoid full ontology recomputation.** Metadata changes with unchanged frontmatter are skipped, ordinary entity frontmatter updates use a focused validation path instead of rebuilding derived state for the whole vault, and automatic inverse repair is debounced so repeated edits coalesce before any write pass runs.

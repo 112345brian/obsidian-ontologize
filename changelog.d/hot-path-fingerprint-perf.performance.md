@@ -1,1 +1,0 @@
-**Fingerprint seeding no longer blocks plugin startup.** Seeding cached entities/types into the frontmatter/type-schema fingerprint caches on load used to run synchronously before `onLayoutReady`, adding O(vault size) work to the blocking startup path on large vaults. It now happens as part of the deferred full rebuild instead.

@@ -1,1 +1,0 @@
-**Ignored type files no longer get indexed as hub entities.** A type-def file that doubles as its own hub entity (per its `ontologize`/frontmatter declaration) is now skipped when it also matches an ignore rule, consistent with how ignored files are already excluded everywhere else.

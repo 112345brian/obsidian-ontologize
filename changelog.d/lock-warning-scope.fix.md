@@ -1,1 +1,0 @@
-**Locked-type warning no longer fires on unrelated edits.** Saving a locked type file used to show the "use the type editor" notice on every save, even when only body prose or non-schema frontmatter changed. The notice now only appears when the type's actual schema fields (`must-have`, `can-have`, `relations`, `lock`, `subtype-of`, etc.) changed.

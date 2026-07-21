@@ -1,1 +1,0 @@
-**Removed dead `build:clean`/`build:compile` npm scripts.** Neither was referenced by CI, release, or `scripts/build.ts` itself (which already does the same work inline) — leftover, unreachable duplicates from the build-script refactor.
