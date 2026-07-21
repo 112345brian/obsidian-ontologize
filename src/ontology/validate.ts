@@ -737,6 +737,25 @@ export function validateSchemaCompositionConflicts(index: OntologyIndex): void {
 
           if (existing.bucket === 'can-have' && bucket === 'must-have') {
             fields.set(frontmatterKey, { bucket, definition: resolved, semanticId, source });
+            continue;
+          }
+
+          // Tightening (can-have -> must-have) is allowed above; the reverse is
+          // not: a descendant may not loosen an ancestor's must-have to
+          // can-have (spec: constraints may not be loosened down the
+          // hierarchy). Only flag genuine descent — two unrelated parents
+          // merging different buckets is already resolved in must-have's
+          // favor and is not a loosening.
+          if (
+            existing.bucket === 'must-have' && bucket === 'can-have'
+            && (index.ancestorsByType.get(source.name)?.has(existing.source.name) ?? false)
+          ) {
+            pushIssueOnce(index.issues, {
+              file: type.path,
+              message: `Schema conflict on ${type.name}.${frontmatterKey}: ${source.name} loosens ${existing.source.name}'s must-have to can-have; constraints may not be loosened down the hierarchy`,
+              property: frontmatterKey,
+              severity: 'error',
+            });
           }
         }
       }
