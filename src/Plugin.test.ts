@@ -160,6 +160,9 @@ function makeFakeApp(fake: FakeVault): App {
         },
       },
       getAbstractFileByPath: () => null,
+      getFileByPath: (path: string) => fake.markdownFiles.find((file) => file.path === path) ?? null,
+      getFolderByPath: () => null,
+      createFolder: () => Promise.resolve(),
       getMarkdownFiles: () => {
         fake.eventLog.push('scan');
         return [...fake.markdownFiles];

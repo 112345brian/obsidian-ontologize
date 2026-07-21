@@ -956,6 +956,7 @@ describe('incremental ontology index state', () => {
         })
       },
       vault: {
+        getFileByPath: () => null,
         adapter: {
           exists: (path: string) => Promise.resolve(path === '_types/ontology.schema.json'),
           read: () => Promise.resolve(schema)
@@ -984,6 +985,7 @@ describe('incremental ontology index state', () => {
   it('persists schema lint errors and blocks malformed schema constructors', async () => {
     const app = {
       vault: {
+        getFileByPath: () => null,
         adapter: {
           exists: () => Promise.resolve(true),
           read: () =>
@@ -1128,6 +1130,7 @@ describe('incremental ontology index state', () => {
         })
       },
       vault: {
+        getFileByPath: () => null,
         adapter: {
           exists: () => Promise.resolve(false)
         },
@@ -1163,6 +1166,7 @@ describe('incremental ontology index state', () => {
         getFileCache: (file: TFile) => ({ frontmatter: frontmatterByPath.get(file.path) ?? {} })
       },
       vault: {
+        getFileByPath: () => null,
         adapter: {
           exists: () => Promise.resolve(false)
         },
@@ -1203,6 +1207,7 @@ describe('incremental ontology index state', () => {
         getFileCache: () => ({ frontmatter })
       },
       vault: {
+        getFileByPath: () => null,
         adapter: { exists: () => Promise.resolve(false) },
         getMarkdownFiles: () => [typeFile],
         read: () => Promise.resolve('ontologize: true\nrelations:\n  member-of:\n    uses: member-of\n')
@@ -1224,6 +1229,7 @@ describe('incremental ontology index state', () => {
         getFileCache: () => ({ frontmatter })
       },
       vault: {
+        getFileByPath: () => null,
         adapter: { exists: () => Promise.resolve(false) },
         getMarkdownFiles: () => [typeFile],
         read: () => Promise.resolve('ontologize: true\ntype: relation-definitions\nrelations:\n')

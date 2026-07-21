@@ -460,11 +460,21 @@ export function removeOntologyFile(index: OntologyIndex, path: string): Ontology
 
 async function loadSchemaTypes(app: App, index: OntologyIndex, settings: BuildIndexSettings): Promise<void> {
   const schemaPath = settings.schemaPath?.trim();
-  if (!schemaPath || !(await app.vault.adapter.exists(schemaPath))) {
+  if (!schemaPath) {
     return;
   }
 
-  const source = await app.vault.adapter.read(schemaPath);
+  // Prefer the Vault API; fall back to the adapter for schema files kept in
+  // dot-folders (e.g. .config/), which the vault index does not surface.
+  const schemaFile = app.vault.getFileByPath(schemaPath);
+  let source: string;
+  if (schemaFile) {
+    source = await app.vault.read(schemaFile);
+  } else if (await app.vault.adapter.exists(schemaPath)) {
+    source = await app.vault.adapter.read(schemaPath);
+  } else {
+    return;
+  }
   const lintIssues = lintOntologySchemaSource(schemaPath, source, settings.autoApplyBlockPrefix);
   index.schemaIssues?.push(...lintIssues);
   if (lintIssues.some((item) => item.severity === 'error')) {

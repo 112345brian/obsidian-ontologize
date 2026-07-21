@@ -135,7 +135,10 @@ export class Plugin extends ObsidianPlugin {
     this.pluginSettings = Object.assign(new PluginSettingsClass(), savedData);
     if (!('globalTypePath' in savedData)) {
       const candidate = normalizePath(`${this.pluginSettings.typeFolder}/_global.md`);
-      if (await this.app.vault.adapter.exists(candidate)) {
+      // Prefer the Vault API; fall back to the adapter for a typeFolder kept in a
+      // dot-folder (e.g. .config/), which the vault index does not surface — same
+      // fallback loadSchemaTypes uses for schema files in the same situation.
+      if (this.app.vault.getFileByPath(candidate) || await this.app.vault.adapter.exists(candidate)) {
         this.pluginSettings.globalTypePath = candidate;
       }
     }
@@ -450,7 +453,7 @@ export class Plugin extends ObsidianPlugin {
     const index = await this.ensureIndex();
     const types = [...index.types.values()];
     new OntologyTypeWizardModal(this.app, types, (model) => {
-      this.openTypeEditorForCreate(model);
+      void this.openTypeEditorForCreate(model);
     }).open();
   }
 
@@ -517,21 +520,22 @@ export class Plugin extends ObsidianPlugin {
     };
   }
 
-  private openTypeEditorForCreate(preset: TypeEditorModel): void {
+  private async openTypeEditorForCreate(preset: TypeEditorModel): Promise<void> {
+    const index = await this.ensureIndex();
     new OntologyTypeEditorModal(this.app, {
       ...this.typeEditorNames(),
       editing: false,
-      index: this.index,
+      index,
       model: preset,
       onSave: async (model) => {
         const folder = normalizePath(this.pluginSettings.typeFolder);
         const path = normalizePath(`${folder}/${model.name}.md`);
-        if (await this.app.vault.adapter.exists(path)) {
+        if (this.app.vault.getAbstractFileByPath(path)) {
           new Notice(`Ontology type already exists: ${path}`);
           return false;
         }
-        if (!(await this.app.vault.adapter.exists(folder))) {
-          await this.app.vault.adapter.mkdir(folder);
+        if (!this.app.vault.getFolderByPath(folder)) {
+          await this.app.vault.createFolder(folder);
         }
         const source = `---\n${stringifyYaml(typeEditorFrontmatter(model, this.pluginSettings.requireOntologizePrefix))}---\n`;
         const file = await this.app.vault.create(path, source);
