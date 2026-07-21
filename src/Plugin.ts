@@ -690,16 +690,26 @@ export class Plugin extends ObsidianPlugin {
         const typeName = file.basename;
         const previousType = this.index?.types.get(typeName);
         const shouldWarnIfChanged = !this.modalWritingPaths.has(file.path) && previousType?.lockIntent === true;
+        // Gate on the raw frontmatter fingerprint (read fresh, not from metadataCache —
+        // same staleness concern as the comment above), not the parsed schema fingerprint.
+        // A type file can also double as its own hub entity via entity-registration
+        // frontmatter (instance-of, member-of, ...) that isn't part of the parsed
+        // OntologyType schema, and lint issues are re-derived from the raw source too.
+        // Comparing only the parsed schema would skip re-indexing (and re-linting) an
+        // edit that changes neither, leaving stale entity registration or stale lint
+        // issues behind until the next full rebuild.
         const source = await this.app.vault.read(file);
-        const parsedType = parseOntologyType(file.path, source, this.pluginSettings.autoApplyBlockPrefix, this.pluginSettings.requireOntologizePrefix);
-        if (!this.typeSchemaFingerprints.hasChanged(parsedType)) {
+        const rawFrontmatter = readYamlObject(source);
+        if (!this.frontmatterFingerprints.hasChanged(file.path, rawFrontmatter)) {
           return;
         }
         await this.upsertFileCore(file);
+        // Re-record with this fresh vault.read()-backed value — upsertFileCore's own
+        // record uses metadataCache, which can still be catching up right after a vault
+        // 'modify' event fires (the same race the comment above warns about), and a
+        // stale recorded baseline would make the next genuine edit's comparison wrong.
+        this.frontmatterFingerprints.record(file.path, rawFrontmatter);
         const indexedType = this.index?.types.get(typeName);
-        if (indexedType) {
-          this.typeSchemaFingerprints.record(indexedType);
-        }
         if (shouldWarnIfChanged && previousType) {
           const newType = indexedType;
           if (newType && hasOntologySchemaChange(previousType, newType)) {
