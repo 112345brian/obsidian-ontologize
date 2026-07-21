@@ -36,7 +36,7 @@ export class PluginSettingsTab extends PluginSettingTab {
     if (key === 'filesToIgnore') return s.filesToIgnore.join('\n');
     if (key === 'frontmatterIgnoreRules') return formatFrontmatterIgnoreRules(s.frontmatterIgnoreRules);
     if (key === 'ignoredEntityFields') return s.ignoredEntityFields.join('\n');
-    return (s as Record<string, unknown>)[key];
+    return (s as unknown as Record<string, unknown>)[key];
   }
 
   public override async setControlValue(key: string, value: unknown): Promise<void> {
@@ -60,7 +60,7 @@ export class PluginSettingsTab extends PluginSettingTab {
     } else if (key === 'autoApplyBlockPrefix') {
       s.autoApplyBlockPrefix = String(value) || 'condition-';
     } else {
-      (s as Record<string, unknown>)[key] = value;
+      (s as unknown as Record<string, unknown>)[key] = value;
     }
     await this.plugin.savePluginSettings();
   }

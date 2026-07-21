@@ -553,6 +553,7 @@
   gap: 0.75em;
   justify-content: space-between;
   padding: 0.5em 0;
+  padding-left: calc(var(--ontology-library-depth, 0) * 1.25rem);
 }
 
 .ontology-library-row:last-child {
@@ -865,4 +866,9 @@
 .ontology-tag-suggestion:hover,
 .ontology-tag-suggestion.is-focused {
   background: var(--background-modifier-hover);
+}
+
+.ontology-notice-link {
+  cursor: pointer;
+  text-decoration: underline;
 }

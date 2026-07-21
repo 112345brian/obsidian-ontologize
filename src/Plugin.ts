@@ -38,7 +38,6 @@ import {
   applyTypeReplacements,
   detectAutoApplyType,
   detectTypeFromField,
-  detectTypeFromIngestFields,
   fixMissingInverses,
   planMissingInverses,
   planScaffoldEntity,
@@ -46,7 +45,6 @@ import {
 } from './ontology/mutations.ts';
 import type { TypeReplacement } from './ontology/types.ts';
 import {
-  extractAssertedLinkTargets,
   normalizeLinkTarget
 } from './ontology/links.ts';
 import {
@@ -521,9 +519,7 @@ export class Plugin extends ObsidianPlugin {
     const notice = new Notice('', 0);
     const frag = notice.noticeEl;
     frag.createEl('span', { text: `Type change affects ${affected.length} ${affected.length === 1 ? 'note' : 'notes'} with missing fields. ` });
-    const btn = frag.createEl('a', { text: 'Scaffold now', href: '#' });
-    btn.style.textDecoration = 'underline';
-    btn.style.cursor = 'pointer';
+    const btn = frag.createEl('a', { cls: 'ontology-notice-link', text: 'Scaffold now', href: '#' });
     btn.addEventListener('click', (e) => {
       e.preventDefault();
       notice.hide();

@@ -31,7 +31,7 @@ export class TagInput {
   }
 
   private renderChips(): void {
-    for (const child of [...this.wrapEl.children]) {
+    for (const child of Array.from(this.wrapEl.children)) {
       if (child !== this.inputEl && child !== this.dropEl) {
         child.remove();
       }

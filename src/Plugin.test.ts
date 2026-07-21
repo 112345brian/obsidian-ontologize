@@ -213,14 +213,15 @@ async function loadPlugin(fake: FakeVault, savedSettings: Record<string, unknown
 beforeEach(() => {
   hoisted.openedModals.length = 0;
   layoutCallbacks = [];
-  (globalThis as Record<string, unknown>)['window'] ??= { clearTimeout, setInterval, setTimeout };
+  // Pin the device id so the device-scoped cache path is deterministic.
+  window.localStorage.setItem('ontologize-device-id', 'test-device');
 });
 
 describe('Plugin orchestration', () => {
   it('discards a hydrated cache whose settings differ from current plugin settings', async () => {
     const mismatched = makeFakeVault();
-    mismatched.files.set('.obsidian/ontology-cache.json', JSON.stringify({
-      cacheVersion: 1,
+    mismatched.files.set('.obsidian/ontology-cache-test-device.json', JSON.stringify({
+      cacheVersion: 2,
       settings: {
         entityTypeFields: ['is-instance', 'type'],
         filesToIgnore: [],
@@ -234,8 +235,8 @@ describe('Plugin orchestration', () => {
     expect(pluginWithMismatch.index).toBeNull();
 
     const matched = makeFakeVault();
-    matched.files.set('.obsidian/ontology-cache.json', JSON.stringify({
-      cacheVersion: 1,
+    matched.files.set('.obsidian/ontology-cache-test-device.json', JSON.stringify({
+      cacheVersion: 2,
       settings: {
         autoApplyBlockPrefix: 'condition-',
         entityTypeFields: ['is-instance', 'type'],

@@ -217,7 +217,7 @@ export class OntologyIssuesModal extends Modal {
           row.createEl('button', { cls: 'ontology-issue-fix-apply', text: 'Apply' })
             .addEventListener('click', () => { void apply(); });
 
-          setTimeout(() => input.focus(), 0);
+          setTimeout(() => { if (input.isConnected) { input.focus(); } }, 0);
         }
       }
     }
