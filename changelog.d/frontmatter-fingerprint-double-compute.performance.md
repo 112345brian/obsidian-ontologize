@@ -1,0 +1,1 @@
+**Entity saves compute their frontmatter fingerprint once instead of twice.** Checking whether an entity's frontmatter changed and then recording the new fingerprint each independently normalized and stringified the same frontmatter object; a single combined check-and-record call now does the work once.
