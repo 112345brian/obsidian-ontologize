@@ -979,7 +979,8 @@ export class Plugin extends ObsidianPlugin {
     //     type chain; non-type links like topic pages are left alone)
     if (membershipAfter.length === 0) {
       const rawFrontmatter = this.app.metadataCache.getFileCache(file)?.frontmatter ?? {};
-      const globalFm = this.index.globalType?.frontmatter ?? {};
+      const globalTypePath = this.index.globalType?.path;
+      const globalFm = (globalTypePath ? this.app.metadataCache.getCache(globalTypePath)?.frontmatter : undefined) ?? {};
       const inferOverride = rawFrontmatter['infer-type-from-field'];
       const inferFromField = typeof inferOverride === 'boolean'
         ? inferOverride
@@ -988,6 +989,7 @@ export class Plugin extends ObsidianPlugin {
         ?? (typeof globalFm['infer-type-field'] === 'string' ? globalFm['infer-type-field'] : null)
         ?? 'up';
       // ingest-from detection is handled by the indexer — no stamp needed.
+      const currentIndex = this.index;
       const matched = detectAutoApplyType(this.index, rawFrontmatter)
         ?? (inferFromField ? detectTypeFromField(this.index, rawFrontmatter, inferField) : null);
       if (matched) {
@@ -995,13 +997,13 @@ export class Plugin extends ObsidianPlugin {
         let rootAncestor = matched;
         for (const ancestor of ancestors) {
           const ancestorType = this.index.types.get(ancestor);
-          if (!ancestorType?.extends.some((p) => this.index.types.has(p))) {
+          if (!ancestorType?.subtypeOf.some((p) => currentIndex.types.has(p))) {
             rootAncestor = ancestor;
             break;
           }
         }
         const matchedType = this.index.types.get(matched);
-        const cascade = (matchedType?.alsoApply ?? []).filter((t) => this.index.types.has(t));
+        const cascade = (matchedType?.alsoApply ?? []).filter((t) => currentIndex.types.has(t));
         await this.app.fileManager.processFrontMatter(file, (fm) => {
           const primaryField = this.pluginSettings.entityTypeFields?.[0] ?? 'is-instance';
           const existing = fm[primaryField];
