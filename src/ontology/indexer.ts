@@ -283,6 +283,60 @@ function rebuildEntityNameIndex(index: OntologyIndex): void {
   index.ambiguousEntityNames = new Set([...counts].filter(([, count]) => count > 1).map(([name]) => name));
 }
 
+// Obsidian resolves wikilinks case-insensitively, so `is-instance: [[philosopher]]`
+// points at Philosopher.md just fine in the app — membership resolution has to
+// accept the same variance instead of silently treating it as an unknown type.
+// Mirrors the folded entity-name resolution in validate.ts.
+function buildFoldedTypeNameMap(types: Map<string, OntologyType>): Map<string, string> {
+  const folded = new Map<string, string>();
+  for (const name of types.keys()) {
+    const key = name.toLowerCase();
+    if (!folded.has(key)) {
+      folded.set(key, name);
+    }
+  }
+  return folded;
+}
+
+function canonicalTypeName(types: Map<string, OntologyType>, folded: Map<string, string>, name: string): string {
+  return types.has(name) ? name : folded.get(name.toLowerCase()) ?? name;
+}
+
+/**
+ * Expands declared memberships to the full effective set: subtype-of-ancestors
+ * plus also-apply co-types, to a fixpoint (also-apply can chain, and co-applied
+ * types bring their own ancestors). Mirrors the schema contract that also-apply
+ * types "are applied whenever this type is applied" — membership-level, no
+ * frontmatter writes.
+ */
+function expandDeclaredMemberships(
+  index: Pick<OntologyIndex, 'ancestorsByType' | 'types'>,
+  foldedTypeNames: Map<string, string>,
+  declared: string[],
+): string[] {
+  const expanded = new Set<string>();
+  const queue = declared.map((name) => canonicalTypeName(index.types, foldedTypeNames, name));
+  while (queue.length > 0) {
+    const name = queue.pop();
+    if (name === undefined || expanded.has(name)) {
+      continue;
+    }
+    expanded.add(name);
+    for (const ancestor of index.ancestorsByType.get(name) ?? []) {
+      if (!expanded.has(ancestor)) {
+        queue.push(ancestor);
+      }
+    }
+    for (const coType of index.types.get(name)?.alsoApply ?? []) {
+      const canonical = canonicalTypeName(index.types, foldedTypeNames, coType);
+      if (index.types.has(canonical) && !expanded.has(canonical)) {
+        queue.push(canonical);
+      }
+    }
+  }
+  return [...expanded];
+}
+
 export function recomputeOntologyDerivedState(index: OntologyIndex): OntologyIndex {
   index.issues = [...index.schemaIssues ?? []];
   rebuildEntityNameIndex(index);
@@ -318,16 +372,15 @@ export function recomputeOntologyDerivedState(index: OntologyIndex): OntologyInd
     index.effectiveTypeLocks.set(name, computeTypeLock(name, index.types, index.ancestorsByType, circularTypes));
   }
 
-  // Expand each entity's instanceOf to include all ancestors implied by extends.
-  // e.g. if philosopher extends person, a philosopher entity is also a person.
+  // Expand each entity's instanceOf to include all ancestors implied by subtype-of.
+  // e.g. if philosopher is subtype-of person, a philosopher entity is also a person.
+  // Expansion always starts from the declared memberships so ancestors removed
+  // from the type hierarchy also disappear from entities on the next recompute.
+  // (Entities hydrated from a pre-declaredInstanceOf cache fall back to the
+  // stored expanded list until their file is next parsed.)
+  const foldedTypeNames = buildFoldedTypeNameMap(index.types);
   for (const entity of index.entities.values()) {
-    const expanded = new Set(entity.instanceOf);
-    for (const typeName of entity.instanceOf) {
-      for (const ancestor of index.ancestorsByType.get(typeName) ?? []) {
-        expanded.add(ancestor);
-      }
-    }
-    entity.instanceOf = [...expanded];
+    entity.instanceOf = expandDeclaredMemberships(index, foldedTypeNames, entity.declaredInstanceOf ?? entity.instanceOf);
   }
 
   index.effectiveEntityLocks = new Map<string, EffectiveLockState>();
@@ -357,6 +410,7 @@ function resolveEntityFromFile(
   return {
     frontmatter,
     ignored: false,
+    declaredInstanceOf: [detected],
     instanceOf: [detected],
     lockIntent: frontmatter['lock'] === true,
     name: basenameWithoutExtension(path),
@@ -483,6 +537,7 @@ export function revalidateEntityBatch(app: App, index: OntologyIndex, paths: str
 
   const pathSet = new Set(paths);
   const typeFields = normalizedEntityTypeFields(index.settings.entityTypeFields);
+  const foldedTypeNames = buildFoldedTypeNameMap(index.types);
   let staleCount = 0;
   let removedCount = 0;
 
@@ -514,13 +569,7 @@ export function revalidateEntityBatch(app: App, index: OntologyIndex, paths: str
 
     // Expand fresh instanceOf so the comparison is against the same expanded form
     // that recomputeOntologyDerivedState produces for stored entities.
-    const expandedFresh = new Set(fresh.instanceOf);
-    for (const typeName of fresh.instanceOf) {
-      for (const ancestor of index.ancestorsByType.get(typeName) ?? []) {
-        expandedFresh.add(ancestor);
-      }
-    }
-    fresh.instanceOf = [...expandedFresh];
+    fresh.instanceOf = expandDeclaredMemberships(index, foldedTypeNames, fresh.declaredInstanceOf ?? fresh.instanceOf);
 
     const existing = index.entities.get(path);
     // Compare frontmatter by value — only update if something actually changed

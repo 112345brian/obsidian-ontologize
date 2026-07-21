@@ -6,7 +6,7 @@ It keeps ontology data in ordinary Markdown and YAML frontmatter, then adds inhe
 ## Features
 
 - Reads type definitions from `_types/*.md` or a single `_types/ontology.schema.yaml`
-- Supports `extends`, `abstract`, `interface`, `implements`, `disjoint`, `must-have`, `can-have`, `cannot-have`, global fields/relations, literal and templated `insert` values, included/excluded types, `possible-values`, and nominal `values`
+- Supports `subtype-of`, `abstract`, `interface`, `implements`, `disjoint`, `must-have`, `can-have`, `cannot-have`, global fields/relations, literal and templated `insert` values, included/excluded types, `possible-values`, and nominal `values`
 - Resolves inherited and composed type chains for entities with configured ontology membership frontmatter fields
 - Uses kebab-case for canonical frontmatter properties and relations, including `is-instance`
 - Computes effective lock state from entity/type lock intent and ancestor locks
@@ -61,7 +61,7 @@ Example:
 
 ```markdown
 ---
-extends:
+subtype-of:
   - "[[Person]]"
 implements:
   - "[[Influenceable]]"
@@ -106,7 +106,7 @@ types:
   Person:
     lock: true
   Philosopher:
-    extends: ["[[Person]]"]
+    subtype-of: ["[[Person]]"]
     implements: ["[[Influenceable]]"]
     lock: true
 ```

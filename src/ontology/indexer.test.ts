@@ -127,6 +127,73 @@ describe('incremental ontology index state', () => {
     expect(unknownTarget).toHaveLength(1);
   });
 
+  it('drops inherited memberships when a parent is removed from a type\'s subtype-of', () => {
+    const index = makeIndex();
+    const ada = index.entities.get('Ada.md');
+    if (!ada) throw new Error('fixture entity missing');
+    ada.declaredInstanceOf = ['Philosopher'];
+
+    recomputeOntologyDerivedState(index);
+    expect(index.entities.get('Ada.md')?.instanceOf).toContain('Person');
+
+    // Philosopher is no longer subtype-of Person — a recompute alone (no re-parse of
+    // Ada.md) must un-expand the stale ancestor.
+    index.types.set('Philosopher', makeType('Philosopher', '_types/Philosopher.md', true, []));
+    recomputeOntologyDerivedState(index);
+
+    expect(index.entities.get('Ada.md')?.instanceOf).toContain('Philosopher');
+    expect(index.entities.get('Ada.md')?.instanceOf).not.toContain('Person');
+  });
+
+  it('flags a subtype that loosens an inherited must-have to can-have', () => {
+    const index = makeIndex();
+    const person = index.types.get('Person');
+    const philosopher = index.types.get('Philosopher');
+    if (!person || !philosopher) throw new Error('fixture types missing');
+    person.mustHave.set('birthdate', { type: 'date' });
+    // `uses` ties the redeclaration to Person's semantic field — the legal way
+    // to re-touch an inherited field, so the only conflict left is the demotion.
+    philosopher.canHave.set('birthdate', { type: 'date', uses: 'Person.birthdate' });
+
+    recomputeOntologyDerivedState(index);
+
+    expect(index.issues).toContainEqual(expect.objectContaining({
+      file: philosopher.path,
+      message: 'Schema conflict on Philosopher.birthdate: Philosopher loosens Person\'s must-have to can-have; constraints may not be loosened down the hierarchy',
+      severity: 'error',
+    }));
+  });
+
+  it('does not flag sibling parents that merge different buckets for the same field', () => {
+    const index = makeIndex();
+    const recorded = makeType('Recorded', '_types/Recorded.md', true);
+    const dated = makeType('Dated', '_types/Dated.md', true);
+    recorded.mustHave.set('birthdate', { type: 'date', uses: 'shared.birthdate' });
+    dated.canHave.set('birthdate', { type: 'date', uses: 'shared.birthdate' });
+    index.types.set('Recorded', recorded);
+    index.types.set('Dated', dated);
+    index.types.set('Event', makeType('Event', '_types/Event.md', true, ['Recorded', 'Dated']));
+
+    recomputeOntologyDerivedState(index);
+
+    expect(index.issues.filter((issue) => issue.message.includes('loosens'))).toHaveLength(0);
+  });
+
+  it('resolves declared memberships case-insensitively, matching Obsidian link resolution', () => {
+    const index = makeIndex();
+    const ada = index.entities.get('Ada.md');
+    if (!ada) throw new Error('fixture entity missing');
+    // Obsidian resolves [[philosopher]] to Philosopher.md; membership must too.
+    ada.declaredInstanceOf = ['philosopher'];
+    ada.instanceOf = ['philosopher'];
+
+    recomputeOntologyDerivedState(index);
+
+    expect(index.entities.get('Ada.md')?.instanceOf).toContain('Philosopher');
+    expect(index.entities.get('Ada.md')?.instanceOf).toContain('Person');
+    expect(index.entities.get('Ada.md')?.instanceOf).not.toContain('philosopher');
+  });
+
   it('forbids the aliased frontmatter key when cannot-have names a global field', () => {
     const index = makeIndex();
     index.types.set('_fields', makeType('_fields', '_types/_fields.md', false, [], { typeKind: 'field-definitions' }));
@@ -198,6 +265,92 @@ describe('incremental ontology index state', () => {
       { up: '[[Philosopher]]' },
       { frontmatterIgnoreRules: [{ key: 'up', value: 'Philosopher' }], typeFolder: '_types' }
     )).toBe(true);
+  });
+
+  it('expands also-apply co-types into membership, transitively with their ancestors', () => {
+    const index = makeIndex();
+    const academic = makeType('Academic', '_types/Academic.md', true, ['Person']);
+    const fieldResearcher = makeType('FieldResearcher', '_types/FieldResearcher.md', true);
+    fieldResearcher.alsoApply = ['Academic'];
+    index.types.set('Academic', academic);
+    index.types.set('FieldResearcher', fieldResearcher);
+    const ada = index.entities.get('Ada.md');
+    if (!ada) throw new Error('fixture entity missing');
+    ada.declaredInstanceOf = ['FieldResearcher'];
+    ada.instanceOf = ['FieldResearcher'];
+
+    recomputeOntologyDerivedState(index);
+
+    const memberships = index.entities.get('Ada.md')?.instanceOf ?? [];
+    expect(memberships).toContain('FieldResearcher');
+    expect(memberships).toContain('Academic');    // co-applied
+    expect(memberships).toContain('Person');      // co-applied type's ancestor
+  });
+
+  it('flags a cycle in a transitive relation and leaves acyclic chains alone', () => {
+    const index = makeIndex();
+    index.types.set(
+      '_relations',
+      makeType('_relations', '_types/_relations.md', false, [], {
+        relations: new Map([
+          ['part_of', { transitive: true, valueType: 'wikilink' }]
+        ]),
+        typeKind: 'relation-definitions'
+      })
+    );
+    const makeEntity = (name: string, partOf?: string) => ({
+      frontmatter: {
+        instance_of: '[[Philosopher]]',
+        ...(partOf ? { part_of: `[[${partOf}]]` } : {})
+      },
+      instanceOf: ['Philosopher'],
+      lockIntent: false,
+      name,
+      path: `${name}.md`
+    });
+    // Cycle: Alpha -> Beta -> Alpha. Acyclic tail: Gamma -> Alpha.
+    index.entities.set('Alpha.md', makeEntity('Alpha', 'Beta'));
+    index.entities.set('Beta.md', makeEntity('Beta', 'Alpha'));
+    index.entities.set('Gamma.md', makeEntity('Gamma', 'Alpha'));
+
+    recomputeOntologyDerivedState(index);
+
+    const cycleIssues = index.issues.filter((issue) => issue.message.includes('Transitive relation part_of forms a cycle'));
+    expect(cycleIssues).toHaveLength(1);
+    expect(cycleIssues[0]?.severity).toBe('error');
+    expect(cycleIssues[0]?.message).toContain('Alpha');
+    expect(cycleIssues[0]?.message).toContain('Beta');
+  });
+
+  it('does not flag symmetric transitive relations whose edges are trivially mutual', () => {
+    const index = makeIndex();
+    index.types.set(
+      '_relations',
+      makeType('_relations', '_types/_relations.md', false, [], {
+        relations: new Map([
+          ['same_school_as', { symmetric: true, transitive: true, valueType: 'wikilink' }]
+        ]),
+        typeKind: 'relation-definitions'
+      })
+    );
+    index.entities.set('Alpha.md', {
+      frontmatter: { instance_of: '[[Philosopher]]', same_school_as: '[[Beta]]' },
+      instanceOf: ['Philosopher'],
+      lockIntent: false,
+      name: 'Alpha',
+      path: 'Alpha.md'
+    });
+    index.entities.set('Beta.md', {
+      frontmatter: { instance_of: '[[Philosopher]]', same_school_as: '[[Alpha]]' },
+      instanceOf: ['Philosopher'],
+      lockIntent: false,
+      name: 'Beta',
+      path: 'Beta.md'
+    });
+
+    recomputeOntologyDerivedState(index);
+
+    expect(index.issues.filter((issue) => issue.message.includes('forms a cycle'))).toHaveLength(0);
   });
 
   it('validates relation contracts composed through implemented interfaces', () => {

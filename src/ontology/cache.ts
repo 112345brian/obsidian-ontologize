@@ -112,6 +112,7 @@ function hydrateEntity(value: unknown): OntologyEntity {
   return {
     frontmatter: asRecord(record['frontmatter']),
     ignored: record['ignored'] === true,
+    declaredInstanceOf: Array.isArray(record['declaredInstanceOf']) ? record['declaredInstanceOf'].map(String) : undefined,
     instanceOf: Array.isArray(record['instanceOf']) ? record['instanceOf'].map(String) : [],
     lockIntent: record['lockIntent'] === true,
     name: stringValue(record['name']),

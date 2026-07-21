@@ -82,6 +82,14 @@ export interface OntologyType {
 export interface OntologyEntity {
   frontmatter: Record<string, unknown>;
   ignored?: boolean | undefined;
+  /**
+   * Type memberships as declared in the note (or inferred from ingest-from),
+   * before ancestor expansion. `instanceOf` is re-derived from this on every
+   * recompute so that removing a parent from a type's `subtype-of` also removes
+   * it from existing entities — expanding in place from `instanceOf` would
+   * only ever grow.
+   */
+  declaredInstanceOf?: string[] | undefined;
   instanceOf: string[];
   lockIntent: boolean;
   name: string;
