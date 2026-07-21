@@ -199,7 +199,7 @@ function makeFakeVault(): FakeVault {
 
 async function settle(plugin: Plugin): Promise<void> {
   // Drain the serialized index queue plus trailing microtasks.
-  await plugin['indexTask'];
+  await plugin['indexTaskQueue'].whenIdle();
   await new Promise((resolve) => setTimeout(resolve, 0));
 }
 

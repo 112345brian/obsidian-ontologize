@@ -13,15 +13,8 @@ import {
 
 import type { OntologyIndex } from './ontology/types.ts';
 import type { PluginSettings } from './PluginSettings.ts';
-import type { OntologizeAPI } from './ontology/scripting.ts';
-import { ScriptHookRegistry } from './ontology/scripting.ts';
-import { ScriptLoader } from './ScriptLoader.ts';
 import { OntologyEntityActionsModal } from './OntologyEntityActionsModal.ts';
 
-import {
-  readOntologyCache,
-  writeOntologyCache
-} from './ontology/cache.ts';
 import {
   buildOntologyIndex,
   isIgnoredOntologyPath,
@@ -36,17 +29,12 @@ import {
   applyTypeReplacements,
   fixMissingInverses,
   planMissingInverses,
-  planScaffoldEntity,
-  shouldAutoApplyScaffold
+  planScaffoldEntity
 } from './ontology/mutations.ts';
 import type { TypeReplacement } from './ontology/types.ts';
-import {
-  runOntologyQuery
-} from './ontology/query.ts';
 import { summarizeIssues } from './ontology/issues.ts';
 import { OntologyIssuesModal } from './OntologyIssuesModal.ts';
 import { OntologyRelationFixModal } from './OntologyRelationFixModal.ts';
-import { OntologyScaffoldReviewModal } from './OntologyScaffoldReviewModal.ts';
 import { OntologySchemaDiagnosticsModal } from './OntologySchemaDiagnosticsModal.ts';
 import { OntologyTypeEditorModal } from './OntologyTypeEditorModal.ts';
 import type { BulkScaffoldEntityDiff } from './OntologyBulkScaffoldModal.ts';
@@ -78,37 +66,40 @@ import {
   BackgroundSweepService,
   SWEEP_INTERVAL_MS
 } from './BackgroundSweepService.ts';
-
-const CACHE_WRITE_DEBOUNCE_MS = 800;
+import { ScriptingService } from './ScriptingService.ts';
+import { IndexTaskQueue } from './IndexTaskQueue.ts';
+import { OntologyCacheService } from './OntologyCacheService.ts';
+import { registerVaultEvents } from './VaultEventRegistration.ts';
+import { EntityScaffoldService } from './EntityScaffoldService.ts';
 
 export class Plugin extends ObsidianPlugin {
   public index: null | OntologyIndex = null;
   public pluginSettings: PluginSettings = new PluginSettingsClass();
 
-  private readonly scriptRegistry = new ScriptHookRegistry();
-  private readonly scriptLoader = new ScriptLoader();
+  private readonly scriptingService = new ScriptingService();
   private readonly issueBlameService = new IssueBlameService();
   private readonly backgroundSweepService = new BackgroundSweepService();
-  private scriptApi: OntologizeAPI | null = null;
+  private readonly indexTaskQueue = new IndexTaskQueue();
+  private readonly entityScaffoldService = new EntityScaffoldService(
+    this.app,
+    () => this.index,
+    () => this.pluginSettings,
+    () => this.indexReady,
+    () => this.rebuildIndex(false)
+  );
+  private readonly cacheService = new OntologyCacheService(
+    this.app,
+    () => this.index,
+    () => this.pluginSettings,
+    () => this.deviceId
+  );
 
   private deviceId = '';
-  private cacheWriteTimer: null | number = null;
   private indexReady = false;
-  private indexTask: Promise<unknown> = Promise.resolve();
   private isAutoFixingInverses = false;
-  // Paths whose scaffold review was closed without the membership changing
-  // since; auto-scaffold stays quiet for them until the entity's types change.
-  private scaffoldDismissedPaths = new Set<string>();
-  private scaffoldReviewOpenPaths = new Set<string>();
   // Paths currently being written by the type editor modal; suppresses the
   // raw-edit lock warning for writes the plugin itself initiates.
   private modalWritingPaths = new Set<string>();
-
-  private effectiveCachePath(): string {
-    const base = this.pluginSettings.cachePath;
-    const withoutExt = base.endsWith('.json') ? base.slice(0, -5) : base;
-    return `${withoutExt}-${this.deviceId}.json`;
-  }
 
   public override async onload(): Promise<void> {
     const deviceIdKey = 'ontologize-device-id';
@@ -130,7 +121,7 @@ export class Plugin extends ObsidianPlugin {
         this.pluginSettings.globalTypePath = candidate;
       }
     }
-    const cachedIndex = await readOntologyCache(this.app, this.effectiveCachePath());
+    const cachedIndex = await this.cacheService.read();
     // A cache built under different scoping settings describes a different graph;
     // hydrating it would let pre-rebuild reads see files the user has since
     // ignored (or miss files they un-ignored). Wait for the cold rebuild instead.
@@ -141,7 +132,7 @@ export class Plugin extends ObsidianPlugin {
     registerPluginCommands(this, this.app, {
       getIndex: () => this.index,
       getSettings: () => this.pluginSettings,
-      hasEntityActions: () => this.scriptRegistry.entityActions.length > 0,
+      hasEntityActions: () => this.scriptingService.hasEntityActions,
       openBulkScaffoldModal: () => this.openBulkScaffoldModal(),
       openCreateTypeModal: () => this.openCreateTypeModal(),
       openEditTypeModal: (file) => this.openEditTypeModal(file),
@@ -155,21 +146,18 @@ export class Plugin extends ObsidianPlugin {
       showActiveFileIssues: (file) => this.showActiveFileIssues(file)
     });
 
-    this.registerEvent(this.app.metadataCache.on('changed', (file) => {
-      this.runEventTask(this.handleMetadataChanged(file));
-    }));
-    this.registerEvent(this.app.vault.on('create', (file) => {
-      this.runEventTask(this.handleVaultCreate(file));
-    }));
-    this.registerEvent(this.app.vault.on('delete', (file) => {
-      this.runEventTask(this.handleVaultDelete(file));
-    }));
-    this.registerEvent(this.app.vault.on('modify', (file) => {
-      this.runEventTask(this.handleVaultModify(file));
-    }));
-    this.registerEvent(this.app.vault.on('rename', (file, oldPath) => {
-      this.runEventTask(this.handleVaultRename(file, oldPath));
-    }));
+    registerVaultEvents(this, this.app, this.scriptingService, {
+      getScriptsFolder: () => this.pluginSettings.scriptsFolder,
+      handleMetadataChanged: (file) => this.handleMetadataChanged(file),
+      handleVaultCreate: (file) => this.handleVaultCreate(file),
+      handleVaultDelete: (file) => this.handleVaultDelete(file),
+      handleVaultModify: (file) => this.handleVaultModify(file),
+      handleVaultRename: (file, oldPath) => this.handleVaultRename(file, oldPath),
+      reloadScripts: () => this.reloadScripts(),
+      runEventTask: (task) => {
+        this.runEventTask(task);
+      }
+    });
     this.addSettingTab(new PluginSettingsTab(this.app, this));
 
     this.app.workspace.onLayoutReady(() => {
@@ -180,23 +168,7 @@ export class Plugin extends ObsidianPlugin {
         }, SWEEP_INTERVAL_MS));
       });
     });
-
-    this.scriptApi = this.makeScriptApi();
-    this.registerEvent(this.app.vault.on('create', (file) => {
-      if (file instanceof TFile && this.pluginSettings.scriptsFolder && this.scriptLoader.isScriptFile(file.path, this.pluginSettings.scriptsFolder)) {
-        this.runEventTask(this.reloadScripts());
-      }
-    }));
-    this.registerEvent(this.app.vault.on('modify', (file) => {
-      if (file instanceof TFile && this.pluginSettings.scriptsFolder && this.scriptLoader.isScriptFile(file.path, this.pluginSettings.scriptsFolder)) {
-        this.runEventTask(this.reloadScripts());
-      }
-    }));
-    this.registerEvent(this.app.vault.on('delete', (file) => {
-      if (this.pluginSettings.scriptsFolder && 'path' in file && this.scriptLoader.isScriptFile(file.path as string, this.pluginSettings.scriptsFolder)) {
-        this.runEventTask(this.reloadScripts());
-      }
-    }));
+    this.scriptingService.initialize(this.app, () => this.index);
   }
 
   // Vault event handlers have no caller to surface a rejection to; without
@@ -208,21 +180,12 @@ export class Plugin extends ObsidianPlugin {
     });
   }
 
-  /**
-   * Serializes every operation that assigns `this.index` so a long-running
-   * incremental update cannot resolve after a full rebuild and clobber it with
-   * a stale graph. Tasks run in submission order regardless of their duration.
-   */
   private enqueue<T>(task: () => Promise<T>): Promise<T> {
-    const run = this.indexTask.then(task, task);
-    this.indexTask = run.then(() => undefined, () => undefined);
-    return run;
+    return this.indexTaskQueue.enqueue(task);
   }
 
   public override onunload(): void {
-    if (this.cacheWriteTimer !== null) {
-      window.clearTimeout(this.cacheWriteTimer);
-    }
+    this.cacheService.clearTimer();
   }
 
   public async savePluginSettings(): Promise<void> {
@@ -533,57 +496,6 @@ export class Plugin extends ObsidianPlugin {
     return this.runAutoInverseFix();
   }
 
-  private canAutoScaffold(file: TFile): boolean {
-    const entity = this.index?.entities.get(file.path);
-    if (!this.index || !entity || entity.instanceOf.length === 0) {
-      return false;
-    }
-    for (const typeName of entity.instanceOf) {
-      const type = this.index.types.get(typeName);
-      if (!type || type.abstract || type.isInterface || this.index.circularTypes?.has(typeName)) {
-        return false;
-      }
-    }
-    return true;
-  }
-
-  /**
-   * Fires only when an entity's ontology membership transitions (the caller
-   * checks that), never on ordinary edits, and respects a prior dismissal so a
-   * cancelled review does not reopen on the next keystroke.
-   */
-  private applyAutoScaffold(file: TFile): void {
-    if (!this.index || !this.indexReady || !this.canAutoScaffold(file)) {
-      return;
-    }
-    if (!this.pluginSettings.initialScaffoldComplete) {
-      return;
-    }
-    if (this.scaffoldReviewOpenPaths.has(file.path) || this.scaffoldDismissedPaths.has(file.path)) {
-      return;
-    }
-
-    const plans = planScaffoldEntity(this.index, file.path);
-    if (plans.length === 0) {
-      return;
-    }
-
-    const entity = this.index.entities.get(file.path);
-    if (entity && shouldAutoApplyScaffold(this.index, entity)) {
-      const silentPlans = plans.filter((p) => p.kind !== 'optional');
-      if (silentPlans.length > 0) {
-        void applyScaffoldPlan(this.app, file, silentPlans);
-      }
-      return;
-    }
-
-    if (!this.pluginSettings.autoScaffoldEntities) {
-      return;
-    }
-    new Notice(`Ontology scaffold available: ${plans.length} fields.`);
-    this.openScaffoldReviewModal(file, plans);
-  }
-
   /**
    * Rotates through the entity roster in batches, refreshing frontmatter from
    * the in-memory metadataCache and re-running per-entity validation without a
@@ -755,28 +667,11 @@ export class Plugin extends ObsidianPlugin {
   // should hear about it once instead of silently loading a stale index next
   // session.
   private async writeCacheSafely(): Promise<void> {
-    if (!this.index) {
-      return;
-    }
-    try {
-      await writeOntologyCache(this.app, this.effectiveCachePath(), this.index);
-    } catch (error) {
-      console.error('Ontologize: failed to write ontology cache', error);
-      new Notice('Ontologize: failed to write the ontology cache; the next session may start from a stale index.');
-    }
+    await this.cacheService.writeSafely();
   }
 
   private scheduleCacheWrite(): void {
-    if (!this.index) {
-      return;
-    }
-    if (this.cacheWriteTimer !== null) {
-      window.clearTimeout(this.cacheWriteTimer);
-    }
-    this.cacheWriteTimer = window.setTimeout(() => {
-      this.cacheWriteTimer = null;
-      void this.writeCacheSafely();
-    }, CACHE_WRITE_DEBOUNCE_MS);
+    this.cacheService.scheduleWrite();
   }
 
   private async upsertFileCore(file: TFile): Promise<void> {
@@ -785,24 +680,10 @@ export class Plugin extends ObsidianPlugin {
     this.index = await upsertOntologyFile(this.app, index, file, this.indexSettings());
     const membershipAfter = this.index.entities.get(file.path)?.instanceOf ?? [];
 
-    if (this.scriptApi) {
-      const entity = this.index.entities.get(file.path);
-      if (entity) {
-        for (const handler of this.scriptRegistry.entitySaveHandlers) {
-          try {
-            await handler(entity, this.scriptApi);
-          } catch (e) {
-            console.error('Ontologize script entity:save error', e);
-          }
-        }
-        for (const handler of this.scriptRegistry.entityValidateHandlers) {
-          try {
-            handler(entity, this.scriptApi);
-          } catch (e) {
-            console.error('Ontologize script entity:validate error', e);
-          }
-        }
-      }
+    const entity = this.index.entities.get(file.path);
+    if (entity) {
+      await this.scriptingService.fireEntitySave(entity);
+      this.scriptingService.fireEntityValidate(entity);
     }
 
     // Auto-apply detection: if the file is not yet typed, scan all types with
@@ -818,9 +699,9 @@ export class Plugin extends ObsidianPlugin {
     const membershipChanged = membershipBefore.length !== membershipAfter.length
       || membershipBefore.some((typeName, position) => typeName !== membershipAfter[position]);
     if (membershipChanged) {
-      this.scaffoldDismissedPaths.delete(file.path);
+      this.entityScaffoldService.clearDismissed(file.path);
       if (membershipAfter.length > 0) {
-        this.applyAutoScaffold(file);
+        this.entityScaffoldService.applyAutoScaffold(file);
         const addedTypes = membershipAfter.filter((t) => !membershipBefore.includes(t));
         const toReplace: TypeReplacement[] = [];
         let appliedTemplate = false;
@@ -853,87 +734,23 @@ export class Plugin extends ObsidianPlugin {
     await renderOntologyQueryBlock(this.app, this, source, el, ctx, index, this.pluginSettings.queryOnlyLocked ? 'locked' : 'all');
   }
 
-  private makeScriptApi(): OntologizeAPI {
-    const registry = this.scriptRegistry;
-    const plugin = this;
-    return {
-      get index() {
-        return plugin.index!;
-      },
-      query(queryString) {
-        return plugin.index ? runOntologyQuery(plugin.index, queryString) : [];
-      },
-      issue(path, message, severity = 'warning') {
-        if (plugin.index) {
-          plugin.index.issues.push({ file: path, message, severity });
-        }
-      },
-      async updateFrontmatter(path, update) {
-        const file = plugin.app.vault.getAbstractFileByPath(path);
-        if (file instanceof TFile) {
-          await plugin.app.fileManager.processFrontMatter(file, (fm) => {
-            Object.assign(fm, update);
-          });
-        }
-      },
-      on(event: string, handler: (...args: unknown[]) => unknown) {
-        if (event === 'index:ready') registry.indexReadyHandlers.push(handler as typeof registry.indexReadyHandlers[number]);
-        else if (event === 'entity:save') registry.entitySaveHandlers.push(handler as typeof registry.entitySaveHandlers[number]);
-        else if (event === 'entity:validate') registry.entityValidateHandlers.push(handler as typeof registry.entityValidateHandlers[number]);
-      },
-      ui: {
-        registerEntityAction(label, options) {
-          registry.entityActions.push({ label, options });
-        }
-      }
-    } as OntologizeAPI;
-  }
-
-  private async loadScripts(): Promise<void> {
-    const { scriptsFolder } = this.pluginSettings;
-    if (!scriptsFolder || !this.scriptApi) {
-      return;
-    }
-    await this.scriptLoader.loadAll(this.app, scriptsFolder, this.scriptApi);
-    if (this.index) {
-      for (const handler of this.scriptRegistry.indexReadyHandlers) {
-        try {
-          await handler(this.scriptApi);
-        } catch (e) {
-          console.error('Ontologize script index:ready error', e);
-        }
-      }
-    }
-  }
-
   private async reloadScripts(): Promise<void> {
-    this.scriptRegistry.clear();
-    await this.loadScripts();
+    await this.scriptingService.reloadScripts(this.app, this.pluginSettings.scriptsFolder, this.index);
   }
 
   public async fireEntityValidateHooks(): Promise<void> {
-    if (!this.index || !this.scriptApi || this.scriptRegistry.entityValidateHandlers.length === 0) {
-      return;
-    }
-    for (const entity of this.index.entities.values()) {
-      for (const handler of this.scriptRegistry.entityValidateHandlers) {
-        try {
-          handler(entity, this.scriptApi);
-        } catch (e) {
-          console.error('Ontologize script entity:validate error', e);
-        }
-      }
-    }
+    this.scriptingService.fireEntityValidateAll(this.index);
   }
 
   private async openEntityActionsModal(file: TFile): Promise<void> {
-    if (!this.scriptApi) return;
+    const scriptApi = this.scriptingService.getApi();
+    if (!scriptApi) return;
     const entity = this.index?.entities.get(file.path);
     if (!entity) {
       new Notice('This note is not an indexed ontology entity.');
       return;
     }
-    new OntologyEntityActionsModal(this.app, entity, this.scriptRegistry.entityActions, this.scriptApi).open();
+    new OntologyEntityActionsModal(this.app, entity, this.scriptingService.entityActions, scriptApi).open();
   }
 
   private indexSettings(): {
@@ -982,34 +799,6 @@ export class Plugin extends ObsidianPlugin {
 
   private async scaffoldActiveNote(file: TFile): Promise<void> {
     const index = await this.ensureIndex();
-    if (!index.entities.has(file.path)) {
-      new Notice('This note has no ontology type frontmatter.');
-      return;
-    }
-    const plans = planScaffoldEntity(index, file.path);
-    if (plans.length === 0) {
-      new Notice('No ontology scaffold fields are missing.');
-      return;
-    }
-    this.openScaffoldReviewModal(file, plans);
-  }
-
-  private openScaffoldReviewModal(file: TFile, plans: ReturnType<typeof planScaffoldEntity>): void {
-    if (this.scaffoldReviewOpenPaths.has(file.path)) {
-      return;
-    }
-    this.scaffoldReviewOpenPaths.add(file.path);
-    new OntologyScaffoldReviewModal(this.app, {
-      file,
-      onApply: async (selectedPlans) => applyScaffoldPlan(this.app, file, selectedPlans),
-      onClosed: () => {
-        this.scaffoldReviewOpenPaths.delete(file.path);
-        this.scaffoldDismissedPaths.add(file.path);
-      },
-      onDone: async () => {
-        await this.rebuildIndex(false);
-      },
-      plans
-    }).open();
+    this.entityScaffoldService.scaffoldActiveNote(index, file);
   }
 }
