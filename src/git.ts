@@ -1,5 +1,3 @@
-import { execFile } from 'node:child_process';
-
 export interface GitBlame {
   hash: string;
   shortHash: string;
@@ -8,11 +6,26 @@ export interface GitBlame {
   message: string;
 }
 
+type ExecFile = typeof import('node:child_process').execFile;
+
+async function getExecFile(): Promise<ExecFile | null> {
+  try {
+    return (await import('node:child_process')).execFile;
+  } catch {
+    return null;
+  }
+}
+
 /**
  * Returns the last git commit that touched `filePath` (relative to `repoRoot`),
  * or null if git is unavailable or the file has no commits.
  */
 export async function getLastCommit(repoRoot: string, filePath: string): Promise<GitBlame | null> {
+  const execFile = await getExecFile();
+  if (!execFile) {
+    return null;
+  }
+
   return new Promise((resolve) => {
     execFile(
       'git',
@@ -39,6 +52,11 @@ export async function getLastCommit(repoRoot: string, filePath: string): Promise
  * Returns the git repo root containing `startDir`, or null if not in a git repo.
  */
 export async function getRepoRoot(startDir: string): Promise<string | null> {
+  const execFile = await getExecFile();
+  if (!execFile) {
+    return null;
+  }
+
   return new Promise((resolve) => {
     execFile('git', ['rev-parse', '--show-toplevel'], { cwd: startDir }, (err, stdout) => {
       resolve(err ? null : stdout.trim() || null);

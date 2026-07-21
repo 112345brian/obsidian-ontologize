@@ -2,21 +2,7 @@ import { context } from 'esbuild';
 import { copyFileSync, existsSync, readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 
-const OBSIDIAN_EXTERNALS = [
-  'obsidian',
-  'electron',
-  '@codemirror/autocomplete',
-  '@codemirror/collab',
-  '@codemirror/commands',
-  '@codemirror/language',
-  '@codemirror/lint',
-  '@codemirror/search',
-  '@codemirror/state',
-  '@codemirror/view',
-  '@lezer/common',
-  '@lezer/highlight',
-  '@lezer/lr',
-];
+import { buildOptions, stylesOptions } from './helpers/build-config.ts';
 
 function loadEnv(): Record<string, string> {
   const envPath = resolve('.env');
@@ -46,25 +32,11 @@ function copyToVault(): void {
 }
 
 const ctx = await context({
-  bundle: true,
-  entryPoints: ['src/main.ts'],
-  external: [...OBSIDIAN_EXTERNALS, 'node:*'],
-  format: 'cjs',
-  logLevel: 'info',
-  outfile: 'main.js',
-  platform: 'node',
-  sourcemap: 'inline',
-  target: 'ES2022',
-  treeShaking: true,
+  ...buildOptions,
   plugins: [{ name: 'copy', setup(build) { build.onEnd(copyToVault); } }],
 });
 
-const stylesCtx = await context({
-  entryPoints: [{ in: 'src/styles/main.scss', out: 'styles' }],
-  loader: { '.scss': 'css' },
-  logLevel: 'info',
-  outdir: '.',
-});
+const stylesCtx = await context(stylesOptions);
 
 await Promise.all([ctx.watch(), stylesCtx.watch()]);
 

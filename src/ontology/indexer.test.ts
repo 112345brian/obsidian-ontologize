@@ -1244,6 +1244,64 @@ describe('incremental ontology index state', () => {
     expect(index.entities.has('_types/_relations.md')).toBe(false);
     expect(index.issues.some((issue) => issue.message.includes('relation-definitions'))).toBe(false);
   });
+
+  it('keeps incremental entity upserts equivalent to a fresh rebuild', async () => {
+    const entityFile = { basename: 'Ada', extension: 'md', path: 'Ada.md' } as TFile;
+    const frontmatterByPath = new Map<string, Record<string, unknown>>([
+      ['Ada.md', { 'is-instance': '[[Philosopher]]', lock: true }]
+    ]);
+    const schema = JSON.stringify({
+      types: {
+        Person: {
+          lock: true
+        },
+        Philosopher: {
+          lock: true,
+          'must-have': {
+            school: {
+              type: 'string'
+            }
+          },
+          'subtype-of': ['[[Person]]']
+        }
+      }
+    });
+    const app = {
+      metadataCache: {
+        getFileCache: (file: TFile) => ({ frontmatter: frontmatterByPath.get(file.path) ?? {} })
+      },
+      vault: {
+        adapter: {
+          exists: (path: string) => Promise.resolve(path === '_types/ontology.schema.json'),
+          read: () => Promise.resolve(schema)
+        },
+        getFileByPath: () => null,
+        getMarkdownFiles: () => [entityFile],
+        read: () => Promise.resolve('')
+      }
+    } as unknown as App;
+    const settings = {
+      entityTypeFields: ['is-instance', 'type'],
+      schemaPath: '_types/ontology.schema.json',
+      typeFolder: '_types'
+    };
+
+    const initial = await buildOntologyIndex(app, settings);
+    expect(initial.issues).toContainEqual(expect.objectContaining({
+      file: 'Ada.md',
+      property: 'school',
+      severity: 'error'
+    }));
+
+    frontmatterByPath.set('Ada.md', { 'is-instance': '[[Philosopher]]', lock: true, school: 'Rationalism' });
+
+    const incremental = await upsertOntologyFile(app, initial, entityFile, settings);
+    const fresh = await buildOntologyIndex(app, settings);
+
+    expect(incremental.entities.get('Ada.md')).toEqual(fresh.entities.get('Ada.md'));
+    expect(incremental.effectiveEntityLocks.get('Ada.md')).toEqual(fresh.effectiveEntityLocks.get('Ada.md'));
+    expect(incremental.issues.map((issue) => issue.message)).toEqual(fresh.issues.map((issue) => issue.message));
+  });
 });
 
 describe('unknown entity field warnings', () => {

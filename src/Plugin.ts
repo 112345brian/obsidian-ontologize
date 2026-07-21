@@ -70,10 +70,6 @@ import {
 } from './ontology/type-editor.ts';
 import type { TypeEditorModel } from './ontology/type-editor.ts';
 import { applyTypeTemplate } from './templater.ts';
-import {
-  getLastCommit,
-  getRepoRoot
-} from './git.ts';
 import { analyzeTypeChange } from './ontology/impact.ts';
 import { parseOntologyType } from './ontology/parser.ts';
 import { OntologyTypeImpactModal } from './OntologyTypeImpactModal.ts';
@@ -81,6 +77,7 @@ import type { ImpactResolution } from './OntologyTypeImpactModal.ts';
 import { OntologyRepairModal } from './OntologyRepairModal.ts';
 import { PluginSettings as PluginSettingsClass } from './PluginSettings.ts';
 import { PluginSettingsTab } from './PluginSettingsTab.ts';
+import { IssueBlameService } from './IssueBlameService.ts';
 
 // Normalizes an OntologyType's schema fields (Maps → sorted objects, Sets/arrays →
 // sorted arrays) for structural comparison, ignoring name/path so only the
@@ -125,6 +122,7 @@ export class Plugin extends ObsidianPlugin {
 
   private readonly scriptRegistry = new ScriptHookRegistry();
   private readonly scriptLoader = new ScriptLoader();
+  private readonly issueBlameService = new IssueBlameService();
   private scriptApi: OntologizeAPI | null = null;
 
   private deviceId = '';
@@ -139,8 +137,6 @@ export class Plugin extends ObsidianPlugin {
   // Cursor into the sorted entity-path list; advances by the batch size each sweep
   // so every entity gets revalidated once per full cycle regardless of vault size.
   private sweepCursor = 0;
-  // Resolved lazily; null means "checked and not in a git repo"
-  private repoRoot: string | null | undefined = undefined;
   // Paths currently being written by the type editor modal; suppresses the
   // raw-edit lock warning for writes the plugin itself initiates.
   private modalWritingPaths = new Set<string>();
@@ -774,43 +770,7 @@ export class Plugin extends ObsidianPlugin {
     if (!this.index) {
       return;
     }
-
-    // Resolve repo root once; skip if vault is not tracked by git
-    if (this.repoRoot === undefined) {
-      const adapter = this.app.vault.adapter;
-      const vaultPath = 'basePath' in adapter ? (adapter as { basePath: string }).basePath : null;
-      this.repoRoot = vaultPath ? await getRepoRoot(vaultPath) : null;
-    }
-    if (!this.repoRoot) {
-      return;
-    }
-
-    const root = this.repoRoot;
-    const batchSet = new Set(batch);
-    const unblamed = this.index.issues.filter((i) => batchSet.has(i.file) && !i.blame);
-
-    // Deduplicate by file so we only run one git invocation per file
-    const filesSeen = new Set<string>();
-    const blameByFile = new Map<string, Awaited<ReturnType<typeof getLastCommit>>>();
-    await Promise.all(
-      unblamed
-        .filter((i) => {
-          if (filesSeen.has(i.file)) return false;
-          filesSeen.add(i.file);
-          return true;
-        })
-        .map(async (i) => {
-          const blame = await getLastCommit(root, i.file);
-          blameByFile.set(i.file, blame);
-        })
-    );
-
-    for (const issue of unblamed) {
-      const blame = blameByFile.get(issue.file);
-      if (blame) {
-        issue.blame = blame;
-      }
-    }
+    await this.issueBlameService.attachBlameForBatch(this.app, this.index, batch);
   }
 
   private async runAutoInverseFix(): Promise<number> {
