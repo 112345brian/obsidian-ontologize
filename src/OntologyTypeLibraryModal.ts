@@ -119,7 +119,7 @@ export class OntologyTypeLibraryModal extends Modal {
   private renderRow(container: HTMLElement, type: OntologyType, depth: number): void {
     const row = container.createEl('div', { cls: 'ontology-library-row' });
     if (depth > 0) {
-      row.style.paddingLeft = `${depth * 1.25}rem`;
+      row.style.setProperty('--ontology-library-depth', String(depth));
     }
 
     const info = row.createEl('div', { cls: 'ontology-library-info' });
