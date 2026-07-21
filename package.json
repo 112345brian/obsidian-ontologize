@@ -14,8 +14,6 @@
   "type": "module",
   "scripts": {
     "build": "jiti scripts/build.ts",
-    "build:clean": "jiti scripts/build-clean.ts",
-    "build:compile": "jiti scripts/build-compile.ts",
     "dev": "jiti scripts/dev.ts",
     "format": "jiti scripts/format.ts",
     "format:check": "jiti scripts/format-check.ts",
