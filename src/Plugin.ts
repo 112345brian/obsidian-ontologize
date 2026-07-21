@@ -760,7 +760,16 @@ export class Plugin extends ObsidianPlugin {
     const membershipBefore = index.entities.get(file.path)?.instanceOf ?? [];
     const frontmatter = this.app.metadataCache.getFileCache(file)?.frontmatter as Record<string, unknown> | undefined;
     if (!isOntologySchemaFile(file, this.pluginSettings.schemaPath) && !isOntologyTypeFile(file, this.pluginSettings.typeFolder, frontmatter)) {
-      if (!this.frontmatterFingerprints.hasChanged(file.path, frontmatter)) {
+      if (!this.frontmatterFingerprints.checkAndRecord(file.path, frontmatter)) {
+        // Frontmatter is unchanged, so membership/scaffold/inverse-update work is
+        // genuinely a no-op — but the note was still saved (body prose may have
+        // changed), and entity:save/entity:validate are documented to fire on
+        // every save, not just ones that touch frontmatter.
+        const unchangedEntity = index.entities.get(file.path);
+        if (unchangedEntity) {
+          await this.scriptingService.fireEntitySave(unchangedEntity);
+          this.scriptingService.fireEntityValidate(unchangedEntity);
+        }
         return;
       }
       this.index = await upsertOntologyEntityFileFast(this.app, index, file, this.indexSettings());
@@ -770,8 +779,8 @@ export class Plugin extends ObsidianPlugin {
       if (indexedType) {
         this.typeSchemaFingerprints.record(indexedType);
       }
+      this.frontmatterFingerprints.record(file.path, frontmatter);
     }
-    this.frontmatterFingerprints.record(file.path, frontmatter);
     const membershipAfter = this.index.entities.get(file.path)?.instanceOf ?? [];
 
     const entity = this.index.entities.get(file.path);

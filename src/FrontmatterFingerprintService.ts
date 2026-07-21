@@ -37,4 +37,13 @@ export class FrontmatterFingerprintService {
   public hasChanged(path: string, frontmatter: Record<string, unknown> | undefined): boolean {
     return this.fingerprints.get(path) !== frontmatterFingerprint(frontmatter);
   }
+
+  // Combines hasChanged + record into a single fingerprint computation instead of two,
+  // for callers that always want to record afterward regardless of the outcome.
+  public checkAndRecord(path: string, frontmatter: Record<string, unknown> | undefined): boolean {
+    const fingerprint = frontmatterFingerprint(frontmatter);
+    const changed = this.fingerprints.get(path) !== fingerprint;
+    this.fingerprints.set(path, fingerprint);
+    return changed;
+  }
 }
