@@ -1,0 +1,1 @@
+**Plugin shell responsibilities are split into focused services.** Query block rendering, command registration, background sweep state, schema-change comparison, issue blame attachment, and untyped-note auto-stamping now live outside `Plugin.ts`, reducing the Obsidian shell's orchestration load without changing runtime behavior.

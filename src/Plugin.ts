@@ -4,7 +4,6 @@ import type {
 } from 'obsidian';
 
 import {
-  MarkdownRenderer,
   normalizePath,
   Notice,
   Plugin as ObsidianPlugin,
@@ -12,7 +11,7 @@ import {
   TFile
 } from 'obsidian';
 
-import type { OntologyIndex, OntologyType } from './ontology/types.ts';
+import type { OntologyIndex } from './ontology/types.ts';
 import type { PluginSettings } from './PluginSettings.ts';
 import type { OntologizeAPI } from './ontology/scripting.ts';
 import { ScriptHookRegistry } from './ontology/scripting.ts';
@@ -28,7 +27,6 @@ import {
   isIgnoredOntologyPath,
   isOntologySchemaFile,
   isOntologyTypeFile,
-  revalidateEntityBatch,
   removeOntologyFile,
   upsertOntologyFile
 } from './ontology/indexer.ts';
@@ -36,8 +34,6 @@ import {
   applyMissingInversePlans,
   applyScaffoldPlan,
   applyTypeReplacements,
-  detectAutoApplyType,
-  detectTypeFromField,
   fixMissingInverses,
   planMissingInverses,
   planScaffoldEntity,
@@ -45,11 +41,7 @@ import {
 } from './ontology/mutations.ts';
 import type { TypeReplacement } from './ontology/types.ts';
 import {
-  normalizeLinkTarget
-} from './ontology/links.ts';
-import {
-  runOntologyQuery,
-  runOntologyQueryDetailed
+  runOntologyQuery
 } from './ontology/query.ts';
 import { summarizeIssues } from './ontology/issues.ts';
 import { OntologyIssuesModal } from './OntologyIssuesModal.ts';
@@ -78,43 +70,16 @@ import { OntologyRepairModal } from './OntologyRepairModal.ts';
 import { PluginSettings as PluginSettingsClass } from './PluginSettings.ts';
 import { PluginSettingsTab } from './PluginSettingsTab.ts';
 import { IssueBlameService } from './IssueBlameService.ts';
-
-// Normalizes an OntologyType's schema fields (Maps → sorted objects, Sets/arrays →
-// sorted arrays) for structural comparison, ignoring name/path so only the
-// ontology-relevant frontmatter is considered.
-function normalizeForSchemaCompare(type: OntologyType): unknown {
-  const { name: _name, path: _path, ...rest } = type;
-  const normalizeValue = (value: unknown): unknown => {
-    if (value instanceof Map) {
-      return Object.fromEntries([...value.entries()].sort(([a], [b]) => a.localeCompare(b)).map(([k, v]) => [k, normalizeValue(v)]));
-    }
-    if (value instanceof Set) {
-      return [...value].sort();
-    }
-    if (Array.isArray(value)) {
-      // Fields like disjoint/excludes/implements/alsoApply/requires/values/replaces are
-      // semantically unordered — sort so reordering entries in frontmatter (no schema
-      // change) doesn't register as a schema change and spuriously fire the locked-type
-      // notice, matching the Set branch above.
-      return value.map(normalizeValue).map((v) => JSON.stringify(v)).sort().map((v) => JSON.parse(v) as unknown);
-    }
-    if (value && typeof value === 'object') {
-      return Object.fromEntries(Object.entries(value).sort(([a], [b]) => a.localeCompare(b)).map(([k, v]) => [k, normalizeValue(v)]));
-    }
-    return value;
-  };
-  return normalizeValue(rest);
-}
-
-function hasOntologySchemaChange(previous: OntologyType, next: OntologyType): boolean {
-  return JSON.stringify(normalizeForSchemaCompare(previous)) !== JSON.stringify(normalizeForSchemaCompare(next));
-}
+import { registerPluginCommands } from './PluginCommandRegistration.ts';
+import { renderOntologyQueryBlock } from './QueryBlockRenderer.ts';
+import { hasOntologySchemaChange } from './OntologySchemaCompare.ts';
+import { maybeStampAutoAppliedType } from './EntityAutoTyping.ts';
+import {
+  BackgroundSweepService,
+  SWEEP_INTERVAL_MS
+} from './BackgroundSweepService.ts';
 
 const CACHE_WRITE_DEBOUNCE_MS = 800;
-// Sweep 10% of entities every 20 minutes; full vault cycles in ~3.5 hours.
-const SWEEP_INTERVAL_MS = 20 * 60 * 1000;
-const SWEEP_BATCH_FRACTION = 0.1;
-const SWEEP_MIN_BATCH = 5;
 
 export class Plugin extends ObsidianPlugin {
   public index: null | OntologyIndex = null;
@@ -123,6 +88,7 @@ export class Plugin extends ObsidianPlugin {
   private readonly scriptRegistry = new ScriptHookRegistry();
   private readonly scriptLoader = new ScriptLoader();
   private readonly issueBlameService = new IssueBlameService();
+  private readonly backgroundSweepService = new BackgroundSweepService();
   private scriptApi: OntologizeAPI | null = null;
 
   private deviceId = '';
@@ -134,9 +100,6 @@ export class Plugin extends ObsidianPlugin {
   // since; auto-scaffold stays quiet for them until the entity's types change.
   private scaffoldDismissedPaths = new Set<string>();
   private scaffoldReviewOpenPaths = new Set<string>();
-  // Cursor into the sorted entity-path list; advances by the batch size each sweep
-  // so every entity gets revalidated once per full cycle regardless of vault size.
-  private sweepCursor = 0;
   // Paths currently being written by the type editor modal; suppresses the
   // raw-edit lock warning for writes the plugin itself initiates.
   private modalWritingPaths = new Set<string>();
@@ -175,121 +138,21 @@ export class Plugin extends ObsidianPlugin {
 
     this.registerMarkdownCodeBlockProcessor('ontology-query', this.renderQueryBlock.bind(this));
 
-    this.addCommand({
-      checkCallback: (checking) => {
-        const file = this.app.workspace.getActiveFile();
-        if (!file) {
-          return false;
-        }
-        if (!checking) {
-          void this.showActiveFileIssues(file);
-        }
-        return true;
-      },
-      id: 'check-active-note',
-      name: 'Check active ontology note'
-    });
-
-    this.addCommand({
-      callback: () => {
-        void this.rebuildIndex(true);
-      },
-      id: 'rebuild-index',
-      name: 'Rebuild ontology index'
-    });
-
-    this.addCommand({
-      callback: () => {
-        void this.openIssuesModal();
-      },
-      id: 'open-issues',
-      name: 'Open ontology issues'
-    });
-
-    this.addCommand({
-      callback: () => {
-        void this.openSchemaDiagnosticsModal();
-      },
-      id: 'open-schema-diagnostics',
-      name: 'Open ontology schema diagnostics'
-    });
-
-    this.addCommand({
-      checkCallback: (checking) => {
-        const file = this.app.workspace.getActiveFile();
-        if (!file) {
-          return false;
-        }
-        if (!checking) {
-          void this.scaffoldActiveNote(file);
-        }
-        return true;
-      },
-      id: 'scaffold-active-note',
-      name: 'Scaffold active ontology note'
-    });
-
-    this.addCommand({
-      callback: () => {
-        void this.openRelationFixModal();
-      },
-      id: 'fix-missing-inverses',
-      name: 'Fix missing inverse relations'
-    });
-
-    this.addCommand({
-      callback: () => {
-        void this.openTypeLibraryModal();
-      },
-      id: 'browse-ontology-types',
-      name: 'Browse ontology types'
-    });
-
-    this.addCommand({
-      callback: () => {
-        void this.openCreateTypeModal();
-      },
-      id: 'create-ontology-type',
-      name: 'Create ontology type'
-    });
-
-    this.addCommand({
-      callback: () => {
-        void this.openBulkScaffoldModal();
-      },
-      id: 'bulk-scaffold-type',
-      name: 'Bulk scaffold ontology entities'
-    });
-
-    this.addCommand({
-      checkCallback: (checking) => {
-        const file = this.app.workspace.getActiveFile();
-        const fm = file ? this.app.metadataCache.getFileCache(file)?.frontmatter as Record<string, unknown> | undefined : undefined;
-        if (!file || !isOntologyTypeFile(file, this.pluginSettings.typeFolder, fm)) {
-          return false;
-        }
-        if (!checking) {
-          void this.openEditTypeModal(file);
-        }
-        return true;
-      },
-      id: 'edit-active-ontology-type',
-      name: 'Edit active ontology type'
-    });
-
-    this.addCommand({
-      checkCallback: (checking) => {
-        const file = this.app.workspace.getActiveFile();
-        if (!file || !this.index?.entities.has(file.path) || this.scriptRegistry.entityActions.length === 0) {
-          return false;
-        }
-        if (!checking) {
-          void this.openEntityActionsModal(file);
-        }
-        return true;
-      },
-      id: 'open-entity-actions',
-      name: 'Open script actions for active note'
+    registerPluginCommands(this, this.app, {
+      getIndex: () => this.index,
+      getSettings: () => this.pluginSettings,
+      hasEntityActions: () => this.scriptRegistry.entityActions.length > 0,
+      openBulkScaffoldModal: () => this.openBulkScaffoldModal(),
+      openCreateTypeModal: () => this.openCreateTypeModal(),
+      openEditTypeModal: (file) => this.openEditTypeModal(file),
+      openEntityActionsModal: (file) => this.openEntityActionsModal(file),
+      openIssuesModal: () => this.openIssuesModal(),
+      openRelationFixModal: () => this.openRelationFixModal(),
+      openSchemaDiagnosticsModal: () => this.openSchemaDiagnosticsModal(),
+      openTypeLibraryModal: () => this.openTypeLibraryModal(),
+      rebuildIndex: (showNotice) => this.rebuildIndex(showNotice),
+      scaffoldActiveNote: (file) => this.scaffoldActiveNote(file),
+      showActiveFileIssues: (file) => this.showActiveFileIssues(file)
     });
 
     this.registerEvent(this.app.metadataCache.on('changed', (file) => {
@@ -731,39 +594,15 @@ export class Plugin extends ObsidianPlugin {
   private async runBackgroundSweep(): Promise<void> {
     let batch: string[] = [];
     await this.enqueue(async () => {
-      batch = this.backgroundSweepCore();
+      const result = this.backgroundSweepService.run(this.app, this.index, this.indexReady);
+      batch = result.batch;
+      if (result.shouldScheduleCacheWrite) {
+        this.scheduleCacheWrite();
+      }
     });
     if (batch.length > 0) {
       await this.attachBlameForBatch(batch);
     }
-  }
-
-  private backgroundSweepCore(): string[] {
-    if (!this.index || !this.indexReady) {
-      return [];
-    }
-
-    const paths = [...this.index.entities.keys()].sort();
-    if (paths.length === 0) {
-      return [];
-    }
-
-    const batchSize = Math.max(SWEEP_MIN_BATCH, Math.ceil(paths.length * SWEEP_BATCH_FRACTION));
-    const start = this.sweepCursor % paths.length;
-    const end = start + batchSize;
-
-    const batch = end <= paths.length
-      ? paths.slice(start, end)
-      : [...paths.slice(start), ...paths.slice(0, end - paths.length)];
-
-    this.sweepCursor = end % paths.length;
-
-    const { staleCount, removedCount } = revalidateEntityBatch(this.app, this.index, batch);
-    if (staleCount > 0 || removedCount > 0) {
-      this.scheduleCacheWrite();
-    }
-
-    return batch;
   }
 
   private async attachBlameForBatch(batch: string[]): Promise<void> {
@@ -972,58 +811,8 @@ export class Plugin extends ObsidianPlugin {
     //   - add the direct type to `up` so the chain reads entity → type → parent
     //   - remove ancestor types from `up` (they're now reachable through the
     //     type chain; non-type links like topic pages are left alone)
-    if (membershipAfter.length === 0) {
-      const rawFrontmatter = this.app.metadataCache.getFileCache(file)?.frontmatter ?? {};
-      const globalTypePath = this.index.globalType?.path;
-      const globalFm = (globalTypePath ? this.app.metadataCache.getCache(globalTypePath)?.frontmatter : undefined) ?? {};
-      const inferOverride = rawFrontmatter['infer-type-from-field'];
-      const inferFromField = typeof inferOverride === 'boolean'
-        ? inferOverride
-        : (typeof globalFm['infer-type-from-field'] === 'boolean' ? globalFm['infer-type-from-field'] as boolean : false);
-      const inferField = (typeof rawFrontmatter['infer-type-field'] === 'string' ? rawFrontmatter['infer-type-field'] : null)
-        ?? (typeof globalFm['infer-type-field'] === 'string' ? globalFm['infer-type-field'] : null)
-        ?? 'up';
-      // ingest-from detection is handled by the indexer — no stamp needed.
-      const currentIndex = this.index;
-      const matched = detectAutoApplyType(this.index, rawFrontmatter)
-        ?? (inferFromField ? detectTypeFromField(this.index, rawFrontmatter, inferField) : null);
-      if (matched) {
-        const ancestors = this.index.ancestorsByType.get(matched) ?? new Set<string>();
-        let rootAncestor = matched;
-        for (const ancestor of ancestors) {
-          const ancestorType = this.index.types.get(ancestor);
-          if (!ancestorType?.subtypeOf.some((p) => currentIndex.types.has(p))) {
-            rootAncestor = ancestor;
-            break;
-          }
-        }
-        const matchedType = this.index.types.get(matched);
-        const cascade = (matchedType?.alsoApply ?? []).filter((t) => currentIndex.types.has(t));
-        await this.app.fileManager.processFrontMatter(file, (fm) => {
-          const primaryField = this.pluginSettings.entityTypeFields?.[0] ?? 'is-instance';
-          const existing = fm[primaryField];
-          const currentTypes = new Set(
-            (Array.isArray(existing) ? existing : existing != null ? [existing] : [])
-              .map((v) => (typeof v === 'string' ? normalizeLinkTarget(v) : null))
-              .filter((v): v is string => v !== null)
-          );
-          const toStamp = [matched, ...cascade.filter((t) => !currentTypes.has(t))];
-          fm[primaryField] = toStamp.length === 1 ? `[[${toStamp[0]}]]` : toStamp.map((t) => `[[${t}]]`);
-          const allTypeNames = new Set([matched, ...ancestors]);
-          const existingUp: unknown[] = Array.isArray(fm['up'])
-            ? fm['up'] as unknown[]
-            : fm['up'] != null
-            ? [fm['up']]
-            : [];
-          const kept = existingUp.filter((v) => {
-            const target = typeof v === 'string' ? normalizeLinkTarget(v) : null;
-            return target === null || !allTypeNames.has(target);
-          });
-          kept.push(`[[${rootAncestor}]]`);
-          fm['up'] = kept.length === 1 ? kept[0] : kept;
-        });
-        return;
-      }
+    if (membershipAfter.length === 0 && await maybeStampAutoAppliedType(this.app, this.index, this.pluginSettings, file)) {
+      return;
     }
 
     const membershipChanged = membershipBefore.length !== membershipAfter.length
@@ -1061,42 +850,7 @@ export class Plugin extends ObsidianPlugin {
 
   private async renderQueryBlock(source: string, el: HTMLElement, ctx: MarkdownPostProcessorContext): Promise<void> {
     const index = await this.ensureIndex();
-    // An explicit `include:` in the block always wins; the setting only moves the default.
-    const { entities: results, warnings } = runOntologyQueryDetailed(index, source, {
-      defaultInclude: this.pluginSettings.queryOnlyLocked ? 'locked' : 'all'
-    });
-
-    el.empty();
-    el.addClass('ontology-query-results');
-
-    for (const warning of warnings) {
-      el.createEl('p', { cls: 'ontology-query-warning', text: `⚠ ${warning}` });
-    }
-
-    if (results.length === 0) {
-      el.createEl('p', { cls: 'ontology-query-empty', text: 'No matching ontology notes.' });
-      return;
-    }
-
-    const table = el.createEl('table');
-    const header = table.createEl('thead').createEl('tr');
-    header.createEl('th', { text: 'Note' });
-    header.createEl('th', { text: 'Types' });
-    header.createEl('th', { text: 'Lock' });
-
-    const body = table.createEl('tbody');
-    for (const entity of results) {
-      const row = body.createEl('tr');
-      const noteCell = row.createEl('td');
-      await MarkdownRenderer.render(this.app, `[[${entity.name}]]`, noteCell, ctx.sourcePath, this);
-      row.createEl('td', { text: entity.instanceOf.join(', ') });
-      row.createEl('td', { text: index.effectiveEntityLocks.get(entity.path)?.state ?? 'unlocked' });
-    }
-
-    el.createEl('p', {
-      cls: 'ontology-query-count',
-      text: `${results.length} ${results.length === 1 ? 'note' : 'notes'}.`
-    });
+    await renderOntologyQueryBlock(this.app, this, source, el, ctx, index, this.pluginSettings.queryOnlyLocked ? 'locked' : 'all');
   }
 
   private makeScriptApi(): OntologizeAPI {
