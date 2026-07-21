@@ -12,7 +12,7 @@ import {
   TFile
 } from 'obsidian';
 
-import type { OntologyIndex } from './ontology/types.ts';
+import type { OntologyIndex, OntologyType } from './ontology/types.ts';
 import type { PluginSettings } from './PluginSettings.ts';
 import type { OntologizeAPI } from './ontology/scripting.ts';
 import { ScriptHookRegistry } from './ontology/scripting.ts';
@@ -83,6 +83,37 @@ import type { ImpactResolution } from './OntologyTypeImpactModal.ts';
 import { OntologyRepairModal } from './OntologyRepairModal.ts';
 import { PluginSettings as PluginSettingsClass } from './PluginSettings.ts';
 import { PluginSettingsTab } from './PluginSettingsTab.ts';
+
+// Normalizes an OntologyType's schema fields (Maps → sorted objects, Sets/arrays →
+// sorted arrays) for structural comparison, ignoring name/path so only the
+// ontology-relevant frontmatter is considered.
+function normalizeForSchemaCompare(type: OntologyType): unknown {
+  const { name: _name, path: _path, ...rest } = type;
+  const normalizeValue = (value: unknown): unknown => {
+    if (value instanceof Map) {
+      return Object.fromEntries([...value.entries()].sort(([a], [b]) => a.localeCompare(b)).map(([k, v]) => [k, normalizeValue(v)]));
+    }
+    if (value instanceof Set) {
+      return [...value].sort();
+    }
+    if (Array.isArray(value)) {
+      // Fields like disjoint/excludes/implements/alsoApply/requires/values/replaces are
+      // semantically unordered — sort so reordering entries in frontmatter (no schema
+      // change) doesn't register as a schema change and spuriously fire the locked-type
+      // notice, matching the Set branch above.
+      return value.map(normalizeValue).map((v) => JSON.stringify(v)).sort().map((v) => JSON.parse(v) as unknown);
+    }
+    if (value && typeof value === 'object') {
+      return Object.fromEntries(Object.entries(value).sort(([a], [b]) => a.localeCompare(b)).map(([k, v]) => [k, normalizeValue(v)]));
+    }
+    return value;
+  };
+  return normalizeValue(rest);
+}
+
+function hasOntologySchemaChange(previous: OntologyType, next: OntologyType): boolean {
+  return JSON.stringify(normalizeForSchemaCompare(previous)) !== JSON.stringify(normalizeForSchemaCompare(next));
+}
 
 const CACHE_WRITE_DEBOUNCE_MS = 800;
 // Sweep 10% of entities every 20 minutes; full vault cycles in ~3.5 hours.
@@ -882,17 +913,25 @@ export class Plugin extends ObsidianPlugin {
       }
       const modifyFm = file instanceof TFile ? this.app.metadataCache.getFileCache(file)?.frontmatter as Record<string, unknown> | undefined : undefined;
       if (file instanceof TFile && isOntologyTypeFile(file, this.pluginSettings.typeFolder, modifyFm)) {
-        // Warn when a locked type is edited directly rather than through the type editor modal.
-        if (!this.modalWritingPaths.has(file.path)) {
-          const typeName = file.basename;
-          const type = this.index?.types.get(typeName);
-          if (type?.lockIntent) {
+        // Warn when a locked type's own schema (must-have, relations, lock, etc.) is
+        // edited directly rather than through the type editor modal. Body prose and
+        // non-schema frontmatter on the same file shouldn't trigger this warning.
+        // Compare against the type as freshly indexed by upsertFileCore below (the
+        // same uncached vault.read()-backed path used everywhere else) rather than a
+        // separate cachedRead()+parse, which could race a very recent write and would
+        // redundantly re-parse the file a second time regardless.
+        const typeName = file.basename;
+        const previousType = this.index?.types.get(typeName);
+        const shouldWarnIfChanged = !this.modalWritingPaths.has(file.path) && previousType?.lockIntent === true;
+        await this.upsertFileCore(file);
+        if (shouldWarnIfChanged && previousType) {
+          const newType = this.index?.types.get(typeName);
+          if (newType && hasOntologySchemaChange(previousType, newType)) {
             new Notice(
               `"${typeName}" is a locked type. Use the type editor (right-click → Edit type) to validate impact before saving changes.`
             );
           }
         }
-        await this.upsertFileCore(file);
         this.offerScaffoldAfterTypeChange();
       }
     });
