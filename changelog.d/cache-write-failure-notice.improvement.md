@@ -1,0 +1,1 @@
+**Ontology cache write failures now surface a Notice instead of failing silently.** A failed cache write (disk full, network drive dropped) no longer aborts the operation that triggered it — the rebuild or edit still completes — but you now see a one-time Notice warning that the next session may start from a stale index, instead of the failure being swallowed entirely.

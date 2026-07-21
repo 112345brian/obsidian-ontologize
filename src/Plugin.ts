@@ -348,7 +348,7 @@ export class Plugin extends ObsidianPlugin {
 
   private async buildAndStore(showNotice: boolean): Promise<void> {
     this.index = await buildOntologyIndex(this.app, this.indexSettings());
-    await writeOntologyCache(this.app, this.effectiveCachePath(), this.index);
+    await this.writeCacheSafely();
     // Reload scripts on full rebuild so they see the fresh index, then run validate hooks.
     await this.reloadScripts();
     await this.fireEntityValidateHooks();
@@ -795,7 +795,7 @@ export class Plugin extends ObsidianPlugin {
       const fixed = await fixMissingInverses(this.app, this.index, { onlyAutoUpdate: true });
       if (fixed > 0) {
         this.index = await buildOntologyIndex(this.app, this.indexSettings());
-        await writeOntologyCache(this.app, this.effectiveCachePath(), this.index);
+        await this.writeCacheSafely();
       }
       return fixed;
     } finally {
@@ -916,6 +916,22 @@ export class Plugin extends ObsidianPlugin {
     });
   }
 
+  // The cache is a startup optimization — a failed write (disk full, network
+  // drive dropped) must not abort the operation that triggered it, but the user
+  // should hear about it once instead of silently loading a stale index next
+  // session.
+  private async writeCacheSafely(): Promise<void> {
+    if (!this.index) {
+      return;
+    }
+    try {
+      await writeOntologyCache(this.app, this.effectiveCachePath(), this.index);
+    } catch (error) {
+      console.error('Ontologize: failed to write ontology cache', error);
+      new Notice('Ontologize: failed to write the ontology cache; the next session may start from a stale index.');
+    }
+  }
+
   private scheduleCacheWrite(): void {
     if (!this.index) {
       return;
@@ -925,9 +941,7 @@ export class Plugin extends ObsidianPlugin {
     }
     this.cacheWriteTimer = window.setTimeout(() => {
       this.cacheWriteTimer = null;
-      if (this.index) {
-        void writeOntologyCache(this.app, this.effectiveCachePath(), this.index);
-      }
+      void this.writeCacheSafely();
     }, CACHE_WRITE_DEBOUNCE_MS);
   }
 
