@@ -2,6 +2,13 @@
 
 <!-- towncrier release notes start -->
 
+## 0.5.1
+
+### Bug fixes
+
+- **Type files that double as their own hub entity no longer get flagged for "Unknown type field".** A type file registered as a hub entity via a configured entity-type field (`is-instance`, `instance-of`, etc. — see the type-file-doubles-as-entity feature) had that same field flagged by the schema linter as an unrecognized schema key, since the linter didn't know entity-registration fields were legitimate content on a type file. The linter now exempts the configured entity-type fields.
+
+
 ## 0.5.0
 
 ### Features
