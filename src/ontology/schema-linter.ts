@@ -311,16 +311,28 @@ function lintReplacesField(file: string, value: unknown, issues: OntologyIssue[]
 
 const SCHEMA_CONTENT_KEYS = new Set(['auto-apply', 'can-have', 'fields', 'implements', 'ingest-from', 'must-have', 'relations', 'scales', 'subtype-of', 'type', 'values']);
 
-function lintTypeRecord(file: string, value: unknown, issues: OntologyIssue[], prefix: string, requireOntologizePrefix: boolean): void {
+function lintTypeRecord(
+  file: string,
+  value: unknown,
+  issues: OntologyIssue[],
+  prefix: string,
+  requireOntologizePrefix: boolean,
+  entityRegistrationKeys: Set<string> = new Set(),
+): void {
   const record = asRecord(value);
   if (!record) {
     issues.push(issue(file, 'Type definition must be a map/object'));
     return;
   }
   if (requireOntologizePrefix) {
-    lintUnknownKeys(file, 'ontologize schema', schemaRecord(record, true), TYPE_KEYS, issues);
+    const allowed = new Set([...TYPE_KEYS, ...entityRegistrationKeys]);
+    lintUnknownKeys(file, 'ontologize schema', schemaRecord(record, true), allowed, issues);
   } else {
-    const allowed = new Set([...TYPE_KEYS, ...NOTE_CONTENT_KEYS]);
+    // A type file can also double as its own hub entity (resolveTypeFileAsEntity in
+    // indexer.ts), stamped via one of the configured entityTypeFields (is-instance,
+    // instance-of, etc.) — those keys are legitimate entity-registration content on
+    // the file, not an unrecognized schema key, so they're allowed here too.
+    const allowed = new Set([...TYPE_KEYS, ...NOTE_CONTENT_KEYS, ...entityRegistrationKeys]);
     lintUnknownKeys(file, 'type', record, allowed, issues);
   }
   const schema = schemaRecord(record, requireOntologizePrefix);
@@ -347,10 +359,16 @@ function lintTypeRecord(file: string, value: unknown, issues: OntologyIssue[], p
   lintRelationMap(file, schema['relations'], issues);
 }
 
-export function lintOntologyTypeSource(file: string, source: string, blockPrefix = DEFAULT_BLOCK_PREFIX, requireOntologizePrefix = false): OntologyIssue[] {
+export function lintOntologyTypeSource(
+  file: string,
+  source: string,
+  blockPrefix = DEFAULT_BLOCK_PREFIX,
+  requireOntologizePrefix = false,
+  entityTypeFields: string[] = [],
+): OntologyIssue[] {
   const parsed = parseSource(file, source, false);
   if (parsed.value) {
-    lintTypeRecord(file, parsed.value, parsed.issues, blockPrefix, requireOntologizePrefix);
+    lintTypeRecord(file, parsed.value, parsed.issues, blockPrefix, requireOntologizePrefix, new Set(entityTypeFields.map(normalizeKey)));
   }
   return parsed.issues;
 }

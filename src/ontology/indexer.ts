@@ -555,7 +555,7 @@ export async function upsertOntologyFile(app: App, index: OntologyIndex, file: T
   const frontmatter = app.metadataCache.getFileCache(file)?.frontmatter as Record<string, unknown> | undefined;
   if (isOntologyTypeFile(file, settings.typeFolder, frontmatter)) {
     const source = await app.vault.read(file);
-    const lintIssues = lintOntologyTypeSource(file.path, source, settings.autoApplyBlockPrefix, settings.requireOntologizePrefix);
+    const lintIssues = lintOntologyTypeSource(file.path, source, settings.autoApplyBlockPrefix, settings.requireOntologizePrefix, normalizedEntityTypeFields(settings.entityTypeFields));
     index.schemaIssues?.push(...lintIssues);
     if (lintIssues.some((item) => item.severity === 'error')) {
       return recomputeOntologyDerivedState(index);
@@ -749,7 +749,7 @@ export async function buildOntologyIndex(app: App, settings: BuildIndexSettings)
     const cachedFm = app.metadataCache.getFileCache(file)?.frontmatter as Record<string, unknown> | undefined;
     if (isOntologyTypeFile(file, settings.typeFolder, cachedFm)) {
       const source = await app.vault.read(file);
-      const lintIssues = lintOntologyTypeSource(file.path, source, settings.autoApplyBlockPrefix, settings.requireOntologizePrefix);
+      const lintIssues = lintOntologyTypeSource(file.path, source, settings.autoApplyBlockPrefix, settings.requireOntologizePrefix, normalizedEntityTypeFields(settings.entityTypeFields));
       index.schemaIssues?.push(...lintIssues);
       if (!lintIssues.some((item) => item.severity === 'error')) {
         const type = parseOntologyType(file.path, source, settings.autoApplyBlockPrefix, settings.requireOntologizePrefix);
